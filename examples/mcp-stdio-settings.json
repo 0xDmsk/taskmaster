@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "taskmaster-stdio": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "/Users/YOUR_USERNAME/Projects/taskmaster/server.py"
+      ],
+      "env": {},
+      "cwd": "/Users/YOUR_USERNAME/Projects/taskmaster",
+      "description": "Taskmaster - Direct STDIO connection (no socat)",
+      "disabled": false
+    }
+  }
+}

@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Taskmaster Runtime State
+state/executions.json
+audit/audit_log.jsonl
+audit/loot/*
+!audit/loot/.gitkeep
+
+# Session Reports (optional - uncomment if you want to track reports)
+# audit/session_report.md
+
+# Environment Variables
+.env
+.env.local
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# UV lock file (optional - some prefer to commit this)
+# uv.lock
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+tmp/
+temp/

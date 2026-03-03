@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "taskmaster": {
+      "url": "http://192.168.64.1:5000/mcp",
+      "description": "Taskmaster - Agentic Security Orchestration Platform"
+    }
+  },
+  "globalShortcuts": {
+    "taskmaster_status": "query_execution_status",
+    "taskmaster_request": "request_security_action",
+    "taskmaster_spawn": "spawn_agent"
+  },
+
+  "experimentalFeatures": {
+    "toolAutoApprove": false,
+    "contextSharing": true
+  }
+}

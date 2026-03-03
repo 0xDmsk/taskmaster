@@ -1,0 +1,85 @@
+# ------------------------------
+# Wordlists (mounted, read-only)
+# ------------------------------
+export W_SECLISTS="/usr/share/seclists"
+
+export W_DANGEROUS_FILES_4K="${W_SECLISTS}/Fuzzing/fuzz-Bo0oM.txt"
+export W_COMMON_WEB_FILES_4K="${W_SECLISTS}/Discovery/Web-Content/common.txt"
+export W_BURP_PARAMETERS_2K="${W_SECLISTS}/Discovery/Web-Content/burp-parameter-names.txt"
+export W_QUICK_HITS_2K="${W_SECLISTS}/Discovery/Web-Content/quickhits.txt"
+export W_FULL_ASCII_94="${W_SECLISTS}/Fuzzing/alphanum-case-extra.txt"
+export W_COMMON_EXTENSIONS="${W_SECLISTS}/Fuzzing/extensions-most-common.fuzz.txt"
+export W_SSTI="${W_SECLISTS}/Fuzzing/template-engines-expression.txt"
+
+# ------------------------------
+# Lightweight servers
+# ------------------------------
+alias http-server='python3 -m http.server'
+alias smb-server='impacket-smbserver'
+
+# ------------------------------
+# Git
+# ------------------------------
+alias git-save='git add -A && git commit -m "Quick Save - $(date --iso-8601=seconds)" && git push'
+
+# ------------------------------
+# Grep / ls with color
+# ------------------------------
+alias grep='grep --color=auto'
+alias egrep='egrep --color=auto'
+alias fgrep='fgrep --color=auto'
+
+alias ls='ls --color=auto'
+alias ll='ls -lh'
+alias la='ls -lha'
+alias lt='du -sh * | sort -h'
+alias ltr='ls -ltr'
+
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+fi
+
+# ------------------------------
+# Python / virtualenv / uv / pipx
+# ------------------------------
+alias venv='python3 -m venv ./.venv'
+alias va='source ./.venv/bin/activate'
+alias pipf='pip freeze > requirements.txt'
+alias pipr='pip install -r requirements.txt'
+alias u='uv'
+alias ur='uv run'
+alias ux='uvx'
+alias px='pipx'
+
+# ------------------------------
+# Taskmaster Operator
+# ------------------------------
+alias operator='/usr/local/bin/kali-operator'
+
+# ------------------------------
+# Apt (ephemeral container-safe)
+# ------------------------------
+alias update='apt update'
+alias upgrade='apt update && apt upgrade -y'
+alias search='apt search'
+
+alias install='apt install -y'
+alias uninstall='apt purge -y'
+alias search-installed='dpkg -l'
+
+# ------------------------------
+# Navigation / misc
+# ------------------------------
+alias CD='cd'
+alias dc='cd'
+
+alias ipe='curl ifconfig.me'
+alias untar='tar -zxvf'
+alias wget='wget -c'
+alias pc='proxychains4'
+alias ping='ping -c 4'
+
+# Auto-list on cd (interactive convenience)
+function cd() {
+    builtin cd "$@" && ls -lh
+}

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "taskmaster": {
+      "command": "python3",
+      "args": [
+        "/absolute/path/to/taskmaster/scripts/mcp-http-bridge.py"
+      ],
+      "env": {
+        "TASKMASTER_HOST": "127.0.0.1",
+        "TASKMASTER_PORT": "5000",
+        "MCP_BRIDGE_TIMEOUT": "900"
+      }
+    }
+  }
+}

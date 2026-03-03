@@ -1,0 +1,69 @@
+{
+  "name": "request_security_action",
+  "description": "Request execution of a security-related action in a controlled environment. IMPORTANT: Containers run in a macOS VM — raw-socket scans (nmap -sS, -sU, -O, arp-scan) will be REJECTED. Always use nmap -sT (TCP connect scan). See policies/platform_constraints.md.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "agent_role",
+      "phase",
+      "target",
+      "action_type",
+      "tool",
+      "command",
+      "justification",
+      "expected_output"
+    ],
+    "properties": {
+      "agent_role": {
+        "type": "string",
+        "enum": [
+          "recon",
+          "enumeration",
+          "exploitation",
+          "post_exploitation",
+          "reporting"
+        ]
+      },
+      "phase": {
+        "type": "string",
+        "enum": [
+          "reconnaissance",
+          "enumeration",
+          "exploitation",
+          "post_exploitation",
+          "reporting"
+        ]
+      },
+      "target": {
+        "type": "string",
+        "description": "IP, hostname, URL, or logical target name"
+      },
+      "action_type": {
+        "type": "string",
+        "enum": [
+          "network_scan",
+          "web_probe",
+          "credential_test",
+          "exploit_attempt",
+          "data_extraction",
+          "analysis"
+        ]
+      },
+      "tool": {
+        "type": "string",
+        "description": "Tool to be executed (e.g. nmap, ffuf, custom python)"
+      },
+      "command": {
+        "type": "string",
+        "description": "Exact command or script to execute. CONSTRAINT: Containers run in a macOS VM — use nmap -sT (not -sS), avoid -sU and -O. Raw-socket tools (arp-scan, hping, scapy) will not work. HTTP-based tools (ffuf, gobuster, sqlmap, curl) work fine."
+      },
+      "justification": {
+        "type": "string",
+        "minLength": 50
+      },
+      "expected_output": {
+        "type": "string"
+      }
+    }
+  }
+}
