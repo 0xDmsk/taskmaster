@@ -8,25 +8,25 @@ Taskmaster coordinates a **Planner** (Gemini) and a dynamic fleet of **Specializ
 
 ```mermaid
 graph TD
-    Gemini[Gemini (Planner)] -->|spawn_agent| Docker[Docker Host]
-    Gemini -->|request_security_action| TM[Taskmaster Core]
+    Gemini["Gemini (Planner)"] -->|"spawn_agent"| Lima["Lima Runtime"]
+    Gemini -->|"request_security_action"| TM["Taskmaster Core"]
     
     subgraph "Agent Fleet"
-        Agent1[Agent A (Target: 10.0.0.1)]
-        Agent2[Agent B (Target: 10.0.0.2)]
+        Agent1["Agent A (Target: 10.0.0.1)"]
+        Agent2["Agent B (Target: 10.0.0.2)"]
     end
 
-    Docker -->|Spawns + Mounts| Agent1
-    Agent1 <-->|Polls| TM
+    Lima -->|"Spawns + Mounts"| Agent1
+    Agent1 <-->|"Polls"| TM
     
     subgraph "Host Volumes"
-        Loot[audit/loot]
-        Skills[skills/]
+        Loot["audit/loot"]
+        Skills["skills/"]
     end
     
-    Agent1 -->|Saves Artifacts| Loot
-    Agent1 -->|Loads Logic| Skills
-    TM -->|Generates| Report[audit/session_report.md]
+    Agent1 -->|"Saves Artifacts"| Loot
+    Agent1 -->|"Loads Logic"| Skills
+    TM -->|"Generates"| Report["audit/session_report.md"]
 ```
 
 ### Key Components
