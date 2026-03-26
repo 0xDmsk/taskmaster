@@ -25,12 +25,15 @@ env/
 
 # Taskmaster Runtime State
 state/executions.json
+state/executions.db
+state/executions.db-wal
+state/executions.db-shm
 audit/audit_log.jsonl
 audit/loot/*
 !audit/loot/.gitkeep
 
-# Session Reports (optional - uncomment if you want to track reports)
-# audit/session_report.md
+# Session Reports
+audit/session_report.md
 
 # Environment Variables
 .env
