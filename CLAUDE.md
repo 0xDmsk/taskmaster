@@ -62,7 +62,9 @@ Kali Linux container (executors/Dockerfile)
 
 **Security Phases:** Policy enforces ordering: `reconnaissance → enumeration → exploitation → post_exploitation → reporting`. See `policies/state_policy.py`.
 
-**Skills:** Each skill extends `skills/base.py:BaseSkill`. Skills save JSON/XML artifacts to `/loot` (auto-parsed into execution results). See `skills/TEMPLATE.md` for creating new skills.
+**Skills:** Each skill extends `skills/base.py:BaseSkill` with one tool per class. Subclasses implement `build_command(**kwargs) -> str` and `parse_output(stdout, stderr, exit_code) -> dict`. The concrete `run()` orchestrator produces a JSON envelope with `skill`, `target`, `status`, `findings`, `artifacts`, `errors`. See `skills/TEMPLATE.md` for creating new skills.
+
+**Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). Both produce JSON envelope output.
 
 **Audit:** Every state transition is logged to `audit/audit_log.jsonl`. Final report at `audit/session_report.md`.
 

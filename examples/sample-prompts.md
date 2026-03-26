@@ -146,39 +146,36 @@ Authorization: Internal security audit, Read-only access granted
 
 ## 🛠️ Skill-Specific Prompts
 
-### Using Subdomain Skill
+### Using Subdomain Skills
 
 ```
-Use the subdomain.SubdomainSkill to find all subdomains for target.com.
-Run both passive (crt.sh) and active (gobuster) enumeration methods.
-Save results to loot for further analysis.
+Use subdomain.SubfinderEnum to passively enumerate subdomains for target.com,
+then use subdomain.GobusterDns for active brute-force discovery.
+Each skill returns a JSON envelope with findings and artifacts.
 ```
 
 ### Using Cloud Audit Skill
 
 ```
-Execute cloud.CloudAuditSkill for AWS with the following parameters:
-- Region: us-east-1
-- Services: IAM, S3, EC2
-- Check for: Public buckets, overly permissive IAM policies, security group issues
+Execute cloud.AwsCliAudit for the target AWS account to audit:
+- Identity (STS caller identity)
+- S3 buckets
+- IAM users
+Results will be in the JSON envelope's findings field.
 ```
 
-### Using Web Recon Skill
+### Using Web Skills
 
 ```
-Run web.WebReconSkill on https://app.example.com to:
-- Identify web technologies (Wappalyzer)
-- Detect web server and frameworks
-- Check for common vulnerabilities
-- Enumerate interesting endpoints
+Run web.HttpxDetect on https://app.example.com to fingerprint technologies,
+then run web.FfufFuzz to discover hidden directories and endpoints.
 ```
 
 ### Using Takeover Skill
 
 ```
-Use takeover.TakeoverSkill to check all discovered subdomains for
-potential subdomain takeover vulnerabilities. Check against major
-cloud providers (AWS, Azure, GCP, GitHub Pages, etc.)
+Use takeover.NucleiTakeover with a list of discovered subdomains to check
+for subdomain takeover vulnerabilities using nuclei's takeover templates.
 ```
 
 ## 🎓 Training Scenarios
@@ -247,14 +244,14 @@ I need a custom skill for testing API endpoints. Create a new skill that:
 Save it to skills/api_test.py following the TEMPLATE.md pattern.
 ```
 
-### Extending Existing Skill
+### Creating a New Web Skill
 
 ```
-Extend the web.WebReconSkill to include additional checks:
-- Check for security headers (CSP, HSTS, etc.)
-- Test for clickjacking protection
-- Validate SSL/TLS configuration
-- Check for information disclosure in error messages
+Create a new skill in skills/web.py called HttpHeaderAudit that wraps httpx to:
+- Check for security headers (CSP, HSTS, X-Frame-Options)
+- Detect missing protections
+- Output findings in the standard JSON envelope format
+Follow the build_command() + parse_output() pattern from skills/TEMPLATE.md.
 ```
 
 ## 🎯 Real-World Scenarios

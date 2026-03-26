@@ -18,13 +18,12 @@ env/
 # IDEs
 .vscode/
 .idea/
-*.swp
 *.swo
 *~
-.DS_Store
 
 # Taskmaster Runtime State
 state/executions.json
+state/executions.json.migrated
 state/executions.db
 state/executions.db-wal
 state/executions.db-shm
@@ -41,6 +40,9 @@ audit/session_report.md
 
 # Logs
 *.log
+
+# Linting
+.ruff_cache/
 
 # Testing
 .pytest_cache/

@@ -36,10 +36,10 @@ graph TD
     *   **Target Locking**: Prevents overlapping actions on the same target.
     *   **Audit Manager**: Automatically generates a Markdown report and JSONL logs in the `audit/` folder.
 
-2.  **Universal Agent ("Smart Operator")**: 
+2.  **Universal Agent ("Smart Operator")**:
     *   **Specialization**: Containers are "mission-aware" at runtime.
-    *   **Structured Pipeline**: Automatically detects and parses `.json` and `.xml` files created in `/loot`.
-    *   **Skills Library**: A mounted library of Python-based expert modules (Subdomain enumeration, Cloud auditing, etc.).
+    *   **Two Pathways**: Executes via skill classes (JSON envelope output) or Python sandbox — no raw shell commands.
+    *   **Skills Library**: A mounted library of one-tool-per-class Python modules with structured JSON output.
 
 ## 🛡 Features & Safety
 
@@ -82,11 +82,21 @@ Example configurations provided for:
 
 ## 🛠 Skills Library (`skills/`)
 
-The system includes a library of expert-level Python skills:
-- `subdomain.SubdomainSkill`: Passive (crt.sh) + Active (gobuster) discovery.
-- `takeover.TakeoverSkill`: 14+ cloud provider CNAME fingerprints.
-- `web.WebReconSkill`: Tech detection and `ffuf` integration.
-- `cloud.CloudAuditSkill`: AWS/GCP identity and resource auditing.
+Each skill wraps exactly one CLI tool and produces a standardized JSON envelope with `findings`, `artifacts`, and `errors`.
+
+| Skill | Tool | Description |
+|-------|------|-------------|
+| `network.FpingSweep` | `fping` | Ping sweep to discover alive hosts |
+| `network.NmapScan` | `nmap` | Service/version scan with XML parsing |
+| `web.FfufFuzz` | `ffuf` | Directory and endpoint fuzzing |
+| `web.HttpxDetect` | `httpx` | Technology detection and fingerprinting |
+| `subdomain.GobusterDns` | `gobuster` | Active DNS subdomain brute-force |
+| `subdomain.SubfinderEnum` | `subfinder` | Passive subdomain enumeration |
+| `takeover.NucleiTakeover` | `nuclei` | Subdomain takeover detection |
+| `cloud.AwsCliAudit` | `aws` | AWS identity, S3, and IAM auditing |
+| `cloud.GcloudAudit` | `gcloud` | GCP project and config auditing |
+
+See `skills/TEMPLATE.md` for creating new skills.
 
 ## 🔑 Directory Structure
 

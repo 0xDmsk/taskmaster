@@ -1,5 +1,6 @@
-from state.state import get_execution_state
+import json
 
+from state.state import get_execution_state
 
 TERMINAL_STATES = {"COMPLETED", "FAILED"}
 
@@ -23,8 +24,14 @@ def handle_fetch_execution_result(args):
             "status": status,
         }
 
+    result_raw = execution.get("result")
+    try:
+        result_parsed = json.loads(result_raw)
+    except (json.JSONDecodeError, TypeError):
+        result_parsed = result_raw  # backward compat
+
     return {
         "execution_id": execution_id,
         "status": status,
-        "result": execution.get("result"),
+        "result": result_parsed,
     }

@@ -1,6 +1,6 @@
 {
   "name": "request_security_action",
-  "description": "Request execution of a security-related action in a controlled environment. IMPORTANT: Containers run in a macOS VM — raw-socket scans (nmap -sS, -sU, -O, arp-scan) will be REJECTED. Always use nmap -sT (TCP connect scan). See policies/platform_constraints.md.",
+  "description": "Request execution of a security-related action in a controlled environment. Supports two action types: 'skill' (invoke a named skill class) and 'python' (run Python code in a sandbox). See skills/TEMPLATE.md for creating new skills.",
   "inputSchema": {
     "type": "object",
     "required": [
@@ -8,8 +8,6 @@
       "phase",
       "target",
       "action_type",
-      "tool",
-      "command",
       "justification",
       "expected_output"
     ],
@@ -41,21 +39,23 @@
       "action_type": {
         "type": "string",
         "enum": [
-          "network_scan",
-          "web_probe",
-          "credential_test",
-          "exploit_attempt",
-          "data_extraction",
-          "analysis"
-        ]
+          "skill",
+          "python"
+        ],
+        "description": "Type of execution: 'skill' to invoke a skill class, 'python' to run sandbox code"
       },
-      "tool": {
+      "skill": {
         "type": "string",
-        "description": "Tool to be executed (e.g. nmap, ffuf, custom python)"
+        "description": "Skill class path (e.g. 'network.NmapScan'). Required when action_type is 'skill'."
+      },
+      "arguments": {
+        "type": "object",
+        "description": "Keyword arguments passed to the skill's run() method. Used when action_type is 'skill'.",
+        "additionalProperties": true
       },
       "command": {
         "type": "string",
-        "description": "Exact command or script to execute. CONSTRAINT: Containers run in a macOS VM — use nmap -sT (not -sS), avoid -sU and -O. Raw-socket tools (arp-scan, hping, scapy) will not work. HTTP-based tools (ffuf, gobuster, sqlmap, curl) work fine."
+        "description": "Python code to execute. Required when action_type is 'python'."
       },
       "justification": {
         "type": "string",

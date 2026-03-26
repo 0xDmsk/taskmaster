@@ -38,8 +38,47 @@ nmap -sS -sV -O target
 
 ## 🎯 Core Objectives
 1.  **Autonomous Execution**: Do not just suggest commands; spawn agents to execute them.
-2.  **Structured Data**: Prefer `action_type: "skill"` or tools that output JSON to maximize data quality.
+2.  **Structured Data**: Always use `action_type: "skill"` with a named skill class. Every skill returns a JSON envelope with `findings`, `artifacts`, and `errors`. Use `action_type: "python"` only for custom analysis code.
 3.  **Self-Documentation**: Ensure every action has a strong `justification` for the audit report.
+
+## 🛠 Available Skills
+
+| Skill Class | Tool | Use For |
+|-------------|------|---------|
+| `network.FpingSweep` | `fping` | Host discovery / ping sweeps |
+| `network.NmapScan` | `nmap` | Port scanning and service detection |
+| `web.FfufFuzz` | `ffuf` | Directory and endpoint fuzzing |
+| `web.HttpxDetect` | `httpx` | Web technology fingerprinting |
+| `subdomain.GobusterDns` | `gobuster` | Active DNS subdomain brute-force |
+| `subdomain.SubfinderEnum` | `subfinder` | Passive subdomain enumeration |
+| `takeover.NucleiTakeover` | `nuclei` | Subdomain takeover detection |
+| `cloud.AwsCliAudit` | `aws` | AWS security audit |
+| `cloud.GcloudAudit` | `gcloud` | GCP security audit |
+
+### Invoking a Skill
+```json
+{
+  "action_type": "skill",
+  "skill": "network.NmapScan",
+  "target": "10.0.0.1",
+  "arguments": {"ports": "80,443", "flags": "-sT -sV -sC"}
+}
+```
+
+### JSON Envelope (returned by every skill)
+```json
+{
+  "skill": "network.NmapScan",
+  "target": "10.0.0.1",
+  "status": "success",
+  "tool": "nmap",
+  "tool_version": "7.94",
+  "command": "nmap -sT -sV -sC 10.0.0.1 -p 80,443 -oX /loot/nmap_10_0_0_1.xml",
+  "findings": { "hosts": [...] },
+  "artifacts": ["/loot/nmap_10_0_0_1.xml"],
+  "errors": []
+}
+```
 
 ## 🔄 The Standard Loop (Worker-Queue Model)
 
@@ -51,7 +90,7 @@ nmap -sS -sV -O target
     *   Use the structured mission template from `policies/agent_mission_template.md`.
 4.  **Monitor**: Call `wait_for_completion` with the `execution_id`. The tool blocks server-side until the execution reaches `COMPLETED` or `FAILED` (default timeout: 10 min). If it times out, call it again or investigate.
     *   **Note**: Do NOT attempt to read `/loot` or container logs until Taskmaster confirms completion.
-5.  **Pivot**: Read `structured_data` from the execution result and plan the next step.
+5.  **Pivot**: Read the JSON envelope from the execution result — `findings` contains structured data, `artifacts` lists saved files.
 6.  **Cleanup**: Once a target assessment or security phase is finalized, use `container stop` and `rm` to decommission the worker fleet.
 
 ## 🏗 Skill Expansion Protocol
@@ -63,8 +102,8 @@ If a task is complex and no existing skill fits:
 ## 📦 Data Management (Loot)
 - **Host Path**: `audit/loot/`
 - **Container Path**: `/loot/`
-- Any file saved to `/loot` is an "Artifact".
-- Any `.json` or `.xml` (Nmap) file is "Structured Data" and will be auto-parsed.
+- Skills automatically save artifacts to `/loot` and track them in the envelope's `artifacts` list.
+- All findings are returned as structured JSON in the envelope's `findings` field — no manual parsing needed.
 
 ## 🛡 Concurrency & Phase Rules
 - **One Target, One Task**: Do not attempt to start an execution if a target is already `RUNNING`.

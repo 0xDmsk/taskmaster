@@ -1,94 +1,98 @@
+import json
 import os
-import requests
-import re
-from urllib.parse import urljoin
+
 from skills.base import BaseSkill
 
-class WebReconSkill(BaseSkill):
-    """
-    Web Reconnaissance Skill.
-    Handles Tech Detection and Directory Fuzzing.
-    """
-    def run(self, action="all", target=None, wordlist=None, **kwargs):
-        target = target or self.target
-        if not target:
-            return {"error": "Target required (http/https url)"}
-        
-        if not target.startswith("http"):
-            target = f"http://{target}"
 
-        results = {
-            "target": target,
-            "tech": {},
-            "directories": []
-        }
+class FfufFuzz(BaseSkill):
+    """Directory fuzzing using ffuf."""
 
-        if action in ["tech", "all"]:
-            results["tech"] = self._detect_tech(target)
-        
-        if action in ["fuzz", "all"]:
-            results["directories"] = self._fuzz_dirs(target, wordlist)
+    tool = "ffuf"
+    tool_version_command = "ffuf -V 2>&1"
 
-        return results
+    def build_command(self, **kwargs) -> str:
+        url = kwargs.get("url") or self.target
+        if not url:
+            raise ValueError("url or target is required")
+        if not url.startswith("http"):
+            url = f"http://{url}"
 
-    def _detect_tech(self, url):
-        print(f"[*] Detecting tech for {url}...")
-        info = {
-            "server": "Unknown",
-            "powered_by": "Unknown",
-            "generator": "Unknown",
-            "title": "Unknown"
-        }
-        try:
-            r = requests.get(url, timeout=10, verify=False)
-            info["headers"] = dict(r.headers)
-            info["server"] = r.headers.get("Server", "Unknown")
-            info["powered_by"] = r.headers.get("X-Powered-By", "Unknown")
-            
-            # Simple body checks
-            if "<title>" in r.text:
-                m = re.search(r"<title>(.*?)</title>", r.text, re.IGNORECASE)
-                if m:
-                    info["title"] = m.group(1)
-            
-            if "content=\"WordPress" in r.text:
-                info["generator"] = "WordPress"
-            elif "Drupal" in r.text:
-                info["generator"] = "Drupal"
-            elif "Joomla" in r.text:
-                info["generator"] = "Joomla"
-                
-        except Exception as e:
-            info["error"] = str(e)
-            
-        return info
+        wordlist = kwargs.get("wordlist", "/usr/share/seclists/Discovery/Web-Content/common.txt")
+        match_codes = kwargs.get("match_codes", "200,301,302,403")
+        threads = kwargs.get("threads", 50)
 
-    def _fuzz_dirs(self, url, wordlist=None):
-        print(f"[*] Fuzzing directories for {url}...")
-        if not wordlist:
-            wordlist = "/usr/share/seclists/Discovery/Web-Content/common.txt"
-        
-        if not os.path.exists(wordlist):
-            return ["Wordlist not found"]
+        safe_name = url.replace(":", "").replace("/", "")
+        self._output_file = f"/loot/ffuf_{safe_name}.json"
 
-        output_file = f"/loot/ffuf_{url.replace(':', '').replace('/', '')}.json"
-        
-        # -mc: Match codes
-        # -recursion: Depth 1 usually
-        cmd = f"ffuf -u {url}/FUZZ -w {wordlist} -mc 200,301,302,403 -o {output_file} -of json -t 50 -s"
-        self.execute_shell(cmd)
-        
+        return (
+            f"ffuf -u {url}/FUZZ -w {wordlist} "
+            f"-mc {match_codes} -o {self._output_file} -of json -t {threads} -s"
+        )
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
+        self._artifacts.append(self._output_file)
         found = []
-        if os.path.exists(output_file):
+        if os.path.exists(self._output_file):
             try:
-                with open(output_file) as f:
+                with open(self._output_file) as f:
                     data = json.load(f)
-                    for res in data.get("results", []):
-                        found.append({
+                for res in data.get("results", []):
+                    found.append(
+                        {
                             "url": res.get("url"),
                             "status": res.get("status"),
-                            "length": res.get("length")
-                        })
-            except:
-                pass
-        return found
+                            "length": res.get("length"),
+                        }
+                    )
+            except (json.JSONDecodeError, OSError):
+                self._errors.append(f"Failed to parse {self._output_file}")
+        return {
+            "directories_found": len(found),
+            "directories": found,
+        }
+
+
+class HttpxDetect(BaseSkill):
+    """Technology detection using httpx."""
+
+    tool = "httpx"
+    tool_version_command = "httpx -version 2>&1"
+
+    def build_command(self, **kwargs) -> str:
+        url = kwargs.get("url") or self.target
+        if not url:
+            raise ValueError("url or target is required")
+        if not url.startswith("http"):
+            url = f"http://{url}"
+
+        safe_name = url.replace(":", "").replace("/", "")
+        self._output_file = f"/loot/httpx_{safe_name}.json"
+
+        return (
+            f"httpx -u {url} -title -tech-detect -status-code "
+            f"-server -follow-redirects -json -o {self._output_file}"
+        )
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
+        self._artifacts.append(self._output_file)
+        if os.path.exists(self._output_file):
+            try:
+                with open(self._output_file) as f:
+                    # httpx outputs one JSON object per line
+                    results = []
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            results.append(json.loads(line))
+                if results:
+                    entry = results[0]
+                    return {
+                        "url": entry.get("url", ""),
+                        "status_code": entry.get("status_code"),
+                        "title": entry.get("title", ""),
+                        "server": entry.get("webserver", ""),
+                        "technologies": entry.get("tech", []),
+                    }
+            except (json.JSONDecodeError, OSError):
+                self._errors.append(f"Failed to parse {self._output_file}")
+        return {}

@@ -70,23 +70,34 @@ uv run ruff check .
 New skills should be added to the `skills/` directory. Follow the template in `skills/TEMPLATE.md`:
 
 1. Inherit from `BaseSkill`
-2. Implement the `run()` method
-3. Return structured data (dict with `status` and `data` keys)
-4. Save artifacts to `/loot` when appropriate
-5. Document parameters in docstrings
+2. Set `tool` and `tool_version_command` class attributes
+3. Implement `build_command(**kwargs) -> str` — construct the CLI command
+4. Implement `parse_output(stdout, stderr, exit_code) -> dict` — parse raw output into structured findings
+5. One tool per skill class — do not combine multiple tools in a single skill
+6. Use `self.save_artifact()` / `self.save_json()` for loot (automatically tracked)
 
 Example:
 ```python
 from skills.base import BaseSkill
 
-class MySkill(BaseSkill):
-    """Description of what this skill does."""
+class MyToolScan(BaseSkill):
+    """Wraps mytool for scanning."""
 
-    def run(self, **kwargs):
-        target = kwargs.get("target")
-        # ... implementation
-        return {"status": "success", "data": result}
+    tool = "mytool"
+    tool_version_command = "mytool --version"
+
+    def build_command(self, **kwargs) -> str:
+        host = kwargs.get("host") or self.target
+        if not host:
+            raise ValueError("host or target is required")
+        return f"mytool scan {host} -o /loot/mytool_output.json"
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
+        # Parse and return structured findings
+        return {"scanned": True, "results": [...]}
 ```
+
+The concrete `run()` method in `BaseSkill` handles execution, timing, version detection, and assembles the JSON envelope automatically.
 
 ### Adding Tools
 

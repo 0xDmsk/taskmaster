@@ -9,7 +9,7 @@ This version is integrated with **Taskmaster**, allowing it to act as an automat
 ## 🏗️ New Features
 
 *   **Taskmaster Integration**: Ships with `kali-operator`, a Python-based agent that connects to the Taskmaster MCP server to claim and execute tasks.
-*   **Smart Execution**: Supports both standard shell commands and **Coderunner-style Python execution** for complex analysis.
+*   **Two-Pathway Execution**: Supports **skill-based execution** (one-tool-per-class with JSON envelope output) and **Python sandbox** for custom analysis. Raw shell execution has been removed.
 *   **Modern Tooling**: Includes `uv`, `pipx`, `proxychains4`, and the full `impacket` script suite.
 
 ## 🧰 What’s Included

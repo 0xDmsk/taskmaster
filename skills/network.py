@@ -1,49 +1,89 @@
-import subprocess
-import json
-import os
+import xml.etree.ElementTree as ET
+
 from skills.base import BaseSkill
 
-class NetworkScanner(BaseSkill):
-    """
-    Intelligent Network Scanner Skill.
-    Handles ping sweeps and service discovery.
-    """
-    def run(self, action="ping_sweep", target=None):
-        target = target or self.target
-        if not target:
-            return {"error": "No target specified"}
 
-        if action == "ping_sweep":
-            return self._ping_sweep(target)
-        elif action == "service_scan":
-            return self._service_scan(target)
-        else:
-            return {"error": f"Unknown action: {action}"}
+class FpingSweep(BaseSkill):
+    """Ping sweep using fping to discover alive hosts on a network."""
 
-    def _ping_sweep(self, network):
-        # fping is fast for sweeps
-        cmd = f"fping -g {network} -a 2>/dev/null"
-        try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            hosts = result.stdout.splitlines()
-            self.save_artifact(f"alive_hosts_{network.replace('/', '_')}.txt", result.stdout)
-            return {"alive_count": len(hosts), "hosts": hosts}
-        except Exception as e:
-            return {"error": str(e)}
+    tool = "fping"
+    tool_version_command = "fping --version 2>&1"
 
-    def _service_scan(self, host):
-        # Wrapper for common nmap service scan
-        loot_file = f"nmap_{host.replace('.', '_')}.json"
-        # We use the existing operator's ability to parse XML if we save it as XML
-        # But for the 'Skill', we can also just return the results directly
-        cmd = f"nmap -sV -T4 {host} -oX /loot/tmp_scan.xml"
-        subprocess.run(cmd, shell=True, capture_output=True)
-        
-        # We can leverage the operator's parser or implement one here.
-        # For now, let's just indicate success and the artifact location.
+    def build_command(self, **kwargs) -> str:
+        network = kwargs.get("network") or self.target
+        if not network:
+            raise ValueError("network or target is required")
+        return f"fping -g {network} -a 2>/dev/null"
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
+        hosts = [h.strip() for h in stdout.splitlines() if h.strip()]
+        filename = f"alive_hosts_{self.target.replace('/', '_').replace('.', '_')}.txt"
+        self.save_artifact(filename, stdout)
         return {
-            "status": "completed",
-            "host": host,
-            "artifact": f"/loot/tmp_scan.xml",
-            "note": "Operator will auto-parse the XML if returned"
+            "alive_count": len(hosts),
+            "hosts": hosts,
         }
+
+
+class NmapScan(BaseSkill):
+    """Service/version scan using nmap (TCP connect)."""
+
+    tool = "nmap"
+    tool_version_command = "nmap --version"
+
+    def build_command(self, **kwargs) -> str:
+        host = kwargs.get("host") or self.target
+        if not host:
+            raise ValueError("host or target is required")
+        ports = kwargs.get("ports", "")
+        flags = kwargs.get("flags", "-sT -sV -T4")
+        safe_host = host.replace("/", "_").replace(".", "_")
+        self._xml_output = f"/loot/nmap_{safe_host}.xml"
+        cmd = f"nmap {flags} {host} -oX {self._xml_output}"
+        if ports:
+            cmd += f" -p {ports}"
+        return cmd
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
+        self._artifacts.append(self._xml_output)
+        try:
+            return {"hosts": self._parse_nmap_xml(self._xml_output)}
+        except Exception as e:
+            self._errors.append(f"XML parse failed: {e}")
+            return {"raw_stdout": stdout}
+
+    @staticmethod
+    def _parse_nmap_xml(xml_path: str) -> list[dict]:
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+
+        hosts = []
+        for host in root.findall("host"):
+            addr_elem = host.find("address")
+            ip = addr_elem.get("addr") if addr_elem is not None else ""
+
+            status_elem = host.find("status")
+            status = status_elem.get("state") if status_elem is not None else "unknown"
+            if status != "up":
+                continue
+
+            ports = []
+            ports_elem = host.find("ports")
+            if ports_elem is not None:
+                for port in ports_elem.findall("port"):
+                    p = {
+                        "id": int(port.get("portid")),
+                        "protocol": port.get("protocol"),
+                        "state": port.find("state").get("state"),
+                        "service": "unknown",
+                    }
+                    service = port.find("service")
+                    if service is not None:
+                        p["service"] = service.get("name", "unknown")
+                        p["version"] = service.get("version", "")
+                        p["product"] = service.get("product", "")
+                    ports.append(p)
+
+            hosts.append({"ip": ip, "ports": ports})
+
+        return hosts

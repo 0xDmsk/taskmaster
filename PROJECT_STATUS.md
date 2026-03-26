@@ -2,8 +2,8 @@
 
 Complete overview of what has been implemented and what remains to be done.
 
-**Last Updated**: 2026-03-03
-**Current Version**: 0.2.0
+**Last Updated**: 2026-03-26
+**Current Version**: 0.3.0
 
 ## ✅ Completed Features
 
@@ -18,7 +18,7 @@ Complete overview of what has been implemented and what remains to be done.
 
 ### Container Infrastructure
 - [x] Kali Linux ARM64 container (Dockerfile)
-- [x] Agent operator script (`kali_operator.py`) with autonomous polling
+- [x] Agent operator script (`kali_operator.py`) with two-pathway execution (skill + python sandbox)
 - [x] Oh-my-zsh shell configuration
 - [x] Pentest tools (nmap, ffuf, gobuster, sqlmap)
 - [x] Cloud tools (aws-cli, gcloud, kubectl, helm)
@@ -40,18 +40,24 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] `recover_execution` - Recover stuck executions
 
 ### Skills Library
-- [x] Base skill framework (`skills/base.py`)
-- [x] Subdomain enumeration skill
-- [x] Cloud audit skill (AWS/GCP)
-- [x] Web reconnaissance skill
-- [x] Subdomain takeover detection
-- [x] Network scanning skill
+- [x] Structured `BaseSkill` framework with `build_command()` + `parse_output()` + JSON envelope
+- [x] One-tool-per-skill architecture (replaces multi-action classes)
+- [x] `network.FpingSweep` (fping) — host discovery
+- [x] `network.NmapScan` (nmap) — service/version scanning with XML parsing
+- [x] `web.FfufFuzz` (ffuf) — directory fuzzing
+- [x] `web.HttpxDetect` (httpx) — technology detection
+- [x] `subdomain.GobusterDns` (gobuster) — active DNS brute-force
+- [x] `subdomain.SubfinderEnum` (subfinder) — passive enumeration
+- [x] `takeover.NucleiTakeover` (nuclei) — subdomain takeover detection
+- [x] `cloud.AwsCliAudit` (aws) — AWS security audit
+- [x] `cloud.GcloudAudit` (gcloud) — GCP security audit
 
 ### Documentation
 - [x] README.md with architecture and `make` commands
-- [x] GEMINI.md operational guide with `wait_for_completion` workflow
-- [x] QUICKSTART.md with v0.2.0 onboarding
+- [x] GEMINI.md operational guide with skill table, JSON envelope docs, and `wait_for_completion` workflow
+- [x] QUICKSTART.md with v0.3.0 onboarding
 - [x] Detailed setup and contributing guides
+- [x] CHANGELOG.md with v0.3.0 entries
 
 ### Project Configuration
 - [x] `Makefile` for streamlined dev/build/start/test workflows
@@ -93,11 +99,11 @@ Complete overview of what has been implemented and what remains to be done.
 ## 📊 Metrics
 
 ### Code Coverage
-- **Current**: ~10%
+- **Current**: ~75% (66 tests — unit + integration)
 - **Target**: >80% for critical paths
 
 ### Documentation
-- **Current**: v0.2.0 complete
+- **Current**: v0.3.0 complete
 - **Target**: Comprehensive examples and video tutorials
 
 ## 🎯 Next Milestones

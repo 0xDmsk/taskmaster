@@ -3,8 +3,6 @@ from jsonschema import validate, ValidationError
 
 from state.state import get_target_state, create_execution
 from policies.state_policy import is_security_phase_allowed
-from policies.command_validator import validate_command
-
 
 REQUEST_SECURITY_ACTION_SCHEMA = {
     "type": "object",
@@ -13,10 +11,8 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         "phase",
         "target",
         "action_type",
-        "tool",
-        "command",
         "justification",
-        "expected_output"
+        "expected_output",
     ],
     "properties": {
         "agent_role": {
@@ -26,32 +22,18 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
                 "enumeration",
                 "exploitation",
                 "post_exploitation",
-                "reporting"
-            ]
+                "reporting",
+            ],
         },
-        "phase": {
-            "type": "string"
-        },
-        "target": {
-            "type": "string"
-        },
-        "action_type": {
-            "type": "string"
-        },
-        "tool": {
-            "type": "string"
-        },
-        "command": {
-            "type": "string"
-        },
-        "justification": {
-            "type": "string",
-            "minLength": 50
-        },
-        "expected_output": {
-            "type": "string"
-        }
-    }
+        "phase": {"type": "string"},
+        "target": {"type": "string"},
+        "action_type": {"type": "string", "enum": ["skill", "python"]},
+        "skill": {"type": "string"},
+        "arguments": {"type": "object"},
+        "command": {"type": "string"},
+        "justification": {"type": "string", "minLength": 50},
+        "expected_output": {"type": "string"},
+    },
 }
 
 
@@ -62,31 +44,51 @@ def handle_request(payload):
     except ValidationError as e:
         return {
             "error": "Schema validation failed",
-            "details": e.message
+            "details": e.message,
         }
+
+    # 2. Conditional validation based on action_type
+    action_type = payload.get("action_type")
+
+    if action_type == "skill":
+        if not payload.get("skill"):
+            return {
+                "error": "Validation failed",
+                "details": "'skill' field is required when action_type is 'skill'",
+            }
+    elif action_type == "python":
+        if not payload.get("command"):
+            return {
+                "error": "Validation failed",
+                "details": "'command' field is required when action_type is 'python'",
+            }
 
     target = payload["target"]
     requested_phase = payload["phase"]
 
-    # 2. Platform constraint validation
+    # 3. Platform constraint validation (only for python with shell commands)
     command = payload.get("command", "")
-    constraint_result = validate_command(command)
+    if action_type == "python" and command:
+        from policies.command_validator import validate_command
 
-    if not constraint_result["allowed"]:
-        blocks = [v for v in constraint_result["violations"] if v["severity"] == "block"]
-        return {
-            "error": "Platform constraint violation",
-            "details": (
-                "This command will fail or produce unreliable results in the macOS container VM. "
-                "See policies/platform_constraints.md for full details."
-            ),
-            "violations": blocks,
-        }
+        constraint_result = validate_command(command)
 
-    # Attach warnings to the response later if there are non-blocking violations
-    warnings = [v for v in constraint_result["violations"] if v["severity"] == "warn"]
+        if not constraint_result["allowed"]:
+            blocks = [v for v in constraint_result["violations"] if v["severity"] == "block"]
+            return {
+                "error": "Platform constraint violation",
+                "details": (
+                    "This command will fail or produce unreliable results in the macOS "
+                    "container VM. See policies/platform_constraints.md for full details."
+                ),
+                "violations": blocks,
+            }
 
-    # 3. Target phase policy enforcement
+        warnings = [v for v in constraint_result["violations"] if v["severity"] == "warn"]
+    else:
+        warnings = []
+
+    # 4. Target phase policy enforcement
     state = get_target_state(target)
 
     if not is_security_phase_allowed(state["last_phase"], requested_phase):
@@ -96,10 +98,10 @@ def handle_request(payload):
                 f"Cannot transition from "
                 f"{state['last_phase']} to {requested_phase} "
                 f"for target {target}"
-            )
+            ),
         }
 
-    # 4. Create execution
+    # 5. Create execution
     execution_id = str(uuid.uuid4())
 
     record = create_execution(
@@ -107,11 +109,12 @@ def handle_request(payload):
         target=target,
         security_phase=requested_phase,
         request_payload=payload,
-        created_by=payload.get("agent_role", "unknown")
+        created_by=payload.get("agent_role", "unknown"),
     )
 
-    # 5. Audit Logging
+    # 6. Audit Logging
     from audit.audit_manager import log_event, update_report
+
     log_event("request_created", record)
     update_report(record)
 
@@ -123,8 +126,7 @@ def handle_request(payload):
 
     if warnings:
         result["platform_warnings"] = [
-            {"message": w["message"], "suggestion": w["suggestion"]}
-            for w in warnings
+            {"message": w["message"], "suggestion": w["suggestion"]} for w in warnings
         ]
 
     return result

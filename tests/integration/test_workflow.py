@@ -1,6 +1,7 @@
 """
 Integration tests for complete workflows
 """
+
 import os
 import sys
 
@@ -34,11 +35,11 @@ class TestFullLifecycle:
             "agent_role": "recon",
             "phase": "reconnaissance",
             "target": "10.0.0.1",
-            "action_type": "network_scan",
-            "tool": "nmap",
-            "command": "nmap -sV 10.0.0.1",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {"flags": "-sT -sV"},
             "justification": "Initial reconnaissance to identify open ports and services on target system",
-            "expected_output": "XML scan results",
+            "expected_output": "JSON envelope with scan results",
         }
         result = handle_request(payload)
         execution_id = result["execution_id"]
@@ -76,9 +77,9 @@ class TestFullLifecycle:
             "agent_role": "recon",
             "phase": "reconnaissance",
             "target": "10.0.0.2",
-            "action_type": "network_scan",
-            "tool": "nmap",
-            "command": "nmap -sV 10.0.0.2",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {},
             "justification": "Test failed execution path for unreachable target system",
             "expected_output": "Error or timeout",
         }
@@ -86,12 +87,8 @@ class TestFullLifecycle:
         execution_id = result["execution_id"]
 
         # Claim and start
-        handle_claim_execution(
-            {"execution_id": execution_id, "executor_id": "test-agent-2"}
-        )
-        handle_start_execution(
-            {"execution_id": execution_id, "executor_id": "test-agent-2"}
-        )
+        handle_claim_execution({"execution_id": execution_id, "executor_id": "test-agent-2"})
+        handle_start_execution({"execution_id": execution_id, "executor_id": "test-agent-2"})
 
         # Fail execution
         fail_result = handle_fail_execution(
@@ -114,9 +111,9 @@ class TestTargetConcurrency:
             "agent_role": "recon",
             "phase": "reconnaissance",
             "target": "10.0.0.1",
-            "action_type": "network_scan",
-            "tool": "nmap",
-            "command": "nmap -sV 10.0.0.1",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {},
             "justification": "First execution to test concurrent target locking mechanism",
             "expected_output": "Scan results",
         }
@@ -133,9 +130,7 @@ class TestTargetConcurrency:
         handle_claim_execution({"execution_id": exec_id_2, "executor_id": "agent-2"})
 
         # start_execution catches ValueError internally and returns an error dict
-        start_result = handle_start_execution(
-            {"execution_id": exec_id_2, "executor_id": "agent-2"}
-        )
+        start_result = handle_start_execution({"execution_id": exec_id_2, "executor_id": "agent-2"})
         assert "error" in start_result
         assert "busy" in start_result["error"].lower()
 
@@ -149,9 +144,9 @@ class TestExecutorOwnership:
             "agent_role": "recon",
             "phase": "reconnaissance",
             "target": "10.0.0.3",
-            "action_type": "network_scan",
-            "tool": "nmap",
-            "command": "nmap -sV 10.0.0.3",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {},
             "justification": "Test executor ownership enforcement across different agents",
             "expected_output": "Scan results",
         }
@@ -159,12 +154,8 @@ class TestExecutorOwnership:
         execution_id = result["execution_id"]
 
         # agent-1 claims and starts
-        handle_claim_execution(
-            {"execution_id": execution_id, "executor_id": "agent-1"}
-        )
-        handle_start_execution(
-            {"execution_id": execution_id, "executor_id": "agent-1"}
-        )
+        handle_claim_execution({"execution_id": execution_id, "executor_id": "agent-1"})
+        handle_start_execution({"execution_id": execution_id, "executor_id": "agent-1"})
 
         # agent-2 tries to complete — should get an error
         complete_result = handle_complete_execution(
@@ -187,9 +178,9 @@ class TestRecovery:
             "agent_role": "recon",
             "phase": "reconnaissance",
             "target": "10.0.0.4",
-            "action_type": "network_scan",
-            "tool": "nmap",
-            "command": "nmap -sV 10.0.0.4",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {},
             "justification": "Test recovery of stuck running execution after agent crash",
             "expected_output": "Scan results",
         }
@@ -197,12 +188,8 @@ class TestRecovery:
         execution_id = result["execution_id"]
 
         # Move to RUNNING
-        handle_claim_execution(
-            {"execution_id": execution_id, "executor_id": "agent-1"}
-        )
-        handle_start_execution(
-            {"execution_id": execution_id, "executor_id": "agent-1"}
-        )
+        handle_claim_execution({"execution_id": execution_id, "executor_id": "agent-1"})
+        handle_start_execution({"execution_id": execution_id, "executor_id": "agent-1"})
 
         # Recover it
         recover_result = handle_recover_execution({"execution_id": execution_id})
@@ -221,9 +208,9 @@ class TestRecovery:
             "agent_role": "recon",
             "phase": "reconnaissance",
             "target": "10.0.0.5",
-            "action_type": "network_scan",
-            "tool": "nmap",
-            "command": "nmap -sV 10.0.0.5",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {},
             "justification": "Test that recovery rejects non-stuck queued execution state",
             "expected_output": "Scan results",
         }
