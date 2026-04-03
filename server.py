@@ -1,9 +1,11 @@
 import argparse
 import json
 import logging
+import mimetypes
 import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 import config
 from tools.request_security_action import handle_request
@@ -404,7 +406,232 @@ def dispatch(message):
 
 
 class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
-    """Handle POST /mcp requests by dispatching JSON body through dispatch()."""
+    """Handle POST /mcp and GET /dashboard requests."""
+
+    # Lazy imports to avoid circular deps and startup cost when dashboard isn't used
+    _dashboard_imported = False
+
+    @classmethod
+    def _ensure_dashboard(cls):
+        if not cls._dashboard_imported:
+            import dashboard
+            import dashboard.api as dash_api
+            import dashboard.agents as dash_agents
+
+            cls._dashboard = dashboard
+            cls._dash_api = dash_api
+            cls._dash_agents = dash_agents
+            cls._dashboard_imported = True
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/executions"
+        qs = parse_qs(parsed.query)
+        # Flatten query params (take first value)
+        params = {k: v[0] for k, v in qs.items()}
+
+        self._ensure_dashboard()
+        api = self._dash_api
+        agents_mod = self._dash_agents
+        render = self._dashboard.render
+
+        is_htmx = self.headers.get("HX-Request") == "true"
+
+        # --- Static files ---
+        if path.startswith("/static/"):
+            self._serve_static(path)
+            return
+
+        # --- API endpoints ---
+        if path == "/api/stats":
+            data = api.get_stats()
+            if is_htmx:
+                html = render("partials/stats_bar.html", stats=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path == "/api/executions":
+            data = api.get_executions(
+                status=params.get("status"),
+                target=params.get("target"),
+                phase=params.get("phase"),
+            )
+            if is_htmx:
+                html = render("partials/execution_table.html", executions=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        # Detail endpoint must come before the generic /api/executions/<id>
+        if path.endswith("/detail") and path.startswith("/api/executions/"):
+            eid = path.split("/api/executions/", 1)[1].replace("/detail", "")
+            data = api.get_execution_detail(eid)
+            if data is None:
+                self._send_json(404, {"error": "Not found"})
+            elif is_htmx:
+                html = render("partials/execution_detail.html", e=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path.startswith("/api/executions/"):
+            eid = path.split("/api/executions/", 1)[1]
+            data = api.get_execution(eid)
+            if data is None:
+                self._send_json(404, {"error": "Not found"})
+            else:
+                self._send_json(200, data)
+            return
+
+        if path.endswith("/detail") and path.startswith("/api/targets/"):
+            target = path.split("/api/targets/", 1)[1].replace("/detail", "")
+            data = api.get_target_detail(target)
+            if data is None:
+                self._send_json(404, {"error": "Not found"})
+            elif is_htmx:
+                html = render("partials/target_detail.html", detail=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path == "/api/targets":
+            data = api.get_targets()
+            if is_htmx:
+                phases = api.PHASES
+                html = render("partials/target_cards.html", targets=data, phases=phases)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path.endswith("/detail") and path.startswith("/api/agents/"):
+            executor_id = path.split("/api/agents/", 1)[1].replace("/detail", "")
+            history = agents_mod.get_agent_history()
+            agent = next((a for a in history if a["executor_id"] == executor_id), None)
+            if agent is None:
+                self._send_json(404, {"error": "Not found"})
+            elif is_htmx:
+                html = render("partials/agent_detail.html", agent=agent)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, agent)
+            return
+
+        if path == "/api/agents/history":
+            data = agents_mod.get_agent_history()
+            if is_htmx:
+                html = render("partials/agent_list.html", agents=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path == "/api/agents":
+            data = agents_mod.get_agents()
+            if is_htmx:
+                html = render("partials/agent_list.html", agents=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path == "/api/findings":
+            data = api.get_findings()
+            if is_htmx:
+                html = render("partials/findings_detail.html", findings=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        # --- Dashboard pages ---
+        stats = api.get_stats()
+
+        if path in ("/", "/executions"):
+            execs = api.get_executions(
+                status=params.get("status"),
+                target=params.get("target"),
+                phase=params.get("phase"),
+            )
+            html = render(
+                "executions.html",
+                page="executions",
+                stats=stats,
+                executions=execs,
+                filters=params,
+            )
+            self._send_html(200, html)
+            return
+
+        if path == "/targets":
+            targets = api.get_targets()
+            html = render(
+                "targets.html",
+                page="targets",
+                stats=stats,
+                targets=targets,
+                phases=api.PHASES,
+            )
+            self._send_html(200, html)
+            return
+
+        if path == "/findings":
+            findings = api.get_findings()
+            html = render(
+                "findings.html",
+                page="findings",
+                stats=stats,
+                findings=findings,
+            )
+            self._send_html(200, html)
+            return
+
+        if path == "/agents":
+            agent_list = agents_mod.get_agent_history()
+            html = render(
+                "agents.html",
+                page="agents",
+                stats=stats,
+                agents=agent_list,
+            )
+            self._send_html(200, html)
+            return
+
+        self._send_html(404, "<h1>404 Not Found</h1>")
+
+    def _serve_static(self, path):
+        """Serve files from dashboard/static/."""
+        static_dir = os.path.join(config.PROJECT_DIR, "dashboard", "static")
+        filename = path.replace("/static/", "", 1)
+        filepath = os.path.normpath(os.path.join(static_dir, filename))
+        # Prevent path traversal
+        if not filepath.startswith(static_dir):
+            self._send_html(403, "Forbidden")
+            return
+        if not os.path.isfile(filepath):
+            self._send_html(404, "Not found")
+            return
+        content_type = mimetypes.guess_type(filepath)[0] or "application/octet-stream"
+        with open(filepath, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_html(self, status, html):
+        payload = html.encode() if isinstance(html, str) else html
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))

@@ -1,0 +1,37 @@
+{% if targets %}
+<div class="target-grid">
+{% for t in targets %}
+<div class="target-card" data-target-id="{{ t.target }}">
+    <h3>{{ t.target }}</h3>
+    <div class="target-stats">
+        <span>Total: <strong>{{ t.total }}</strong></span>
+        <span style="color:var(--status-completed)">Done: <strong>{{ t.completed }}</strong></span>
+        <span style="color:var(--status-running)">Running: <strong>{{ t.running }}</strong></span>
+        <span style="color:var(--status-failed)">Failed: <strong>{{ t.failed }}</strong></span>
+    </div>
+    <div class="phase-list">
+        {% for phase_name in phases %}
+        {% set p = t.phases[phase_name] %}
+        <div class="phase-row">
+            <span class="name">{{ phase_name | replace('_', ' ') | title }}</span>
+            <div class="phase-bar">
+                <div class="phase-bar-fill" style="width: {{ (p.completed / p.total * 100) if p.total > 0 else 0 }}%"></div>
+            </div>
+            <span class="count">{{ p.completed }}/{{ p.total }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    <div style="margin-top:0.75rem">
+        <button class="expand-btn"
+                hx-get="/api/targets/{{ t.target }}/detail"
+                hx-target="#target-detail-{{ loop.index }}"
+                hx-swap="innerHTML"
+                onclick="this.style.display='none'">Show Details</button>
+    </div>
+    <div id="target-detail-{{ loop.index }}"></div>
+</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No targets found</div>
+{% endif %}

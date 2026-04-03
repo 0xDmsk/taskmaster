@@ -98,9 +98,26 @@ Each skill wraps exactly one CLI tool and produces a standardized JSON envelope 
 
 See `skills/TEMPLATE.md` for creating new skills.
 
+## 📊 Dashboard
+
+Taskmaster ships with a built-in web dashboard for real-time monitoring. Start the HTTP server and open `http://localhost:5000` in your browser.
+
+```bash
+uv run python server.py --http
+```
+
+**Tabs:**
+- **Executions** — live table with status badges. Click any row to expand full request/result detail (justification, tool, command, findings, artifacts, errors).
+- **Targets** — per-target cards with phase progress bars. Expand to see executions grouped by security phase.
+- **Agents** — agent history with container info and task stats. Expand for full task history table.
+- **Findings** — severity badges, CVSS scores, risk descriptions, remediation guidance, and references when available.
+
+**Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), dark theme.
+
 ## 🔑 Directory Structure
 
 *   `audit/`: Contains the `session_report.md` and persistent `loot/`.
+*   `dashboard/`: Web UI — API handlers, Jinja2 templates, static assets.
 *   `skills/`: Reusable Python modules for specialized tasks.
 *   `executors/`: Dockerfile and operator logic for Kali Linux.
 *   `tools/`: 13 MCP tool handlers for orchestration (spawning, tracking, waiting, cleanup).

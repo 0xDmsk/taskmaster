@@ -1,0 +1,32 @@
+<div class="target-detail-container">
+{% for phase_name in detail.phases %}
+{% set execs = detail.by_phase[phase_name] %}
+{% if execs %}
+<details class="phase-detail">
+    <summary>{{ phase_name | replace('_', ' ') | title }} ({{ execs | length }})</summary>
+    <table class="mini-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Skill</th>
+                <th>Status</th>
+                <th>Executor</th>
+                <th>Updated</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for e in execs %}
+            <tr>
+                <td class="mono"><a href="/executions#exec:{{ e.execution_id }}" title="{{ e.execution_id }}">{{ e.execution_id[:12] }}</a></td>
+                <td class="mono">{{ e.request.skill if e.request is mapping and e.request.skill is defined else '—' }}</td>
+                <td><span class="badge badge-{{ e.status|lower }}">{{ e.status }}</span></td>
+                <td class="mono">{{ e.executor_id or '—' }}</td>
+                <td class="mono">{{ e.updated_at[:19] if e.updated_at else '—' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</details>
+{% endif %}
+{% endfor %}
+</div>

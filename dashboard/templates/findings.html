@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Findings{% endblock %}
+{% block content %}
+<h2 class="page-title">Findings &amp; Results</h2>
+<div id="findings-list"
+     data-poll-trigger="findings-list"
+     hx-get="/api/findings" hx-trigger="every 10s" hx-swap="innerHTML">
+    {% include "partials/findings_detail.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% if findings %}
+{% set ns = namespace(current_target='') %}
+{% for f in findings %}
+{% if f.target != ns.current_target %}
+    {% set ns.current_target = f.target %}
+    <div class="finding-group">
+        <h3>{{ f.target }}</h3>
+    </div>
+{% endif %}
+<details class="finding-card">
+    <summary>
+        {% if f.severity %}
+        <span class="badge badge-severity-{{ f.severity|lower }}">{{ f.severity }}</span>
+        {% endif %}
+        <span class="badge badge-completed">{{ f.phase }}</span>
+        {{ f.skill }}
+        {% if f.tool %}<span style="color:var(--text-muted);font-size:0.75rem">({{ f.tool }})</span>{% endif %}
+        — {{ f.findings | length if f.findings is mapping == false else 1 }} finding{{ 's' if (f.findings | length if f.findings is mapping == false else 1) != 1 else '' }}
+        {% if f.artifacts %}, {{ f.artifacts | length }} artifact{{ 's' if f.artifacts | length != 1 else '' }}{% endif %}
+        {% if f.cvss %}<span style="margin-left:0.5rem;font-size:0.7rem;color:var(--text-muted)">CVSS {{ f.cvss }}</span>{% endif %}
+    </summary>
+    <div class="finding-detail">
+        <div class="finding-meta">
+            <span>Execution: <span class="mono">{{ f.execution_id[:12] }}</span></span>
+            {% if f.executor_id %}<span>Executor: <span class="mono">{{ f.executor_id }}</span></span>{% endif %}
+        </div>
+        {% if f.justification %}
+        <div style="margin-top:0.4rem;font-size:0.8rem;color:var(--text-secondary);font-style:italic">
+            {{ f.justification }}
+        </div>
+        {% endif %}
+        {% if f.description %}
+        <div style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-primary)">
+            {{ f.description }}
+        </div>
+        {% endif %}
+        {% if f.risk %}
+        <div style="margin-top:0.4rem;font-size:0.8rem">
+            <strong style="color:var(--text-secondary)">Risk:</strong> {{ f.risk }}
+        </div>
+        {% endif %}
+        {% if f.remediation %}
+        <div class="finding-remediation">
+            <strong>Remediation:</strong> {{ f.remediation }}
+        </div>
+        {% endif %}
+        {% if f.references %}
+        <div class="finding-references">
+            <strong style="color:var(--text-secondary)">References:</strong>
+            {% if f.references is iterable and f.references is not string %}
+            {% for ref in f.references %}
+                <a href="{{ ref }}" target="_blank" rel="noopener">{{ ref }}</a>
+            {% endfor %}
+            {% else %}
+                <a href="{{ f.references }}" target="_blank" rel="noopener">{{ f.references }}</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if f.findings %}
+        <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Findings</h4>
+        <pre>{{ f.findings | tojson(indent=2) }}</pre>
+        {% endif %}
+        {% if f.artifacts %}
+        <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Artifacts</h4>
+        <pre>{{ f.artifacts | tojson(indent=2) }}</pre>
+        {% endif %}
+        {% if f.errors %}
+        <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--status-failed)">Errors</h4>
+        <pre>{{ f.errors | tojson(indent=2) }}</pre>
+        {% endif %}
+    </div>
+</details>
+{% endfor %}
+{% else %}
+<div class="empty-state">No findings yet — completed executions with results will appear here</div>
+{% endif %}

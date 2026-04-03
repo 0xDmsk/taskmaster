@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Executions{% endblock %}
+{% block content %}
+<h2 class="page-title">Executions</h2>
+
+<div class="filters">
+    <select name="status" hx-get="/api/executions" hx-target="#exec-table" hx-swap="innerHTML"
+            hx-include="[name='target'],[name='phase']">
+        <option value="">All statuses</option>
+        <option value="QUEUED" {% if filters.status == 'QUEUED' %}selected{% endif %}>Queued</option>
+        <option value="CLAIMED" {% if filters.status == 'CLAIMED' %}selected{% endif %}>Claimed</option>
+        <option value="RUNNING" {% if filters.status == 'RUNNING' %}selected{% endif %}>Running</option>
+        <option value="COMPLETED" {% if filters.status == 'COMPLETED' %}selected{% endif %}>Completed</option>
+        <option value="FAILED" {% if filters.status == 'FAILED' %}selected{% endif %}>Failed</option>
+    </select>
+    <input type="text" name="target" placeholder="Filter by target..."
+           hx-get="/api/executions" hx-target="#exec-table" hx-swap="innerHTML"
+           hx-trigger="keyup changed delay:300ms" hx-include="[name='status'],[name='phase']"
+           value="{{ filters.target or '' }}">
+    <select name="phase" hx-get="/api/executions" hx-target="#exec-table" hx-swap="innerHTML"
+            hx-include="[name='status'],[name='target']">
+        <option value="">All phases</option>
+        <option value="reconnaissance" {% if filters.phase == 'reconnaissance' %}selected{% endif %}>Reconnaissance</option>
+        <option value="enumeration" {% if filters.phase == 'enumeration' %}selected{% endif %}>Enumeration</option>
+        <option value="exploitation" {% if filters.phase == 'exploitation' %}selected{% endif %}>Exploitation</option>
+        <option value="post_exploitation" {% if filters.phase == 'post_exploitation' %}selected{% endif %}>Post-Exploitation</option>
+        <option value="reporting" {% if filters.phase == 'reporting' %}selected{% endif %}>Reporting</option>
+    </select>
+    <span class="htmx-indicator"><span class="loading-dot"></span></span>
+</div>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Target</th>
+                <th>Phase</th>
+                <th>Status</th>
+                <th>Executor</th>
+                <th>Created</th>
+                <th>Updated</th>
+            </tr>
+        </thead>
+        <tbody id="exec-table"
+               data-poll-trigger="exec-table"
+               hx-get="/api/executions" hx-trigger="every 5s"
+               hx-swap="innerHTML"
+               hx-include="[name='status'],[name='target'],[name='phase']">
+            {% include "partials/execution_table.html" %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

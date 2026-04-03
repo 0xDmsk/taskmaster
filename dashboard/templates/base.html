@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} — Taskmaster</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <h1>Taskmaster</h1>
+                <span>Security Dashboard</span>
+            </div>
+            <nav>
+                <a href="/executions" class="{% if page == 'executions' %}active{% endif %}">
+                    <span class="icon">&#9654;</span> Executions
+                </a>
+                <a href="/targets" class="{% if page == 'targets' %}active{% endif %}">
+                    <span class="icon">&#9678;</span> Targets
+                </a>
+                <a href="/agents" class="{% if page == 'agents' %}active{% endif %}">
+                    <span class="icon">&#9881;</span> Agents
+                </a>
+                <a href="/findings" class="{% if page == 'findings' %}active{% endif %}">
+                    <span class="icon">&#9733;</span> Findings
+                </a>
+            </nav>
+        </aside>
+        <main class="main">
+            <div hx-get="/api/stats" hx-trigger="load, every 5s" hx-swap="innerHTML">
+                {% include "partials/stats_bar.html" %}
+            </div>
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <script>
+    (function() {
+        /* --- Pause polling when any detail is expanded --- */
+        function hasOpenDetail() {
+            return document.querySelector('.detail-row.expanded') ||
+                   document.querySelector('.finding-card[open]') ||
+                   document.querySelector('.target-detail-container') ||
+                   document.querySelector('.agent-card .detail-panel');
+        }
+
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            var el = evt.detail.elt;
+            if (el.hasAttribute('data-poll-trigger') && hasOpenDetail()) {
+                evt.preventDefault();
+            }
+        });
+
+        /* --- Deep-link: auto-expand item from URL hash --- */
+        /* Hash formats:  #exec:<uuid>  #target:<ip>  #agent:<name> */
+        function handleDeepLink() {
+            var hash = location.hash.substring(1);
+            if (!hash || hash.indexOf(':') === -1) return;
+            var parts = hash.split(':');
+            var kind = parts[0];
+            var id = parts.slice(1).join(':');  /* rejoin in case value has colons */
+
+            if (kind === 'exec') {
+                var row = document.querySelector('tr.exec-row[data-exec-id="' + id + '"]');
+                if (row) {
+                    row.scrollIntoView({block: 'center'});
+                    row.click();
+                }
+            } else if (kind === 'target') {
+                var card = document.querySelector('.target-card[data-target-id="' + id + '"]');
+                if (card) {
+                    card.scrollIntoView({block: 'center'});
+                    var btn = card.querySelector('.expand-btn');
+                    if (btn) btn.click();
+                }
+            } else if (kind === 'agent') {
+                var card = document.querySelector('.agent-card[data-agent-id="' + id + '"]');
+                if (card) {
+                    card.scrollIntoView({block: 'center'});
+                    var btn = card.querySelector('.expand-btn');
+                    if (btn) btn.click();
+                }
+            }
+        }
+
+        /* Run after initial HTMX content settles */
+        if (document.readyState === 'complete') {
+            setTimeout(handleDeepLink, 300);
+        } else {
+            window.addEventListener('load', function() { setTimeout(handleDeepLink, 300); });
+        }
+        window.addEventListener('hashchange', handleDeepLink);
+    })();
+    </script>
+</body>
+</html>

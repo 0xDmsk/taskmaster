@@ -2,8 +2,8 @@
 
 Complete overview of what has been implemented and what remains to be done.
 
-**Last Updated**: 2026-03-26
-**Current Version**: 0.3.0
+**Last Updated**: 2026-04-03
+**Current Version**: 0.4.0
 
 ## ✅ Completed Features
 
@@ -52,12 +52,21 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] `cloud.AwsCliAudit` (aws) — AWS security audit
 - [x] `cloud.GcloudAudit` (gcloud) — GCP security audit
 
+### Web Dashboard
+- [x] Executions table with clickable row detail expansion (request, result, findings, artifacts, errors)
+- [x] Targets cards with phase progress bars and expandable phase-grouped execution tables
+- [x] Agents view with execution history per agent, merged with container data
+- [x] Findings view with severity badges, CVSS, risk, remediation, and references
+- [x] Deep-linking across views (click target/agent/execution to navigate and auto-expand)
+- [x] HTMX auto-refresh with pause-on-expand to prevent content loss
+- [x] Dark theme, responsive layout
+
 ### Documentation
-- [x] README.md with architecture and `make` commands
+- [x] README.md with architecture, dashboard section, and `make` commands
 - [x] GEMINI.md operational guide with skill table, JSON envelope docs, and `wait_for_completion` workflow
 - [x] QUICKSTART.md with v0.3.0 onboarding
 - [x] Detailed setup and contributing guides
-- [x] CHANGELOG.md with v0.3.0 entries
+- [x] CHANGELOG.md with v0.4.0 entries
 
 ### Project Configuration
 - [x] `Makefile` for streamlined dev/build/start/test workflows
@@ -92,7 +101,7 @@ Complete overview of what has been implemented and what remains to be done.
 ### Low Priority
 
 #### Advanced Features
-- [ ] Web UI for monitoring and control
+- [x] Web UI for monitoring and control
 - [ ] Task dependencies and workflows
 - [ ] AI-powered finding correlation
 
@@ -108,8 +117,7 @@ Complete overview of what has been implemented and what remains to be done.
 
 ## 🎯 Next Milestones
 
-### v0.3.0 - Observability & Hardening
-**Target**: 4 weeks
+### v0.5.0 - Observability & Hardening
 - Structured logging & Metrics
 - Health checks
 - Execution timeout enforcement

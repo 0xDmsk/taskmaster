@@ -5,6 +5,27 @@ All notable changes to Taskmaster will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-03
+
+### Added
+- **Web dashboard** with 4 tabs: Executions, Targets, Agents, Findings.
+- **Execution detail views**: Click any execution row to expand full request/result breakdown — justification, skill, arguments, tool, command, timing, findings, artifacts, errors.
+- **Target detail views**: "Show Details" button expands executions grouped by security phase in collapsible sections with mini-tables.
+- **Agent history**: Agents tab now shows execution history per `executor_id`, merged with active container data. Includes task stats and full task history table.
+- **Rich findings**: Severity badges (critical/high/medium/low/info), CVSS scores, risk descriptions, remediation guidance, and references extracted from skill output when available.
+- **Deep-linking**: Cross-view links with auto-expand. Click a target, agent, or execution ID in any detail view to navigate and auto-expand the linked item (`#exec:<id>`, `#target:<ip>`, `#agent:<name>`).
+- **Auto-refresh pause**: HTMX polling automatically pauses when any detail panel or finding card is expanded, preventing content from being replaced while reading.
+- New API endpoints: `/api/executions/<id>/detail`, `/api/targets/<target>/detail`, `/api/agents/<id>/detail`, `/api/agents/history`.
+- New backend functions: `get_execution_detail()`, `get_target_detail()`, `get_agent_history()`.
+- New templates: `execution_detail.html`, `target_detail.html`, `agent_detail.html`.
+- CSS: detail panels, mini-tables, severity badges, expand buttons, historical agent dots.
+
+### Changed
+- Dashboard nav reordered: Executions → Targets → Agents → Findings (findings moved last).
+- Targets and agents layouts changed from grid to single-column stack for better detail expansion.
+- `get_findings()` now includes `executor_id`, `justification`, `tool`, `severity`, `cvss`, `risk`, `remediation`, `references`, `description` from request/result data.
+- Agents page route uses `get_agent_history()` instead of `get_agents()`.
+
 ## [0.3.0] - 2026-03-26
 
 ### Added

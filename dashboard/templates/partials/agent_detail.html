@@ -1,0 +1,63 @@
+<div class="detail-panel">
+    {% if agent.container %}
+    <div class="detail-section">
+        <h4>Container</h4>
+        <dl class="detail-list">
+            <dt>Container ID</dt>
+            <dd>{{ agent.container.id }}</dd>
+            <dt>Name</dt>
+            <dd>{{ agent.container.name }}</dd>
+            <dt>Status</dt>
+            <dd><span class="state-dot {{ agent.container.state }}"></span>{{ agent.container.status }}</dd>
+            <dt>Image</dt>
+            <dd>{{ agent.container.image }}</dd>
+            <dt>Created</dt>
+            <dd>{{ agent.container.created }}</dd>
+        </dl>
+    </div>
+    {% endif %}
+
+    <div class="detail-section">
+        <h4>Stats</h4>
+        <dl class="detail-list">
+            <dt>Total Executions</dt>
+            <dd>{{ agent.stats.total }}</dd>
+            <dt>Completed</dt>
+            <dd style="color:var(--status-completed)">{{ agent.stats.completed }}</dd>
+            <dt>Failed</dt>
+            <dd style="color:var(--status-failed)">{{ agent.stats.failed }}</dd>
+            <dt>Running</dt>
+            <dd style="color:var(--status-running)">{{ agent.stats.running }}</dd>
+            <dt>Queued</dt>
+            <dd>{{ agent.stats.queued }}</dd>
+        </dl>
+    </div>
+
+    {% if agent.executions %}
+    <div class="detail-section">
+        <h4>Task History</h4>
+        <table class="mini-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Target</th>
+                    <th>Phase</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for e in agent.executions %}
+                <tr>
+                    <td class="mono"><a href="/executions#exec:{{ e.execution_id }}" title="{{ e.execution_id }}">{{ e.execution_id[:12] }}</a></td>
+                    <td class="mono">{{ e.target }}</td>
+                    <td>{{ e.security_phase }}</td>
+                    <td><span class="badge badge-{{ e.status|lower }}">{{ e.status }}</span></td>
+                    <td class="mono">{{ e.updated_at[:19] if e.updated_at else '—' }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>

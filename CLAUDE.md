@@ -41,8 +41,9 @@ AI Agent (Gemini)
     │  JSON-RPC (MCP protocol, STDIO)
     ▼
 server.py  ──► tools/           # MCP tool handlers
+               dashboard/       # Web UI (api.py, agents.py, templates/, static/)
                state/state.py   # Execution lifecycle (QUEUED→CLAIMED→RUNNING→COMPLETED/FAILED)
-               state/storage.py # JSON file persistence with fcntl locking
+               state/storage.py # SQLite persistence with WAL mode
                policies/state_policy.py  # Phase transition enforcement
                audit/audit_manager.py    # JSONL audit log + Markdown report
     │

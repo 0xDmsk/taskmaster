@@ -1,0 +1,114 @@
+<div class="detail-panel">
+    <div class="detail-grid">
+        <div>
+            <div class="detail-section">
+                <h4>Metadata</h4>
+                <dl class="detail-list">
+                    <dt>Execution ID</dt>
+                    <dd>{{ e.execution_id }}</dd>
+                    <dt>Status</dt>
+                    <dd><span class="badge badge-{{ e.status|lower }}">{{ e.status }}</span></dd>
+                    <dt>Target</dt>
+                    <dd><a href="/targets#target:{{ e.target }}" onclick="event.stopPropagation()">{{ e.target }}</a></dd>
+                    <dt>Phase</dt>
+                    <dd>{{ e.security_phase }}</dd>
+                    <dt>Executor</dt>
+                    <dd>{% if e.executor_id %}<a href="/agents#agent:{{ e.executor_id }}" onclick="event.stopPropagation()">{{ e.executor_id }}</a>{% else %}—{% endif %}</dd>
+                    <dt>Created</dt>
+                    <dd>{{ e.created_at or '—' }}</dd>
+                    <dt>Updated</dt>
+                    <dd>{{ e.updated_at or '—' }}</dd>
+                </dl>
+            </div>
+            {% set req = e.parsed_request %}
+            {% if req %}
+            <div class="detail-section">
+                <h4>Request</h4>
+                <dl class="detail-list">
+                    {% if req.justification %}
+                    <dt>Justification</dt>
+                    <dd style="font-family:var(--sans);word-break:normal">{{ req.justification }}</dd>
+                    {% endif %}
+                    {% if req.skill %}
+                    <dt>Skill</dt>
+                    <dd>{{ req.skill }}</dd>
+                    {% endif %}
+                    {% if req.action_type %}
+                    <dt>Action Type</dt>
+                    <dd>{{ req.action_type }}</dd>
+                    {% endif %}
+                    {% if req.agent_role %}
+                    <dt>Agent Role</dt>
+                    <dd>{{ req.agent_role }}</dd>
+                    {% endif %}
+                    {% if req.arguments %}
+                    <dt>Arguments</dt>
+                    <dd><pre style="margin:0.25rem 0;white-space:pre-wrap;font-size:0.8rem;background:var(--bg-tertiary);padding:0.5rem;border-radius:4px">{{ req.arguments | tojson(indent=2) }}</pre></dd>
+                    {% endif %}
+                    {% if req.expected_output %}
+                    <dt>Expected Output</dt>
+                    <dd style="font-family:var(--sans);word-break:normal">{{ req.expected_output }}</dd>
+                    {% endif %}
+                    {% if req.command %}
+                    <dt>Command</dt>
+                    <dd>{{ req.command }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+            {% endif %}
+        </div>
+        <div>
+            {% set res = e.parsed_result %}
+            {% if res %}
+            <div class="detail-section">
+                <h4>Result</h4>
+                <dl class="detail-list">
+                    {% if res.tool %}
+                    <dt>Tool</dt>
+                    <dd>{{ res.tool }}{% if res.tool_version %} v{{ res.tool_version }}{% endif %}</dd>
+                    {% endif %}
+                    {% if res.command %}
+                    <dt>Command</dt>
+                    <dd>{{ res.command }}</dd>
+                    {% endif %}
+                    {% if res.started_at %}
+                    <dt>Started</dt>
+                    <dd>{{ res.started_at }}</dd>
+                    {% endif %}
+                    {% if res.completed_at %}
+                    <dt>Completed</dt>
+                    <dd>{{ res.completed_at }}</dd>
+                    {% endif %}
+                    {% if res.status %}
+                    <dt>Result Status</dt>
+                    <dd>{{ res.status }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+            {% if res.findings %}
+            <div class="detail-section">
+                <h4>Findings</h4>
+                <pre style="white-space:pre-wrap;font-size:0.8rem;background:var(--bg-tertiary);padding:0.75rem;border-radius:6px;overflow-x:auto;word-break:break-word">{{ res.findings | tojson(indent=2) }}</pre>
+            </div>
+            {% endif %}
+            {% if res.artifacts %}
+            <div class="detail-section">
+                <h4>Artifacts</h4>
+                <pre style="white-space:pre-wrap;font-size:0.8rem;background:var(--bg-tertiary);padding:0.75rem;border-radius:6px;overflow-x:auto;word-break:break-word">{{ res.artifacts | tojson(indent=2) }}</pre>
+            </div>
+            {% endif %}
+            {% if res.errors %}
+            <div class="detail-section">
+                <h4 style="color:var(--status-failed)">Errors</h4>
+                <pre style="white-space:pre-wrap;font-size:0.8rem;background:var(--bg-tertiary);padding:0.75rem;border-radius:6px;overflow-x:auto;word-break:break-word;color:var(--status-failed)">{{ res.errors | tojson(indent=2) }}</pre>
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="detail-section">
+                <h4>Result</h4>
+                <p style="color:var(--text-muted);font-size:0.85rem">No result data available</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

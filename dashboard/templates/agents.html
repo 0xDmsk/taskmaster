@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Agents{% endblock %}
+{% block content %}
+<h2 class="page-title">Agents</h2>
+<div id="agent-list"
+     data-poll-trigger="agent-list"
+     hx-get="/api/agents/history" hx-trigger="every 5s" hx-swap="innerHTML">
+    {% include "partials/agent_list.html" %}
+</div>
+{% endblock %}

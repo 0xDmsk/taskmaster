@@ -1,0 +1,41 @@
+{% if agents %}
+<div class="agent-grid">
+{% for a in agents %}
+<div class="agent-card" data-agent-id="{{ a.executor_id }}">
+    <h3>
+        {% if a.container %}
+        <span class="state-dot {{ a.container.state }}"></span>
+        {% else %}
+        <span class="state-dot historical"></span>
+        {% endif %}
+        {{ a.executor_id }}
+    </h3>
+    <div class="agent-meta">
+        {% if a.container %}
+        <div>Container: <span class="mono">{{ a.container.id }}</span></div>
+        <div>Status: {{ a.container.status }}</div>
+        <div>Image: <span class="mono">{{ a.container.image }}</span></div>
+        {% else %}
+        <div style="color:var(--text-muted)">No active container</div>
+        {% endif %}
+        <div style="margin-top:0.4rem">
+            Tasks: <strong>{{ a.stats.total }}</strong>
+            &middot; <span style="color:var(--status-completed)">{{ a.stats.completed }}</span> done
+            {% if a.stats.failed %}&middot; <span style="color:var(--status-failed)">{{ a.stats.failed }}</span> failed{% endif %}
+            {% if a.stats.running %}&middot; <span style="color:var(--status-running)">{{ a.stats.running }}</span> running{% endif %}
+        </div>
+    </div>
+    <div style="margin-top:0.5rem">
+        <button class="expand-btn"
+                hx-get="/api/agents/{{ a.executor_id }}/detail"
+                hx-target="#agent-detail-{{ loop.index }}"
+                hx-swap="innerHTML"
+                onclick="this.style.display='none'">Show Details</button>
+    </div>
+    <div id="agent-detail-{{ loop.index }}"></div>
+</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No agents found — spawn containers or run executions to see agent history</div>
+{% endif %}

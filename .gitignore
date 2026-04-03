@@ -64,3 +64,6 @@ htmlcov/
 *.swp
 tmp/
 temp/
+
+# Claude Code
+claude_session_id.txt
