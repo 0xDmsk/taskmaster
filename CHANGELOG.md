@@ -5,6 +5,21 @@ All notable changes to Taskmaster will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-21
+
+### Added
+- **Playwright executor**: dedicated `playwright-operator` container (`executors/Dockerfile.playwright`) built on `python:3.12-slim` with Playwright + Chromium. No Kali tooling — browser-only, minimal footprint.
+- **`executors/playwright_operator.py`**: operator that polls Taskmaster and exclusively claims tasks with `action_type: "playwright"` or `"playwright_skill"`. All other action types are left for the Kali operator.
+- **`skills/browser.py`**: `BaseBrowserSkill` ABC — the browser-native counterpart to `BaseSkill`. Subclasses implement a single `run_browser(page, context, **kwargs) -> dict` method; the orchestrator handles browser lifecycle, timing, loot saving, and envelope assembly. Supports `BROWSER_PROXY` env var for Burp/ZAP routing.
+- **Two new `action_type` values** in `request_security_action`: `"playwright"` (raw Python/Playwright script provided in `script` field) and `"playwright_skill"` (imports a `BaseBrowserSkill` subclass by name, mirrors existing `"skill"` pathway).
+- **`agent_type` parameter** in `spawn_agent`: `"kali"` (default) or `"playwright"` — spawns the correct container image and operator command.
+- **`make build-playwright`** target and `DOCKERFILE` env var support in `scripts/build.sh`.
+- 35 new unit tests across `test_playwright_operator.py` and `test_browser_skill.py` covering dispatch, script execution, envelope structure, context options, artifact helpers, and error handling.
+
+### Changed
+- `kali_operator.py`: skips tasks with `action_type` in `("playwright", "playwright_skill")` before claiming — they are left in the queue for the playwright operator.
+- `request_security_action` schema: added `"playwright"` and `"playwright_skill"` to the `action_type` enum; added `script` field definition; added conditional validation for both new types.
+
 ## [0.4.0] - 2026-04-03
 
 ### Added

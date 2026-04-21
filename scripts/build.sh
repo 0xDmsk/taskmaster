@@ -10,10 +10,12 @@ EXECUTOR_DIR="$PROJECT_ROOT/executors"
 
 IMAGE_NAME="${AGENT_IMAGE_NAME:-kali-smart-operator}"
 PLATFORM="${CONTAINER_PLATFORM:-linux/arm64}"
+DOCKERFILE="${DOCKERFILE:-Dockerfile}"
 
 echo "🏗️  Building Taskmaster Agent Container"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Image: $IMAGE_NAME"
+echo "Dockerfile: $DOCKERFILE"
 echo "Platform: $PLATFORM"
 echo "Build Context: $EXECUTOR_DIR"
 echo ""
@@ -37,7 +39,7 @@ echo ""
 $RUNTIME build \
     --platform "$PLATFORM" \
     -t "$IMAGE_NAME:latest" \
-    -f Dockerfile \
+    -f "$DOCKERFILE" \
     .
 
 echo ""

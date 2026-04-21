@@ -1,0 +1,19 @@
+FROM --platform=linux/arm64 python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Playwright system dependencies and Chromium via playwright's own installer
+RUN pip install --no-cache-dir playwright && \
+    playwright install chromium --with-deps && \
+    rm -rf /var/lib/apt/lists/*
+
+# -------- Taskmaster Integration --------
+COPY skills /app/skills
+ENV PYTHONPATH=/app:$PYTHONPATH
+
+COPY executors/playwright_operator.py /usr/local/bin/playwright-operator
+RUN chmod +x /usr/local/bin/playwright-operator
+
+WORKDIR /work
+CMD ["python", "/usr/local/bin/playwright-operator"]

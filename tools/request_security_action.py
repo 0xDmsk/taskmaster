@@ -27,10 +27,11 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         },
         "phase": {"type": "string"},
         "target": {"type": "string"},
-        "action_type": {"type": "string", "enum": ["skill", "python"]},
+        "action_type": {"type": "string", "enum": ["skill", "python", "playwright", "playwright_skill"]},
         "skill": {"type": "string"},
         "arguments": {"type": "object"},
         "command": {"type": "string"},
+        "script": {"type": "string"},
         "justification": {"type": "string", "minLength": 50},
         "expected_output": {"type": "string"},
     },
@@ -62,13 +63,25 @@ def handle_request(payload):
                 "error": "Validation failed",
                 "details": "'command' field is required when action_type is 'python'",
             }
+    elif action_type == "playwright_skill":
+        if not payload.get("skill"):
+            return {
+                "error": "Validation failed",
+                "details": "'skill' field is required when action_type is 'playwright_skill'",
+            }
+    elif action_type == "playwright":
+        if not payload.get("script"):
+            return {
+                "error": "Validation failed",
+                "details": "'script' field is required when action_type is 'playwright'",
+            }
 
     target = payload["target"]
     requested_phase = payload["phase"]
 
     # 3. Platform constraint validation (only for python with shell commands)
     command = payload.get("command", "")
-    if action_type == "python" and command:
+    if action_type == "python" and command:  # playwright types run in their own container
         from policies.command_validator import validate_command
 
         constraint_result = validate_command(command)

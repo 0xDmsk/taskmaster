@@ -1,4 +1,4 @@
-.PHONY: help install build start test clean lint format dev
+.PHONY: help install build build-playwright start test clean lint format dev
 
 # Default target
 help:
@@ -26,6 +26,11 @@ install:
 build:
 	@echo "🏗️  Building agent container..."
 	./scripts/build.sh
+
+# Build playwright executor container
+build-playwright:
+	@echo "🏗️  Building Playwright executor container..."
+	AGENT_IMAGE_NAME=playwright-operator DOCKERFILE=Dockerfile.playwright ./scripts/build.sh
 
 # Start MCP server
 start:

@@ -20,7 +20,8 @@ def handle_spawn_agent(arguments):
 
     target = arguments.get("target")
     mission = arguments.get("mission")
-    agent_id = arguments.get("agent_id", f"kali-agent-{uuid.uuid4().hex[:6]}")
+    agent_type = arguments.get("agent_type", "kali")  # "kali" | "playwright"
+    agent_id = arguments.get("agent_id", f"{agent_type}-agent-{uuid.uuid4().hex[:6]}")
 
     # Configuration - check .env first, then process env, then default
     taskmaster_host = (
@@ -41,7 +42,12 @@ def handle_spawn_agent(arguments):
         or os.environ.get("HTTP_PROXY")
         or "http://192.168.64.1:8888"
     )
-    image_name = "kali-smart-operator"
+    if agent_type == "playwright":
+        image_name = "playwright-operator"
+        operator_cmd = "playwright-operator"
+    else:
+        image_name = "kali-smart-operator"
+        operator_cmd = "kali-operator"
 
     # Paths derived from config
     loot_dir = os.path.abspath(os.path.join(config.WORK_DIR, "audit", "loot"))
@@ -95,7 +101,7 @@ def handle_spawn_agent(arguments):
     if mission:
         cmd.extend(["-e", f"AGENT_MISSION={mission}"])
 
-    cmd.extend([image_name, "kali-operator"])
+    cmd.extend([image_name, operator_cmd])
 
     try:
         # Run container command
