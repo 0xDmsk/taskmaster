@@ -17,10 +17,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Image: $IMAGE_NAME"
 echo "Dockerfile: $DOCKERFILE"
 echo "Platform: $PLATFORM"
-echo "Build Context: $EXECUTOR_DIR"
+echo "Build Context: $PROJECT_ROOT"
 echo ""
 
-cd "$EXECUTOR_DIR"
+cd "$PROJECT_ROOT"
 
 if command -v container &> /dev/null; then
     RUNTIME="container"
@@ -39,7 +39,7 @@ echo ""
 $RUNTIME build \
     --platform "$PLATFORM" \
     -t "$IMAGE_NAME:latest" \
-    -f "$DOCKERFILE" \
+    -f "$EXECUTOR_DIR/$DOCKERFILE" \
     .
 
 echo ""
