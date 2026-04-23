@@ -71,14 +71,17 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Build agent container
       run: |
-        docker build --platform linux/amd64 -f executors/Dockerfile -t kali-smart-operator:test .
+        docker build --platform linux/arm64 -f executors/Dockerfile -t kali-smart-operator:test .
 
     - name: Test container basic functionality
       run: |
-        docker run --rm kali-smart-operator:test nmap --version
-        docker run --rm kali-smart-operator:test ffuf -V
+        docker run --rm --platform linux/arm64 kali-smart-operator:test nmap --version
+        docker run --rm --platform linux/arm64 kali-smart-operator:test ffuf -V
