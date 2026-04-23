@@ -167,6 +167,10 @@ class TestHttpxDetect:
         assert "-tech-detect" in cmd
         assert "-json" in cmd
 
+    def test_version_command_uses_last_line(self):
+        skill = HttpxDetect(target="http://example.com")
+        assert skill.tool_version_command == "httpx -version | tail -n 1 2>&1"
+
     def test_parse_output_with_results(self, tmp_path):
         skill = HttpxDetect(target="http://example.com")
         skill._artifacts = []
