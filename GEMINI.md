@@ -76,6 +76,8 @@ When you choose this path:
 *   Do not send browser tasks to a Kali agent and hope they will be handled correctly
 *   Prefer `wait_until="domcontentloaded"` or `wait_until="load"` plus a short settle delay for modern apps
 *   Avoid `networkidle` by default on challenge-heavy, analytics-heavy, or long-polling apps because it often never settles
+*   Keep `interactive_browser` enabled unless the task is explicitly unattended; Playwright agents expose a local noVNC session by default
+*   Increase `interactive_hold_ms` when the user may need time to complete MFA, SSO, cookie consent, or bot challenges in the live browser session
 
 ## ✅ Decision Heuristics
 

@@ -62,6 +62,15 @@ and any client-side navigation behavior.
 Use `domcontentloaded` plus a short settle delay by default. Avoid `networkidle`
 unless you know the app will actually become idle.
 
+If the task may require manual interaction, include an interactive browser window:
+
+```
+Inspect https://app.example.com in a real browser session. Spawn a Playwright
+worker with agent_type: "playwright", interactive_browser: true, and a long
+interactive_hold_ms so I can open the returned noVNC URL, handle MFA or bot
+checks manually, and then let the agent capture the rendered findings.
+```
+
 ## 🔬 Enumeration Phase
 
 ### Web Directory Bruteforcing

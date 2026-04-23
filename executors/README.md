@@ -20,6 +20,7 @@ A **lightweight `python:3.12-slim` container** with Playwright + Chromium. No Ka
 *   **Taskmaster Integration**: Ships with `playwright-operator`, which polls Taskmaster and exclusively claims tasks with `action_type: "playwright"` or `"playwright_skill"`. All other action types are left for the Kali operator.
 *   **Two-Pathway Execution**: `action_type: "playwright_skill"` imports a `BaseBrowserSkill` subclass and calls `run()`; `action_type: "playwright"` runs a raw Python/Playwright script in a subprocess.
 *   **Proxy support**: Set `BROWSER_PROXY` env var to route browser traffic through Burp or ZAP.
+*   **Interactive browser exposure**: Playwright agents default to a headful Chromium session with a local noVNC view so operators can handle MFA, bot checks, and cookie banners in the live browser.
 
 ---
 
@@ -77,20 +78,31 @@ Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:
   "arguments": {
     "agent_type": "playwright",
     "target": "https://example.com",
-    "mission": "Crawl the SPA and identify exposed API endpoints."
+    "mission": "Crawl the SPA and identify exposed API endpoints.",
+    "interactive_browser": true,
+    "interactive_hold_ms": 180000,
+    "novnc_port": 6085
   }
 }
 ```
 
+While a Playwright task is running, open `http://127.0.0.1:6085/vnc.html` on the host to view and control the same browser session the agent is using. If `novnc_port` is omitted, use the `novnc_url` returned by `spawn_agent`.
+
 Or directly:
 ```bash
 docker run -d \
+  -p 127.0.0.1:6085:6080 \
   -e TASKMASTER_HOST=10.0.0.X \
   -e TASKMASTER_PORT=5000 \
   -e BROWSER_PROXY=http://10.0.0.X:8080 \
+  -e PLAYWRIGHT_HEADLESS=false \
+  -e PLAYWRIGHT_DEVTOOLS=true \
+  -e PLAYWRIGHT_INTERACTIVE=1 \
+  -e PLAYWRIGHT_INTERACTIVE_HOLD_MS=180000 \
+  -e PLAYWRIGHT_SESSION_URL=http://127.0.0.1:6085/vnc.html \
   -v /path/to/audit/loot:/loot \
   -v /path/to/skills:/work/skills \
-  playwright-operator playwright-operator
+  playwright-operator
 ```
 
 ---

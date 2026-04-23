@@ -58,6 +58,7 @@ When choosing how to execute a task:
 
 When a browser is required, spawn the worker with `agent_type: "playwright"` so the task is claimed by the Playwright executor instead of a Kali operator.
 For browser navigation against modern apps, prefer `domcontentloaded` or `load` plus a short settle delay over `networkidle`, which often hangs on challenge or long-polling traffic.
+Playwright agents default to `interactive_browser=true`, which publishes a local noVNC session for live inspection and manual interaction.
 
 ## 🛡 Features & Safety
 
@@ -97,6 +98,31 @@ Example configurations provided for:
 1.  **Plan**: Request an action via `request_security_action`.
 2.  **Spawn**: Launch a specialized agent via `spawn_agent`.
 3.  **Review**: Watch the `audit/session_report.md` for live updates and structured findings.
+
+### Interactive Playwright Sessions
+
+Playwright agents expose a local noVNC browser view by default. This is useful when a task may require manual input such as MFA, cookie consent, bot challenges, or SSO.
+
+`spawn_agent` supports these Playwright-specific fields:
+- `interactive_browser`: defaults to `true` for `agent_type: "playwright"`. Set `false` only for fully unattended browser runs.
+- `interactive_hold_ms`: how long a browser skill should keep the live session open before collecting final findings.
+- `novnc_port`: optional fixed localhost port for the noVNC session. If omitted, Taskmaster selects a free port automatically.
+
+Example:
+```json
+{
+  "tool": "spawn_agent",
+  "arguments": {
+    "agent_type": "playwright",
+    "target": "https://app.example.com",
+    "interactive_browser": true,
+    "interactive_hold_ms": 180000,
+    "novnc_port": 6085
+  }
+}
+```
+
+When a Playwright task is running, open the returned noVNC URL in your host browser, for example `http://127.0.0.1:6085/vnc.html`.
 
 ## 🛠 Skills Library (`skills/`)
 
