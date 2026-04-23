@@ -48,6 +48,14 @@ TOOLS = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "agent_type": {
+                    "type": "string",
+                    "enum": ["kali", "playwright"],
+                    "description": (
+                        "Executor type to launch. Use 'kali' for CLI/python tasks "
+                        "or 'playwright' for browser-rendered tasks."
+                    ),
+                },
                 "target": {
                     "type": "string",
                     "description": "IP, hostname, or URL to assign to the agent",
