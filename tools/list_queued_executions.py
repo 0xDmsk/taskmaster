@@ -1,4 +1,5 @@
 from state.state import get_queued_executions
+from targeting import targets_match
 
 def handle_list_queued_executions(args):
     """
@@ -9,7 +10,7 @@ def handle_list_queued_executions(args):
     queued = get_queued_executions()
 
     if target:
-        queued = [e for e in queued if e.get("target") == target]
+        queued = [e for e in queued if targets_match(target, e.get("target"))]
 
     return {
         "count": len(queued),

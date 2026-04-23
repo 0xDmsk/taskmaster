@@ -19,8 +19,9 @@ import time
 import traceback
 import urllib.error
 import urllib.request
+from targeting import targets_match
 
-TASKMASTER_HOST = os.environ.get("TASKMASTER_HOST", "localhost")
+TASKMASTER_HOST = os.environ.get("TASKMASTER_HOST", "host.docker.internal")
 TASKMASTER_PORT = int(os.environ.get("TASKMASTER_PORT", 5000))
 EXECUTOR_ID = os.environ.get("EXECUTOR_ID", f"playwright-{socket.gethostname()}")
 TARGET_SCOPE = os.environ.get("TARGET_SCOPE")
@@ -231,7 +232,7 @@ def main_loop():
             if action_type not in SUPPORTED_ACTION_TYPES:
                 continue
 
-            if TARGET_SCOPE and target != TARGET_SCOPE:
+            if TARGET_SCOPE and not targets_match(TARGET_SCOPE, target):
                 continue
 
             # Claim

@@ -1,7 +1,59 @@
 import subprocess
 import json
-import os
 import sys
+
+from targeting import targets_match
+
+KNOWN_AGENT_IMAGES = {"kali-smart-operator", "playwright-operator"}
+
+
+def _inspect_container(container_name):
+    result = subprocess.run(
+        ["docker", "inspect", container_name],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+    return payload[0] if payload else None
+
+
+def _extract_env(inspect_data):
+    env_pairs = {}
+    env_list = inspect_data.get("Config", {}).get("Env", []) if inspect_data else []
+    for entry in env_list:
+        if "=" not in entry:
+            continue
+        key, value = entry.split("=", 1)
+        env_pairs[key] = value
+    return env_pairs
+
+
+def _image_name(inspect_data):
+    image = inspect_data.get("Config", {}).get("Image", "") if inspect_data else ""
+    return image.split(":", 1)[0]
+
+
+def _is_taskmaster_agent(container_name, inspect_data):
+    if container_name.startswith("kali-agent") or container_name.startswith("playwright-agent"):
+        return True
+
+    labels = inspect_data.get("Config", {}).get("Labels", {}) if inspect_data else {}
+    if labels.get("taskmaster.managed") == "true":
+        return True
+
+    env_pairs = _extract_env(inspect_data)
+    if env_pairs.get("EXECUTOR_ID") == container_name and _image_name(inspect_data) in KNOWN_AGENT_IMAGES:
+        return True
+
+    return False
+
 
 def handle_cleanup_agents(arguments):
     """
@@ -39,9 +91,10 @@ def handle_cleanup_agents(arguments):
         for c in containers:
             name = c.get("Names", "")
             c_id = name.lstrip("/")  # docker ps Names may include leading /
+            inspect_data = _inspect_container(c_id)
 
             # Only manage agent containers spawned by Taskmaster
-            if not (c_id.startswith("kali-agent") or c_id.startswith("playwright-agent")):
+            if not _is_taskmaster_agent(c_id, inspect_data):
                 continue
 
             # Apply state filter before anything else
@@ -55,11 +108,8 @@ def handle_cleanup_agents(arguments):
             elif agent_id and c_id == agent_id:
                 match = True
             elif target:
-                # Inspect to check TARGET_SCOPE env var
-                inspect_cmd = ["docker", "inspect", c_id,
-                               "--format", "{{range .Config.Env}}{{.}}\n{{end}}"]
-                inspect_res = subprocess.run(inspect_cmd, capture_output=True, text=True)
-                if f"TARGET_SCOPE={target}" in inspect_res.stdout:
+                env_pairs = _extract_env(inspect_data)
+                if targets_match(env_pairs.get("TARGET_SCOPE"), target):
                     match = True
 
             if match:

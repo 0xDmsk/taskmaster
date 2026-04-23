@@ -57,6 +57,10 @@
         "type": "string",
         "description": "Python code to execute. Required when action_type is 'python'."
       },
+      "allow_complex_tooling": {
+        "type": "boolean",
+        "description": "Override planning guardrails when you intentionally want an external-tool workflow for a task that could be handled by lightweight Python."
+      },
       "justification": {
         "type": "string",
         "minLength": 50

@@ -38,8 +38,46 @@ nmap -sS -sV -O target
 
 ## 🎯 Core Objectives
 1.  **Autonomous Execution**: Do not just suggest commands; spawn agents to execute them.
-2.  **Structured Data**: Always use `action_type: "skill"` with a named skill class. Every skill returns a JSON envelope with `findings`, `artifacts`, and `errors`. Use `action_type: "python"` only for custom analysis code. For browser automation, use `action_type: "playwright_skill"` or `"playwright"`.
+2.  **Structured Data**: Prefer the simplest execution pathway that can reliably produce the needed result. Use `action_type: "skill"` for established tool workflows, `action_type: "python"` for lightweight fetch/parse/custom logic, and `action_type: "playwright_skill"` or `"playwright"` for browser work.
 3.  **Self-Documentation**: Ensure every action has a strong `justification` for the audit report.
+
+## 🧭 Execution Path Selection
+
+Before queuing an execution, explicitly decide between these three options:
+
+1.  **Use an existing skill**
+    *   Choose this when the task clearly maps to one installed tool and the tool adds real value over plain Python.
+    *   Good examples: `nmap` port scanning, `ffuf` content discovery, `gobuster` DNS brute-force, `nuclei` takeover checks.
+    *   Do not use a skill just because one exists. If the task is only “fetch one page and summarize headers/title/scripts,” a skill is usually overkill.
+
+2.  **Use `action_type: "python"`**
+    *   Choose this for lightweight passive HTTP requests, HTML parsing, JSON parsing, response-header inspection, small transformations, and glue logic between previous findings.
+    *   Prefer Python when the task can be solved with the standard library or a small amount of straightforward code.
+    *   Default to Python for simple passive web recon against one or a few URLs unless a dedicated tool is specifically needed.
+
+3.  **Create a new skill**
+    *   Choose this only when the task is likely to recur and requires a stable wrapper around one external tool or one repeatable browser workflow.
+    *   A new skill should encapsulate real reusable behavior, not a one-off fetch or a tiny parsing script.
+    *   If the task is novel but short-lived, solve it with `python` first instead of expanding the skill library prematurely.
+
+## ✅ Decision Heuristics
+
+Use this checklist:
+
+*   **Single URL, passive fetch, simple parsing** → `python`
+*   **Need browser rendering, JS execution, SPA interaction** → `playwright` or `playwright_skill`
+*   **Need a well-known external tool with structured output** → existing `skill`
+*   **Need the same external tool workflow repeatedly across targets** → create a new `skill`
+*   **Need to combine prior findings, post-process JSON, or reshape data** → `python`
+
+## 🚫 Anti-Patterns
+
+Avoid these planning mistakes:
+
+*   Do not choose `web.HttpxDetect` for a task that only needs a basic GET, headers, title, and a few HTML counts.
+*   Do not create a new skill for a one-off page fetch, one-off regex extraction, or small response comparison.
+*   Do not force a skill when the external binary may be absent and Python can solve the task directly.
+*   Do not use browser automation when plain HTTP requests are sufficient.
 
 ## 🛠 Available Skills
 
@@ -122,8 +160,9 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
 ## 🏗 Skill Expansion Protocol
 If a task is complex and no existing skill fits:
 1.  **Consult `skills/TEMPLATE.md`**.
-2.  **Create a new Skill**: Write a Python file to the `skills/` directory on the host.
-3.  **Invoke**: Spawn an agent and call that new skill via `action_type: "skill"`.
+2.  **Check reuse first**: If the task is a simple passive fetch/parse or small analysis step, use `action_type: "python"` instead of creating a skill.
+3.  **Create a new Skill**: Write a Python file to the `skills/` directory on the host only if the workflow is tool-backed and reusable.
+4.  **Invoke**: Spawn an agent and call that new skill via `action_type: "skill"`.
 
 ## 📦 Data Management (Loot)
 - **Host Path**: `audit/loot/`

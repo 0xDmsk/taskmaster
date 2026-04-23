@@ -21,5 +21,6 @@ def handle_claim_execution(args):
 
     return {
         "execution_id": execution_id,
-        "status": "CLAIMED"
+        "status": "CLAIMED",
+        "executor_id": execution.get("executor_id"),
     }

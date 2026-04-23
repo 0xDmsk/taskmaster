@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -54,6 +55,22 @@ class BaseSkill(ABC):
         # Strip leading "skills." prefix if present for cleaner naming
         if skill_name.startswith("skills."):
             skill_name = skill_name[len("skills.") :]
+
+        if self.tool and not shutil.which(self.tool):
+            completed_at = datetime.now(timezone.utc).isoformat()
+            return {
+                "skill": skill_name,
+                "target": target,
+                "status": "error",
+                "started_at": started_at,
+                "completed_at": completed_at,
+                "tool": self.tool,
+                "tool_version": "",
+                "command": "",
+                "findings": {},
+                "artifacts": [],
+                "errors": [f"Required tool '{self.tool}' is not installed in this executor image."],
+            }
 
         # Detect tool version
         tool_version = self._detect_tool_version()

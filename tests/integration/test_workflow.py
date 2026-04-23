@@ -100,6 +100,38 @@ class TestFullLifecycle:
         )
         assert fail_result["status"] == "FAILED"
 
+    def test_passive_web_recon_guardrail_prefers_python(self):
+        payload = {
+            "agent_role": "recon",
+            "phase": "reconnaissance",
+            "target": "https://www.example.com/app",
+            "action_type": "skill",
+            "skill": "web.HttpxDetect",
+            "arguments": {"url": "https://www.example.com/app"},
+            "justification": "Run a minimal passive fetch to collect status, final URL, headers, title, and lightweight technology indicators for initial scoping.",
+            "expected_output": "Status code, final URL, headers, title, scripts, forms, links, and basic technology fingerprinting for the page.",
+        }
+
+        result = handle_request(payload)
+        assert result["error"] == "Planning guardrail triggered"
+        assert "action_type 'python'" in result["suggestion"]
+
+    def test_passive_web_recon_guardrail_can_be_overridden(self):
+        payload = {
+            "agent_role": "recon",
+            "phase": "reconnaissance",
+            "target": "https://www.example.com/app",
+            "action_type": "skill",
+            "skill": "web.HttpxDetect",
+            "arguments": {"url": "https://www.example.com/app"},
+            "allow_complex_tooling": True,
+            "justification": "Run a minimal passive fetch to collect status, final URL, headers, title, and lightweight technology indicators for initial scoping.",
+            "expected_output": "Status code, final URL, headers, title, scripts, forms, links, and basic technology fingerprinting for the page.",
+        }
+
+        result = handle_request(payload)
+        assert result["status"] == "QUEUED"
+
 
 class TestTargetConcurrency:
     """Test target locking and concurrent execution prevention"""
@@ -137,6 +169,40 @@ class TestTargetConcurrency:
 
 class TestExecutorOwnership:
     """Test that agents cannot interfere with each other's executions"""
+
+    def test_custom_executor_id_completes_lifecycle(self):
+        """Custom executor IDs should work for claim/start/complete transitions."""
+        payload = {
+            "agent_role": "recon",
+            "phase": "reconnaissance",
+            "target": "10.0.0.33",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {},
+            "justification": "Verify custom executor IDs remain dispatch-compatible",
+            "expected_output": "Scan results",
+        }
+        result = handle_request(payload)
+        execution_id = result["execution_id"]
+
+        executor_id = "penny-recon"
+        claim_result = handle_claim_execution(
+            {"execution_id": execution_id, "executor_id": executor_id}
+        )
+        start_result = handle_start_execution(
+            {"execution_id": execution_id, "executor_id": executor_id}
+        )
+        complete_result = handle_complete_execution(
+            {
+                "execution_id": execution_id,
+                "executor_id": executor_id,
+                "result": "done",
+            }
+        )
+
+        assert claim_result["executor_id"] == executor_id
+        assert start_result["executor_id"] == executor_id
+        assert complete_result["executor_id"] == executor_id
 
     def test_agent2_cannot_complete_agent1_task(self):
         """Test that a different executor cannot complete another's running execution"""

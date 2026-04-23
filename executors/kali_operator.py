@@ -9,9 +9,10 @@ import traceback
 import urllib.error
 import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
+from targeting import targets_match
 
 # Configuration from environment or defaults
-TASKMASTER_HOST = os.environ.get("TASKMASTER_HOST", "localhost")
+TASKMASTER_HOST = os.environ.get("TASKMASTER_HOST", "host.docker.internal")
 TASKMASTER_PORT = int(os.environ.get("TASKMASTER_PORT", 5000))
 EXECUTOR_ID = os.environ.get("EXECUTOR_ID", f"kali-{socket.gethostname()}")
 TARGET_SCOPE = os.environ.get("TARGET_SCOPE")  # Optional: limit to a specific target
@@ -228,7 +229,7 @@ def main_loop():
                 continue
 
             # Filter by TARGET_SCOPE if set
-            if TARGET_SCOPE and target != TARGET_SCOPE:
+            if TARGET_SCOPE and not targets_match(TARGET_SCOPE, target):
                 continue
 
             # 2. Claim

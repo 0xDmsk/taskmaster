@@ -15,7 +15,13 @@ Key points:
 - Use spawn_agent to create execution containers
 - Follow phase progression: reconnaissance -> enumeration -> exploitation
 - Always provide detailed justification for audit trails
-- Use structured action_type: "skill" when possible for better data
+- Choose the simplest suitable pathway: existing skill, lightweight python, browser automation, or a new skill only if reuse justifies it
+
+Decision rules:
+- Use `python` for simple passive web fetch/parse tasks, header checks, JSON parsing, and glue logic
+- Use an existing `skill` when a dedicated tool materially improves the result
+- Create a new skill only for reusable tool-backed workflows
+- Use Playwright only when browser rendering or interaction is actually needed
 ```
 
 ## 🔍 Reconnaissance Phase
@@ -38,8 +44,9 @@ skill. This is for an authorized security assessment with documented scope.
 ### Web Technology Detection
 
 ```
-Analyze target https://app.example.com using the web reconnaissance skill
-to identify technologies, frameworks, and potential attack surface.
+Analyze target https://app.example.com. If a simple passive fetch is enough,
+use python to inspect headers, title, scripts, and links. Only use a web skill
+if an external fingerprinting tool adds value beyond a lightweight fetch.
 ```
 
 ## 🔬 Enumeration Phase
@@ -167,8 +174,18 @@ Results will be in the JSON envelope's findings field.
 ### Using Web Skills
 
 ```
-Run web.HttpxDetect on https://app.example.com to fingerprint technologies,
-then run web.FfufFuzz to discover hidden directories and endpoints.
+For https://app.example.com, first decide whether a lightweight python fetch is
+enough for headers/title/scripts. If deeper external fingerprinting is needed,
+run web.HttpxDetect. Use web.FfufFuzz only when active content discovery is in scope.
+```
+
+### Choosing Python Instead Of A Skill
+
+```
+For https://app.example.com, perform minimal passive web reconnaissance using
+action_type: "python". Fetch the page, record the final URL, status code, key
+headers, page title, script count, and a short text sample. Do not use browser
+automation or an external fingerprinting tool unless the simple fetch proves insufficient.
 ```
 
 ### Using Takeover Skill
@@ -243,6 +260,9 @@ I need a custom skill for testing API endpoints. Create a new skill that:
 
 Save it to skills/api_test.py following the TEMPLATE.md pattern.
 ```
+
+Only create the skill if this workflow will be reused. If this is a one-off API
+inspection or a small parsing task, solve it with `action_type: "python"` instead.
 
 ### Creating a New Web Skill
 

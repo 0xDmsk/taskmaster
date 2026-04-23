@@ -28,5 +28,6 @@ def handle_fail_execution(args):
 
     return {
         "execution_id": execution_id,
-        "status": "FAILED"
+        "status": "FAILED",
+        "executor_id": execution.get("executor_id"),
     }

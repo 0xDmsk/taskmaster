@@ -7,6 +7,7 @@ Use this template when creating new skills in the `skills/` directory.
 1. **One tool per skill class** — each skill wraps exactly one CLI tool
 2. **Two abstract methods** — `build_command()` constructs the CLI command, `parse_output()` parses results into structured findings
 3. **JSON envelope** — `run()` is concrete and assembles a standard envelope automatically
+4. **Earn the abstraction** — create a skill only when the workflow is reusable and tool-backed; do not create skills for one-off fetch/parse tasks that plain Python can handle
 
 ## File Naming
 - Filename: `[category].py` (e.g., `web.py`, `cloud.py`, `network.py`)
@@ -66,3 +67,15 @@ class YourToolAction(BaseSkill):
 2. **Invoke**: Use `action_type: "skill"` with `skill: "category.ClassName"` (e.g., `"network.NmapScan"`).
 3. **Arguments**: Pass kwargs via the `arguments` field (e.g., `{"host": "10.0.0.1", "ports": "80,443"}`).
 4. **Persistence**: Since `skills/` is a mounted volume, the spawned agent sees the new code immediately.
+
+## When To Create A Skill
+
+Create a new skill when:
+- The task wraps one external CLI tool or one repeatable browser workflow
+- The behavior will likely be reused across targets or assessments
+- Structured parsing is valuable enough to justify a maintained abstraction
+
+Do not create a new skill when:
+- A few lines of Python can fetch a page, parse JSON, inspect headers, or transform previous findings
+- The logic is one-off and unlikely to be reused
+- The task is mostly orchestration or glue between existing outputs

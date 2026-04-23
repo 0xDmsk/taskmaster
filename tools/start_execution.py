@@ -21,5 +21,6 @@ def handle_start_execution(args):
 
     return {
         "execution_id": execution_id,
-        "status": "RUNNING"
+        "status": "RUNNING",
+        "executor_id": execution.get("executor_id"),
     }

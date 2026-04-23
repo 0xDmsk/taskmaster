@@ -3,6 +3,7 @@ from jsonschema import validate, ValidationError
 
 from state.state import get_target_state, create_execution
 from policies.state_policy import is_security_phase_allowed
+from targeting import _target_parts
 
 REQUEST_SECURITY_ACTION_SCHEMA = {
     "type": "object",
@@ -32,10 +33,65 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         "arguments": {"type": "object"},
         "command": {"type": "string"},
         "script": {"type": "string"},
+        "allow_complex_tooling": {"type": "boolean"},
         "justification": {"type": "string", "minLength": 50},
         "expected_output": {"type": "string"},
     },
 }
+
+
+PASSIVE_WEB_SKILLS = {"web.HttpxDetect"}
+PASSIVE_WEB_KEYWORDS = {
+    "passive",
+    "minimal",
+    "simple",
+    "lightweight",
+    "headers",
+    "header",
+    "title",
+    "status code",
+    "status",
+    "final url",
+    "html",
+    "metadata",
+    "scripts",
+    "forms",
+    "links",
+    "technology",
+    "fingerprint",
+    "fetch",
+    "reachable",
+}
+
+
+def _is_url_target(target: str) -> bool:
+    return bool(_target_parts(target).get("host")) and "://" in target
+
+
+def _should_prefer_python_guardrail(payload: dict) -> bool:
+    if payload.get("allow_complex_tooling"):
+        return False
+
+    if payload.get("action_type") != "skill":
+        return False
+
+    if payload.get("skill") not in PASSIVE_WEB_SKILLS:
+        return False
+
+    if payload.get("phase") not in {"reconnaissance", "enumeration"}:
+        return False
+
+    target = payload.get("target", "")
+    if not _is_url_target(target):
+        return False
+
+    free_text = " ".join(
+        [
+            payload.get("justification", ""),
+            payload.get("expected_output", ""),
+        ]
+    ).lower()
+    return any(keyword in free_text for keyword in PASSIVE_WEB_KEYWORDS)
 
 
 def handle_request(payload):
@@ -75,6 +131,21 @@ def handle_request(payload):
                 "error": "Validation failed",
                 "details": "'script' field is required when action_type is 'playwright'",
             }
+
+    if _should_prefer_python_guardrail(payload):
+        return {
+            "error": "Planning guardrail triggered",
+            "details": (
+                "This request describes simple passive web reconnaissance against a URL target, "
+                "but uses an external skill. Prefer action_type 'python' for lightweight fetch/"
+                "parse tasks and reserve web.HttpxDetect for cases where external fingerprinting "
+                "is explicitly required."
+            ),
+            "suggestion": (
+                "Resubmit as action_type 'python', or set allow_complex_tooling=true if you "
+                "intentionally want the external tool path."
+            ),
+        }
 
     target = payload["target"]
     requested_phase = payload["phase"]

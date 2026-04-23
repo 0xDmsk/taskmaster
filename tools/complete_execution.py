@@ -28,5 +28,6 @@ def handle_complete_execution(args):
 
     return {
         "execution_id": execution_id,
-        "status": "COMPLETED"
+        "status": "COMPLETED",
+        "executor_id": execution.get("executor_id"),
     }

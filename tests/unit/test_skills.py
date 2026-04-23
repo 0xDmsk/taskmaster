@@ -7,6 +7,7 @@ import os
 import sys
 
 import pytest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -15,6 +16,7 @@ from skills.web import FfufFuzz, HttpxDetect
 from skills.subdomain import GobusterDns, SubfinderEnum
 from skills.takeover import NucleiTakeover
 from skills.cloud import AwsCliAudit, GcloudAudit
+from skills.base import BaseSkill
 
 # --- Network Skills ---
 
@@ -186,6 +188,26 @@ class TestHttpxDetect:
         assert result["url"] == "http://example.com"
         assert result["server"] == "nginx"
         assert "jQuery" in result["technologies"]
+
+
+class MissingToolSkill(BaseSkill):
+    tool = "missing-tool"
+
+    def build_command(self, **kwargs) -> str:
+        return "missing-tool --version"
+
+    def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
+        return {}
+
+
+class TestBaseSkillToolAvailability:
+    def test_run_fails_fast_when_tool_is_missing(self):
+        skill = MissingToolSkill(target="example.com")
+        with patch("skills.base.shutil.which", return_value=None):
+            result = skill.run()
+
+        assert result["status"] == "error"
+        assert "not installed" in result["errors"][0]
 
 
 # --- Subdomain Skills ---

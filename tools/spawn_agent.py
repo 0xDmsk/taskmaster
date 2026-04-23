@@ -3,6 +3,7 @@ import os
 import uuid
 
 import config
+from targeting import normalize_taskmaster_host
 
 
 def handle_spawn_agent(arguments):
@@ -24,7 +25,7 @@ def handle_spawn_agent(arguments):
     agent_id = arguments.get("agent_id", f"{agent_type}-agent-{uuid.uuid4().hex[:6]}")
 
     # Configuration - check .env first, then process env, then default
-    taskmaster_host = (
+    taskmaster_host = normalize_taskmaster_host(
         arguments.get("taskmaster_host")
         or env_vars.get("TASKMASTER_HOST")
         or os.environ.get("TASKMASTER_HOST")
@@ -60,6 +61,12 @@ def handle_spawn_agent(arguments):
         "-d",
         "--name",
         agent_id,
+        "--label",
+        "taskmaster.managed=true",
+        "--label",
+        f"taskmaster.agent_type={agent_type}",
+        "--label",
+        f"taskmaster.executor_id={agent_id}",
         "-v",
         f"{loot_dir}:/loot",  # Mount host audit/loot to container /loot
         "-v",

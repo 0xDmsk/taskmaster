@@ -46,6 +46,14 @@ graph TD
     *   **Two Pathways**: `playwright_skill` (imports a `BaseBrowserSkill` subclass) or `playwright` (raw Python/Playwright script in a subprocess).
     *   **Selective claiming**: Only picks up tasks with `action_type: "playwright"` or `"playwright_skill"`; Kali tasks are left for the Kali operator.
 
+### Planning Guidance
+
+When choosing how to execute a task:
+- Use `action_type: "python"` for simple passive HTTP fetch/parse work, JSON processing, and glue logic.
+- Use `action_type: "skill"` when an existing external tool materially improves the result.
+- Create a new skill only for reusable tool-backed workflows, not for one-off parsing or fetch tasks.
+- Use Playwright only when rendered DOM or browser interaction is required.
+
 ## 🛡 Features & Safety
 
 *   **Concurrency**: Uses `fcntl` file locking for safe state access and target-level execution locks.
