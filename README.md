@@ -56,6 +56,9 @@ When choosing how to execute a task:
 - Use Playwright only when rendered DOM or browser interaction is required.
 - If a ProjectDiscovery-backed skill is the right fit, it may bootstrap its binary through `pdtm` if the tool is not already present.
 
+When a browser is required, spawn the worker with `agent_type: "playwright"` so the task is claimed by the Playwright executor instead of a Kali operator.
+For browser navigation against modern apps, prefer `domcontentloaded` or `load` plus a short settle delay over `networkidle`, which often hangs on challenge or long-polling traffic.
+
 ## 🛡 Features & Safety
 
 *   **Concurrency**: Uses `fcntl` file locking for safe state access and target-level execution locks.
@@ -116,6 +119,7 @@ Each skill wraps exactly one CLI tool and produces a standardized JSON envelope 
 | Base Class | Engine | Description |
 |------------|--------|-------------|
 | `browser.BaseBrowserSkill` | Playwright | Abstract base for browser-automation skills. Subclasses implement `run_browser(page, context, **kwargs)`. |
+| `browser.RenderedPageObserve` | Playwright | Resilient rendered-page observation using `domcontentloaded` plus a settle delay, with DOM and resource summaries. |
 
 See `skills/TEMPLATE.md` for creating new skills (both CLI and browser variants).
 

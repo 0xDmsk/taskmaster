@@ -56,6 +56,29 @@ TOOLS = {
                         "or 'playwright' for browser-rendered tasks."
                     ),
                 },
+                "interactive_browser": {
+                    "type": "boolean",
+                    "description": (
+                        "When using a Playwright agent, expose a local noVNC browser "
+                        "session for manual interaction. Defaults to true for "
+                        "Playwright agents."
+                    ),
+                },
+                "interactive_hold_ms": {
+                    "type": "integer",
+                    "description": (
+                        "How long browser skills should keep an interactive "
+                        "Playwright session open for manual input before collecting "
+                        "final findings."
+                    ),
+                },
+                "novnc_port": {
+                    "type": "integer",
+                    "description": (
+                        "Optional host port to bind the Playwright noVNC session "
+                        "to. If omitted, a free localhost port is selected."
+                    ),
+                },
                 "target": {
                     "type": "string",
                     "description": "IP, hostname, or URL to assign to the agent",

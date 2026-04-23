@@ -22,6 +22,7 @@ Decision rules:
 - Use an existing `skill` when a dedicated tool materially improves the result
 - Create a new skill only for reusable tool-backed workflows
 - Use Playwright only when browser rendering or interaction is actually needed
+- When Playwright is needed, spawn the worker with `agent_type: "playwright"`
 ```
 
 ## 🔍 Reconnaissance Phase
@@ -48,6 +49,18 @@ Analyze target https://app.example.com. If a simple passive fetch is enough,
 use python to inspect headers, title, scripts, and links. Only use a web skill
 if an external fingerprinting tool adds value beyond a lightweight fetch.
 ```
+
+### Browser-Rendered Recon
+
+```
+Inspect what actually loads in a user's browser for https://app.example.com.
+Spawn a Playwright worker with agent_type: "playwright", then use a browser task
+to capture the final URL, rendered title, key visible text, loaded resources,
+and any client-side navigation behavior.
+```
+
+Use `domcontentloaded` plus a short settle delay by default. Avoid `networkidle`
+unless you know the app will actually become idle.
 
 ## 🔬 Enumeration Phase
 

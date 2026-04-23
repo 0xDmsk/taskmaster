@@ -61,6 +61,22 @@ Before queuing an execution, explicitly decide between these three options:
     *   A new skill should encapsulate real reusable behavior, not a one-off fetch or a tiny parsing script.
     *   If the task is novel but short-lived, solve it with `python` first instead of expanding the skill library prematurely.
 
+## 🎭 When To Use Playwright
+
+Use the Playwright executor when:
+
+*   The page depends on client-side rendering and a plain HTTP fetch misses meaningful content
+*   You need the post-JavaScript DOM, runtime-loaded resources, visible UI text, or browser navigation behavior
+*   The task is to observe what loads in a real browser rather than just what the origin returns over HTTP
+
+When you choose this path:
+
+*   Spawn the agent with `agent_type: "playwright"`
+*   Queue work with `action_type: "playwright"` or `action_type: "playwright_skill"`
+*   Do not send browser tasks to a Kali agent and hope they will be handled correctly
+*   Prefer `wait_until="domcontentloaded"` or `wait_until="load"` plus a short settle delay for modern apps
+*   Avoid `networkidle` by default on challenge-heavy, analytics-heavy, or long-polling apps because it often never settles
+
 ## ✅ Decision Heuristics
 
 Use this checklist:
@@ -70,6 +86,7 @@ Use this checklist:
 *   **Need a well-known external tool with structured output** → existing `skill`
 *   **Need the same external tool workflow repeatedly across targets** → create a new `skill`
 *   **Need to combine prior findings, post-process JSON, or reshape data** → `python`
+*   **Need a real browser session to see what a user sees** → spawn `agent_type: "playwright"`
 
 ## 🚫 Anti-Patterns
 
@@ -115,9 +132,9 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
 ```json
 {
   "action_type": "playwright_skill",
-  "skill": "browser.MySPACrawl",
+  "skill": "browser.RenderedPageObserve",
   "target": "https://example.com",
-  "arguments": {"depth": 3}
+  "arguments": {"wait_until": "domcontentloaded", "settle_ms": 5000}
 }
 ```
 

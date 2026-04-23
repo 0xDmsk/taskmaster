@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from skills.browser import BaseBrowserSkill
+from skills.browser import BaseBrowserSkill, RenderedPageObserve
 
 
 # ------------------------------------------------------------------ #
@@ -43,6 +43,55 @@ class ArtifactSkill(BaseBrowserSkill):
         self.save_screenshot(page, "shot.png")
         self.save_json("data.json", {"key": "value"})
         return {"saved": True}
+
+
+class ResponseEventPage:
+    def __init__(self):
+        self._handlers = {}
+        self._locators = {}
+        self.url = "https://example.com/final"
+        self._waits = []
+
+    def on(self, event, handler):
+        self._handlers[event] = handler
+
+    def goto(self, target, wait_until=None, timeout=None):
+        self._goto = {
+            "target": target,
+            "wait_until": wait_until,
+            "timeout": timeout,
+        }
+        response = MagicMock()
+        response.url = "https://example.com/api"
+        response.status = 200
+        response.headers = {"content-type": "application/json"}
+        if "response" in self._handlers:
+            self._handlers["response"](response)
+
+    def wait_for_timeout(self, ms):
+        self._waits.append(ms)
+
+    def title(self):
+        return "Rendered Example"
+
+    def locator(self, selector):
+        return self._locators[selector]
+
+
+class LocatorMock:
+    def __init__(self, count_value=0, inner_text_value="", all_texts=None):
+        self._count_value = count_value
+        self._inner_text_value = inner_text_value
+        self._all_texts = all_texts or []
+
+    def count(self):
+        return self._count_value
+
+    def inner_text(self, timeout=None):
+        return self._inner_text_value
+
+    def all_inner_texts(self):
+        return self._all_texts
 
 
 # ------------------------------------------------------------------ #
@@ -216,8 +265,81 @@ class TestContextOptions:
         launch_kwargs = mock_pw.chromium.launch.call_args.kwargs
         assert launch_kwargs.get("headless") is True
 
+    def test_env_can_force_headful_devtools_launch(self):
+        mock_ctx, mock_pw, _, _ = _make_playwright_mock()
+        with (
+            patch("skills.browser.sync_playwright", return_value=mock_ctx),
+            patch.dict(
+                os.environ,
+                {
+                    "PLAYWRIGHT_HEADLESS": "false",
+                    "PLAYWRIGHT_DEVTOOLS": "true",
+                },
+                clear=False,
+            ),
+        ):
+            TitleFetcher(target="t").run()
+
+        launch_kwargs = mock_pw.chromium.launch.call_args.kwargs
+        assert launch_kwargs["headless"] is False
+        assert launch_kwargs["args"] == ["--auto-open-devtools-for-tabs"]
+
     def test_browser_type_attribute_default(self):
         assert TitleFetcher(target="t").browser_type == "chromium"
+
+
+class TestRenderedPageObserve:
+    def test_uses_domcontentloaded_and_collects_rendered_findings(self):
+        page = ResponseEventPage()
+        page._locators = {
+            "body": LocatorMock(inner_text_value="Visible text"),
+            "a": LocatorMock(count_value=3),
+            "script": LocatorMock(count_value=5),
+            "form": LocatorMock(count_value=0),
+            "button": LocatorMock(count_value=1),
+            "h1, h2, h3": LocatorMock(all_texts=["Heading 1", "Heading 2"]),
+        }
+
+        skill = RenderedPageObserve(target="https://example.com")
+        findings = skill.run_browser(page, context=MagicMock())
+
+        assert page._goto["wait_until"] == "domcontentloaded"
+        assert page._waits == [5000]
+        assert findings["title"] == "Rendered Example"
+        assert findings["dom_counts"]["scripts"] == 5
+        assert findings["resource_sample"][0]["url"] == "https://example.com/api"
+        assert findings["navigation_strategy"]["wait_until"] == "domcontentloaded"
+
+    def test_interactive_hold_and_session_url_are_exposed(self):
+        page = ResponseEventPage()
+        page._locators = {
+            "body": LocatorMock(inner_text_value="Visible text"),
+            "a": LocatorMock(count_value=1),
+            "script": LocatorMock(count_value=2),
+            "form": LocatorMock(count_value=0),
+            "button": LocatorMock(count_value=0),
+            "h1, h2, h3": LocatorMock(all_texts=["Heading 1"]),
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "PLAYWRIGHT_INTERACTIVE": "1",
+                "PLAYWRIGHT_INTERACTIVE_HOLD_MS": "45000",
+                "PLAYWRIGHT_SESSION_URL": "http://127.0.0.1:6081/vnc.html",
+            },
+            clear=False,
+        ):
+            findings = RenderedPageObserve(target="https://example.com").run_browser(
+                page, context=MagicMock()
+            )
+
+        assert page._waits == [5000, 45000]
+        assert findings["interactive_session"] == {
+            "enabled": True,
+            "url": "http://127.0.0.1:6081/vnc.html",
+            "hold_ms": 45000,
+        }
 
 
 # ------------------------------------------------------------------ #

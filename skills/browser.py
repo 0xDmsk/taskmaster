@@ -10,6 +10,23 @@ except ImportError:
     sync_playwright = None  # Available only inside the playwright container
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int = 0) -> int:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 class BaseBrowserSkill(ABC):
     """
     Base class for browser-automation skills powered by Playwright.
@@ -79,7 +96,7 @@ class BaseBrowserSkill(ABC):
                 )
             with sync_playwright() as pw:  # type: ignore[operator]
                 launcher = getattr(pw, self.browser_type)
-                browser = launcher.launch(headless=self.headless)
+                browser = launcher.launch(**self._launch_options())
                 context = browser.new_context(
                     ignore_https_errors=True,
                     **self._context_options(),
@@ -155,9 +172,100 @@ class BaseBrowserSkill(ABC):
             options["proxy"] = {"server": proxy_url}
         return options
 
+    def _launch_options(self) -> dict:
+        headless = _env_flag("PLAYWRIGHT_HEADLESS", self.headless)
+        options = {"headless": headless}
+        if self.browser_type == "chromium" and _env_flag("PLAYWRIGHT_DEVTOOLS"):
+            options["args"] = ["--auto-open-devtools-for-tabs"]
+        slow_mo = _env_int("PLAYWRIGHT_SLOW_MO_MS")
+        if slow_mo > 0:
+            options["slow_mo"] = slow_mo
+        return options
+
     def _playwright_version(self) -> str:
         try:
             import playwright  # noqa: PLC0415
             return getattr(playwright, "__version__", "")
         except Exception:
             return ""
+
+
+class RenderedPageObserve(BaseBrowserSkill):
+    """
+    Observe a rendered page using a resilient navigation strategy.
+
+    Defaults to `domcontentloaded` plus a short settle delay instead of
+    `networkidle`, which is often too brittle for apps with long-lived
+    background requests or anti-bot challenges.
+    """
+
+    def run_browser(self, page, context, **kwargs) -> dict:
+        target = kwargs.get("target") or self.target
+        if not target:
+            raise ValueError("target is required")
+
+        wait_until = kwargs.get("wait_until", "domcontentloaded")
+        timeout_ms = int(kwargs.get("timeout_ms", 90000))
+        settle_ms = int(kwargs.get("settle_ms", 5000))
+        text_limit = int(kwargs.get("text_limit", 2000))
+        resource_limit = int(kwargs.get("resource_limit", 40))
+        interactive_hold_ms = int(
+            kwargs.get(
+                "interactive_hold_ms",
+                _env_int(
+                    "PLAYWRIGHT_INTERACTIVE_HOLD_MS",
+                    120000 if _env_flag("PLAYWRIGHT_INTERACTIVE") else 0,
+                ),
+            )
+        )
+
+        resources = []
+
+        def on_response(resp):
+            try:
+                resources.append(
+                    {
+                        "url": resp.url,
+                        "status": resp.status,
+                        "content_type": (resp.headers or {}).get("content-type"),
+                    }
+                )
+            except Exception:
+                pass
+
+        page.on("response", on_response)
+        page.goto(target, wait_until=wait_until, timeout=timeout_ms)
+        if settle_ms > 0:
+            page.wait_for_timeout(settle_ms)
+        if interactive_hold_ms > 0:
+            page.wait_for_timeout(interactive_hold_ms)
+
+        body = page.locator("body")
+        body_text = body.inner_text(timeout=15000)
+
+        findings = {
+            "final_url": page.url,
+            "title": page.title(),
+            "dom_counts": {
+                "anchors": page.locator("a").count(),
+                "scripts": page.locator("script").count(),
+                "forms": page.locator("form").count(),
+                "buttons": page.locator("button").count(),
+            },
+            "headings": page.locator("h1, h2, h3").all_inner_texts()[:10],
+            "visible_text_sample": body_text[:text_limit],
+            "resource_sample": resources[:resource_limit],
+            "navigation_strategy": {
+                "wait_until": wait_until,
+                "timeout_ms": timeout_ms,
+                "settle_ms": settle_ms,
+            },
+        }
+        session_url = os.environ.get("PLAYWRIGHT_SESSION_URL")
+        if session_url or interactive_hold_ms > 0:
+            findings["interactive_session"] = {
+                "enabled": True,
+                "url": session_url,
+                "hold_ms": interactive_hold_ms,
+            }
+        return findings
