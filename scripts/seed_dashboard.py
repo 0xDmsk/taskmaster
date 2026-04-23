@@ -1,4 +1,22 @@
-"""Seed the dashboard with realistic-looking security assessment data."""
+"""
+seed_dashboard.py — Development-only dashboard fixture generator.
+
+Populates the Taskmaster state database with synthetic security assessment
+data so you can inspect the dashboard UI without running a real engagement.
+
+ALL data in this script is FICTIONAL:
+  - Target IPs are RFC 1918 private addresses used as placeholders.
+  - Skill names (git_dumper, ftp_exploit, etc.) do not exist in skills/.
+  - Credentials shown in findings (e.g. DB_PASS=s3cr3tP@ss) are fabricated.
+
+WARNING: Do NOT run this against a production or active-assessment database.
+It writes directly to the state store and will corrupt real audit trails.
+Use only on a clean/dev instance (run `make clean` first if needed).
+
+Usage:
+    uv run python scripts/seed_dashboard.py
+    make start   # then open http://localhost:5000
+"""
 
 import json
 import sys

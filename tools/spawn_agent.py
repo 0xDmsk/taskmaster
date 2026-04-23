@@ -28,7 +28,7 @@ def handle_spawn_agent(arguments):
         arguments.get("taskmaster_host")
         or env_vars.get("TASKMASTER_HOST")
         or os.environ.get("TASKMASTER_HOST")
-        or "192.168.64.1"
+        or "host.docker.internal"
     )
     taskmaster_port = (
         arguments.get("taskmaster_port")
@@ -40,7 +40,7 @@ def handle_spawn_agent(arguments):
         arguments.get("proxy_url")
         or env_vars.get("HTTP_PROXY")
         or os.environ.get("HTTP_PROXY")
-        or "http://192.168.64.1:8888"
+        or ""
     )
     if agent_type == "playwright":
         image_name = "playwright-operator"
@@ -55,7 +55,7 @@ def handle_spawn_agent(arguments):
     seclists_path = env_vars.get("SECLISTS_PATH") or os.environ.get("SECLISTS_PATH")
 
     cmd = [
-        "container",
+        "docker",
         "run",
         "-d",
         "--name",
@@ -77,20 +77,26 @@ def handle_spawn_agent(arguments):
             f"TASKMASTER_PORT={taskmaster_port}",
             "-e",
             f"EXECUTOR_ID={agent_id}",
-            "-e",
-            f"http_proxy={proxy_url}",
-            "-e",
-            f"https_proxy={proxy_url}",
-            "-e",
-            f"HTTP_PROXY={proxy_url}",
-            "-e",
-            f"HTTPS_PROXY={proxy_url}",
-            "-e",
-            f"no_proxy={taskmaster_host},localhost,127.0.0.1",
-            "-e",
-            f"NO_PROXY={taskmaster_host},localhost,127.0.0.1",
         ]
     )
+
+    if proxy_url:
+        cmd.extend(
+            [
+                "-e",
+                f"http_proxy={proxy_url}",
+                "-e",
+                f"https_proxy={proxy_url}",
+                "-e",
+                f"HTTP_PROXY={proxy_url}",
+                "-e",
+                f"HTTPS_PROXY={proxy_url}",
+                "-e",
+                f"no_proxy={taskmaster_host},localhost,127.0.0.1",
+                "-e",
+                f"NO_PROXY={taskmaster_host},localhost,127.0.0.1",
+            ]
+        )
 
     if seclists_path:
         cmd.extend(["-e", "SECLISTS_PATH=/usr/share/seclists"])

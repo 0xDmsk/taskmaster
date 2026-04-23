@@ -1,18 +1,31 @@
-# Kali Cloud Smart Operator
+# Taskmaster Executors
 
-A **minimal, macOS-friendly, Apple Silicon–native Kali Linux container** designed for automated orchestration and interactive use.
-
-This version is integrated with **Taskmaster**, allowing it to act as an automated executor for security tasks.
+Taskmaster ships two executor containers. Each claims a distinct subset of task `action_type` values — they coexist on the same queue without conflict.
 
 ---
 
-## 🏗️ New Features
+## 🐉 Kali Smart Operator (`Dockerfile` + `kali_operator.py`)
+
+A **minimal, macOS-friendly, Apple Silicon–native Kali Linux container** designed for automated orchestration and interactive use.
 
 *   **Taskmaster Integration**: Ships with `kali-operator`, a Python-based agent that connects to the Taskmaster MCP server to claim and execute tasks.
-*   **Two-Pathway Execution**: Supports **skill-based execution** (one-tool-per-class with JSON envelope output) and **Python sandbox** for custom analysis. Raw shell execution has been removed.
+*   **Two-Pathway Execution**: Supports `action_type: "skill"` (one-tool-per-class with JSON envelope output) and `action_type: "python"` (Python sandbox for custom analysis). Raw shell execution has been removed.
 *   **Modern Tooling**: Includes `uv`, `pipx`, `proxychains4`, and the full `impacket` script suite.
+*   **Skips**: tasks with `action_type` of `"playwright"` or `"playwright_skill"` — those are left for the Playwright executor.
 
-## 🧰 What’s Included
+## 🎭 Playwright Executor (`Dockerfile.playwright` + `playwright_operator.py`)
+
+A **lightweight `python:3.12-slim` container** with Playwright + Chromium. No Kali tooling — browser-only, minimal footprint.
+
+*   **Taskmaster Integration**: Ships with `playwright-operator`, which polls Taskmaster and exclusively claims tasks with `action_type: "playwright"` or `"playwright_skill"`. All other action types are left for the Kali operator.
+*   **Two-Pathway Execution**: `action_type: "playwright_skill"` imports a `BaseBrowserSkill` subclass and calls `run()`; `action_type: "playwright"` runs a raw Python/Playwright script in a subprocess.
+*   **Proxy support**: Set `BROWSER_PROXY` env var to route browser traffic through Burp or ZAP.
+
+---
+
+## 🏗️ Common Features
+
+## 🧰 Kali: What’s Included
 
 ### Core Utilities
 * `curl`, `jq`, `git`, `uv`, `pipx`
@@ -32,21 +45,52 @@ This version is integrated with **Taskmaster**, allowing it to act as an automat
 
 ---
 
-## 🚀 Running the Operator
+## 🚀 Running the Operators
 
-To start the container and immediately connect to your Taskmaster server:
+### Kali Operator
 
+Build and spawn via Makefile:
 ```bash
-container run -it --rm \
-  -e TASKMASTER_HOST=10.0.0.X \
-  -e TASKMASTER_PORT=5000 \
-  kali-min kali-operator
+make build    # builds kali-smart-operator image
+make spawn    # interactive Kali container (run `operator` inside)
 ```
 
-Or start the container interactively and run the operator via the `operator` alias:
-
+Or directly:
 ```bash
-operator
+docker run -it --rm \
+  -e TASKMASTER_HOST=10.0.0.X \
+  -e TASKMASTER_PORT=5000 \
+  kali-smart-operator kali-operator
+```
+
+### Playwright Operator
+
+Build and spawn via Makefile:
+```bash
+make build-playwright   # builds playwright-operator image
+```
+
+Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:
+```json
+{
+  "tool": "spawn_agent",
+  "arguments": {
+    "agent_type": "playwright",
+    "target": "https://example.com",
+    "mission": "Crawl the SPA and identify exposed API endpoints."
+  }
+}
+```
+
+Or directly:
+```bash
+docker run -d \
+  -e TASKMASTER_HOST=10.0.0.X \
+  -e TASKMASTER_PORT=5000 \
+  -e BROWSER_PROXY=http://10.0.0.X:8080 \
+  -v /path/to/audit/loot:/loot \
+  -v /path/to/skills:/work/skills \
+  playwright-operator playwright-operator
 ```
 
 ---

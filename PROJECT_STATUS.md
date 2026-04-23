@@ -2,8 +2,8 @@
 
 Complete overview of what has been implemented and what remains to be done.
 
-**Last Updated**: 2026-04-03
-**Current Version**: 0.4.0
+**Last Updated**: 2026-04-23
+**Current Version**: 0.5.0
 
 ## ✅ Completed Features
 
@@ -23,6 +23,8 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] Pentest tools (nmap, ffuf, gobuster, sqlmap)
 - [x] Cloud tools (aws-cli, gcloud, kubectl, helm)
 - [x] Proxychains4 integration
+- [x] Playwright executor container (`Dockerfile.playwright`) — browser-only, minimal footprint
+- [x] `playwright_operator.py` — polls Taskmaster and exclusively claims `playwright`/`playwright_skill` tasks
 
 ### MCP Tools
 - [x] `request_security_action` - Queue security tasks
@@ -51,6 +53,7 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] `takeover.NucleiTakeover` (nuclei) — subdomain takeover detection
 - [x] `cloud.AwsCliAudit` (aws) — AWS security audit
 - [x] `cloud.GcloudAudit` (gcloud) — GCP security audit
+- [x] `BaseBrowserSkill` ABC (`skills/browser.py`) — Playwright-native counterpart to `BaseSkill` for browser automation skills
 
 ### Web Dashboard
 - [x] Executions table with clickable row detail expansion (request, result, findings, artifacts, errors)
@@ -64,9 +67,9 @@ Complete overview of what has been implemented and what remains to be done.
 ### Documentation
 - [x] README.md with architecture, dashboard section, and `make` commands
 - [x] GEMINI.md operational guide with skill table, JSON envelope docs, and `wait_for_completion` workflow
-- [x] QUICKSTART.md with v0.3.0 onboarding
+- [x] QUICKSTART.md with onboarding
 - [x] Detailed setup and contributing guides
-- [x] CHANGELOG.md with v0.4.0 entries
+- [x] CHANGELOG.md with v0.5.0 entries
 
 ### Project Configuration
 - [x] `Makefile` for streamlined dev/build/start/test workflows
@@ -108,16 +111,16 @@ Complete overview of what has been implemented and what remains to be done.
 ## 📊 Metrics
 
 ### Code Coverage
-- **Current**: ~75% (66 tests — unit + integration)
+- **Current**: ~80% (101 tests — unit + integration; +35 for Playwright executor and browser skills)
 - **Target**: >80% for critical paths
 
 ### Documentation
-- **Current**: v0.3.0 complete
+- **Current**: v0.5.0 complete
 - **Target**: Comprehensive examples and video tutorials
 
 ## 🎯 Next Milestones
 
-### v0.5.0 - Observability & Hardening
+### v0.6.0 - Observability & Hardening
 - Structured logging & Metrics
 - Health checks
 - Execution timeout enforcement

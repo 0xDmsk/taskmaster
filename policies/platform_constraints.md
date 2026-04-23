@@ -1,6 +1,6 @@
-# Platform Constraints: macOS Container Environment
+# Platform Constraints: macOS + Docker Desktop Environment
 
-Taskmaster runs Kali Linux containers inside a Linux VM on macOS (Lima/Colima/Docker Desktop). This VM boundary imposes hard limitations on what security tools can and cannot do. **You MUST consult this before planning any scan.**
+Taskmaster runs Kali Linux containers inside a Linux VM on macOS (via Docker Desktop). This VM boundary imposes hard limitations on what security tools can and cannot do. **You MUST consult this before planning any scan.**
 
 ## The Core Problem
 

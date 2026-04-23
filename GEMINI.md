@@ -38,10 +38,12 @@ nmap -sS -sV -O target
 
 ## 🎯 Core Objectives
 1.  **Autonomous Execution**: Do not just suggest commands; spawn agents to execute them.
-2.  **Structured Data**: Always use `action_type: "skill"` with a named skill class. Every skill returns a JSON envelope with `findings`, `artifacts`, and `errors`. Use `action_type: "python"` only for custom analysis code.
+2.  **Structured Data**: Always use `action_type: "skill"` with a named skill class. Every skill returns a JSON envelope with `findings`, `artifacts`, and `errors`. Use `action_type: "python"` only for custom analysis code. For browser automation, use `action_type: "playwright_skill"` or `"playwright"`.
 3.  **Self-Documentation**: Ensure every action has a strong `justification` for the audit report.
 
 ## 🛠 Available Skills
+
+### Kali Skills (run in the Kali executor — `action_type: "skill"`)
 
 | Skill Class | Tool | Use For |
 |-------------|------|---------|
@@ -55,13 +57,36 @@ nmap -sS -sV -O target
 | `cloud.AwsCliAudit` | `aws` | AWS security audit |
 | `cloud.GcloudAudit` | `gcloud` | GCP security audit |
 
-### Invoking a Skill
+### Browser Skills (run in the Playwright executor — `action_type: "playwright_skill"`)
+
+Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_browser(page, context, **kwargs) -> dict`. The orchestrator handles browser lifecycle, loot saving, and envelope assembly.
+
+### Invoking a Kali Skill
 ```json
 {
   "action_type": "skill",
   "skill": "network.NmapScan",
   "target": "10.0.0.1",
   "arguments": {"ports": "80,443", "flags": "-sT -sV -sC"}
+}
+```
+
+### Invoking a Browser Skill
+```json
+{
+  "action_type": "playwright_skill",
+  "skill": "browser.MySPACrawl",
+  "target": "https://example.com",
+  "arguments": {"depth": 3}
+}
+```
+
+### Running a Raw Playwright Script
+```json
+{
+  "action_type": "playwright",
+  "target": "https://example.com",
+  "script": "import json, os\nfrom playwright.sync_api import sync_playwright\n# ... script prints a JSON envelope to stdout"
 }
 ```
 
@@ -82,16 +107,17 @@ nmap -sS -sV -O target
 
 ## 🔄 The Standard Loop (Worker-Queue Model)
 
-1.  **Analyze**: Look at the current `audit/session_report.md` and check `container ls` for active workers.
+1.  **Analyze**: Look at the current `audit/session_report.md` and check `docker ps` for active workers.
 2.  **Request**: Use `request_security_action` to queue the task.
 3.  **Provision**: 
     *   **Reuse**: If an agent for the `TARGET` is already running, wait for it to pick up the task.
     *   **Spawn**: Only use `spawn_agent` if no active worker exists or if scaling is required.
+    *   Pass `agent_type: "kali"` (default) for CLI-based tasks or `agent_type: "playwright"` for browser-based tasks. The correct container image and operator command are selected automatically.
     *   Use the structured mission template from `policies/agent_mission_template.md`.
 4.  **Monitor**: Call `wait_for_completion` with the `execution_id`. The tool blocks server-side until the execution reaches `COMPLETED` or `FAILED` (default timeout: 10 min). If it times out, call it again or investigate.
     *   **Note**: Do NOT attempt to read `/loot` or container logs until Taskmaster confirms completion.
 5.  **Pivot**: Read the JSON envelope from the execution result — `findings` contains structured data, `artifacts` lists saved files.
-6.  **Cleanup**: Once a target assessment or security phase is finalized, use `container stop` and `rm` to decommission the worker fleet.
+6.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.
 
 ## 🏗 Skill Expansion Protocol
 If a task is complex and no existing skill fits:

@@ -9,7 +9,7 @@ Usage (MCP client config):
         "command": "python3",
         "args": ["/path/to/taskmaster/scripts/mcp-http-bridge.py"],
         "env": {
-            "TASKMASTER_HOST": "192.168.64.1",
+            "TASKMASTER_HOST": "host.docker.internal",
             "TASKMASTER_PORT": "5000"
         }
     }
@@ -20,7 +20,7 @@ import sys
 import urllib.request
 import urllib.error
 
-HOST = os.environ.get("TASKMASTER_HOST", "192.168.64.1")
+HOST = os.environ.get("TASKMASTER_HOST", "host.docker.internal")
 PORT = os.environ.get("TASKMASTER_PORT", "5000")
 URL = f"http://{HOST}:{PORT}/mcp"
 BRIDGE_TIMEOUT = int(os.environ.get("MCP_BRIDGE_TIMEOUT", "900"))

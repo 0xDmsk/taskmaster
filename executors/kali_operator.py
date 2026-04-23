@@ -22,7 +22,7 @@ def configure_proxychains():
     """
     Configures /etc/proxychains4.conf to use the host proxy.
     """
-    proxy_host = os.environ.get("TASKMASTER_HOST", "192.168.64.1")
+    proxy_host = os.environ.get("TASKMASTER_HOST", "host.docker.internal")
     proxy_port = "8888"  # Based on user's host proxy configuration
 
     conf_path = "/etc/proxychains4.conf"

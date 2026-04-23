@@ -78,7 +78,7 @@ Uses the STDIO-to-HTTP bridge script to connect MCP clients to a running Taskmas
       "command": "python3",
       "args": ["/path/to/taskmaster/scripts/mcp-http-bridge.py"],
       "env": {
-        "TASKMASTER_HOST": "192.168.64.1",
+        "TASKMASTER_HOST": "host.docker.internal",
         "TASKMASTER_PORT": "5000"
       }
     }
@@ -87,7 +87,7 @@ Uses the STDIO-to-HTTP bridge script to connect MCP clients to a running Taskmas
 ```
 
 **Prerequisites**:
-1. Start Taskmaster server: `./scripts/start-server.sh`
+1. Start Taskmaster server: `make start`
 2. Python 3 (no extra packages needed)
 
 ### STDIO Direct Connection
@@ -122,34 +122,26 @@ Uses the STDIO-to-HTTP bridge script to connect MCP clients to a running Taskmas
 
 ### Finding Your Host IP
 
-The `TASKMASTER_HOST` should be the IP that Docker containers can use to reach your host machine.
+The `TASKMASTER_HOST` should be the IP/hostname that Docker containers can use to reach your host machine.
 
-**macOS with Docker Desktop**:
+**macOS / Windows (Docker Desktop)**:
 ```bash
-# Use the special DNS name
+# Docker Desktop provides this automatically — use the built-in DNS name:
 host.docker.internal
-
-# Or find the IP
-ipconfig getifaddr en0
-```
-
-**macOS with Lima/Colima**:
-```bash
-# Typically 192.168.64.1
-limactl shell default ip route show default | awk '/default/ {print $3}'
 ```
 
 **Linux**:
 ```bash
 # Find docker0 bridge IP
 ip addr show docker0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
+# Typically 172.17.0.1
 ```
 
 ### Testing Connection
 
 ```bash
 # Test if HTTP server is reachable
-curl -s -X POST http://192.168.64.1:5000/mcp \
+curl -s -X POST http://host.docker.internal:5000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
@@ -165,7 +157,7 @@ All configurations support these environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TASKMASTER_HOST` | `192.168.64.1` | Host IP for server |
+| `TASKMASTER_HOST` | `host.docker.internal` | Host IP for server |
 | `TASKMASTER_PORT` | `5000` | TCP port for server |
 | `TASKMASTER_WORK_DIR` | (cwd) | Assessment output directory |
 | `HTTP_PROXY` | — | Proxy URL passed to agent containers |
@@ -254,7 +246,7 @@ source ~/.zshrc  # or ~/.bashrc
 2. Verify JSON syntax in client messages
 3. Test with curl:
    ```bash
-   curl -X POST http://192.168.64.1:5000/mcp \
+   curl -X POST http://host.docker.internal:5000/mcp \
      -H "Content-Type: application/json" \
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
    ```

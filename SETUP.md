@@ -56,23 +56,26 @@ cp .env.example .env
 
 Edit `.env` to match your setup:
 ```bash
-# Adjust these for your environment
-TASKMASTER_HOST=192.168.64.1  # macOS: use host IP accessible from containers
+# Docker Desktop (macOS/Windows) — use the built-in DNS name:
+TASKMASTER_HOST=host.docker.internal
 TASKMASTER_PORT=5000
+
+# Linux — use the docker0 bridge IP instead:
+# TASKMASTER_HOST=172.17.0.1
 ```
 
 **Finding your container-accessible host IP:**
 
-**macOS with Docker Desktop:**
+**macOS / Windows (Docker Desktop):**
 ```bash
-# Docker Desktop automatically provides host.docker.internal
-# Or use: 192.168.64.1 (typical for lima-based setups)
+# Docker Desktop provides this automatically — no extra config needed
+TASKMASTER_HOST=host.docker.internal
 ```
 
 **Linux:**
 ```bash
-# Use docker0 bridge IP or host network
-ip addr show docker0 | grep inet
+# Find the docker0 bridge IP
+ip addr show docker0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
 ```
 
 ### 3. Install Python Dependencies
@@ -91,17 +94,21 @@ mkdir -p audit/loot state
 tree -L 2
 ```
 
-### 5. Build the Agent Container
+### 5. Build the Agent Container(s)
 
 ```bash
-./scripts/build.sh
+# Kali executor (CLI pentesting tools)
+make build
+
+# Playwright executor (browser-based testing, optional)
+make build-playwright
 ```
 
-This builds the `kali-smart-operator` image (~2-3 GB, takes 5-10 minutes on first build).
+`make build` builds the `kali-smart-operator` image (~2-3 GB, takes 5-10 minutes on first build).
 
-**Verify the build:**
+**Verify the builds:**
 ```bash
-docker images | grep kali-smart-operator
+docker images | grep -E 'kali-smart-operator|playwright-operator'
 ```
 
 ## 🧪 Testing the Installation
@@ -109,61 +116,37 @@ docker images | grep kali-smart-operator
 ### 1. Run Unit Tests
 
 ```bash
-./scripts/test.sh
+make test
 ```
 
-Expected output:
-```
-Running granular workflow test...
-1. Requesting Recon...
-2. Claiming Execution...
-...
-All granular lifecycle tests passed.
+Or directly with UV:
+```bash
+uv run pytest tests/
 ```
 
 ### 2. Start the MCP Server
 
 In Terminal 1:
 ```bash
-./scripts/start-server.sh
-```
-
-Expected output:
-```
-🚀 Starting Taskmaster MCP Server
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Host: 192.168.64.1
-Port: 5000
-Server: server.py
-
-Starting server...
-Press Ctrl+C to stop
+make start
 ```
 
 ### 3. Test MCP Connection
 
 In Terminal 2, test with a simple tool call:
 ```bash
-echo '{"type":"initialize"}' | nc 192.168.64.1 5000
+curl -s -X POST http://localhost:5000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Expected response:
-```json
-{
-  "type": "initialize_response",
-  "tools": {
-    "request_security_action": {...},
-    "spawn_agent": {...},
-    ...
-  }
-}
-```
+Expected response: a JSON object listing all available Taskmaster tools.
 
 ### 4. Spawn a Test Agent
 
 In Terminal 3:
 ```bash
-./scripts/spawn-agent.sh
+make spawn
 ```
 
 This opens an interactive Kali agent container. Try:
@@ -295,16 +278,15 @@ TASKMASTER_PORT=5001
 
 ### Container Can't Reach Host
 
-**macOS Docker Desktop:**
+**macOS / Windows (Docker Desktop):**
 ```bash
-# Use special DNS name
 TASKMASTER_HOST=host.docker.internal
 ```
 
-**Or find the correct IP:**
+**Linux:**
 ```bash
-# For lima/colima
-limactl shell default ip route show default | awk '/default/ {print $3}'
+# Use the docker0 bridge IP
+ip addr show docker0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
 ```
 
 ### Agent Build Fails

@@ -73,7 +73,7 @@ Kali Linux container (executors/Dockerfile)
 
 ## Environment
 
-Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `HTTP_PROXY`, `SECLISTS_PATH`. Networking defaults are pre-configured for macOS Docker (`192.168.64.1`). See `.env.example` for the full list.
+Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `HTTP_PROXY`, `SECLISTS_PATH`. Default `TASKMASTER_HOST` is `host.docker.internal` (Docker Desktop on macOS/Windows); Linux users should set it to the `docker0` bridge IP. See `.env.example` for the full list.
 
 ## Agent Operational Guide
 

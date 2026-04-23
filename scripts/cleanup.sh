@@ -14,9 +14,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 # Detect container runtime
-if command -v container &> /dev/null; then
-    RUNTIME="container"
-elif command -v docker &> /dev/null; then
+if command -v docker &> /dev/null; then
     RUNTIME="docker"
 elif command -v podman &> /dev/null; then
     RUNTIME="podman"
@@ -28,11 +26,14 @@ fi
 # Clean up containers
 if [ -n "$RUNTIME" ]; then
     echo "Stopping and removing Taskmaster agent containers..."
-    $RUNTIME ps -a --filter "name=kali-agent" --format "{{.Names}}" | while read -r container; do
-        if [ -n "$container" ]; then
-            echo "  Removing: $container"
-            $RUNTIME rm -f "$container" 2>/dev/null || true
-        fi
+    # Match both kali-agent-* and playwright-agent-* containers
+    for filter in "name=kali-agent" "name=playwright-agent"; do
+        $RUNTIME ps -a --filter "$filter" --format "{{.Names}}" | while read -r container; do
+            if [ -n "$container" ]; then
+                echo "  Removing: $container"
+                $RUNTIME rm -f "$container" 2>/dev/null || true
+            fi
+        done
     done
     echo "✅ Containers cleaned"
     echo ""

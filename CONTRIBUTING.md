@@ -30,9 +30,10 @@ cp .env.example .env
 # Edit .env with your settings
 ```
 
-4. Build the agent container:
+4. Build the agent container(s):
 ```bash
-./scripts/build.sh
+make build              # Kali executor
+make build-playwright   # Playwright executor (optional)
 ```
 
 ## 🛠 Development Workflow
@@ -40,18 +41,19 @@ cp .env.example .env
 ### Running Tests
 
 ```bash
-./scripts/test.sh
+make test
 ```
 
-Or manually:
+Or directly with UV:
 ```bash
-uv run python test_workflow.py
+uv run pytest tests/
+uv run pytest tests/unit/test_base_skill.py  # single file
 ```
 
 ### Starting the Server
 
 ```bash
-./scripts/start-server.sh
+make start
 ```
 
 ### Code Style
@@ -67,14 +69,23 @@ uv run ruff check .
 
 ### Creating Skills
 
-New skills should be added to the `skills/` directory. Follow the template in `skills/TEMPLATE.md`:
+New skills should be added to the `skills/` directory. Follow the template in `skills/TEMPLATE.md`.
 
-1. Inherit from `BaseSkill`
+**CLI skills** (run in the Kali executor, `action_type: "skill"`):
+
+1. Inherit from `BaseSkill` (`skills/base.py`)
 2. Set `tool` and `tool_version_command` class attributes
 3. Implement `build_command(**kwargs) -> str` — construct the CLI command
 4. Implement `parse_output(stdout, stderr, exit_code) -> dict` — parse raw output into structured findings
 5. One tool per skill class — do not combine multiple tools in a single skill
 6. Use `self.save_artifact()` / `self.save_json()` for loot (automatically tracked)
+
+**Browser skills** (run in the Playwright executor, `action_type: "playwright_skill"`):
+
+1. Inherit from `BaseBrowserSkill` (`skills/browser.py`)
+2. Implement `run_browser(page, context, **kwargs) -> dict` — perform browser automation and return findings
+3. Use `self.save_screenshot()`, `self.save_artifact()`, `self.save_json()` for loot
+4. Set `BROWSER_PROXY` env var to route traffic through a proxy (e.g. Burp/ZAP)
 
 Example:
 ```python

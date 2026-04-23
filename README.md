@@ -8,7 +8,7 @@ Taskmaster coordinates a **Planner** (Gemini) and a dynamic fleet of **Specializ
 
 ```mermaid
 graph TD
-    Gemini["Gemini (Planner)"] -->|"spawn_agent"| Lima["Lima Runtime"]
+    Gemini["Gemini (Planner)"] -->|"spawn_agent"| Docker["Docker"]
     Gemini -->|"request_security_action"| TM["Taskmaster Core"]
     
     subgraph "Agent Fleet"
@@ -16,7 +16,7 @@ graph TD
         Agent2["Agent B (Target: 10.0.0.2)"]
     end
 
-    Lima -->|"Spawns + Mounts"| Agent1
+    Docker -->|"Spawns + Mounts"| Agent1
     Agent1 <-->|"Polls"| TM
     
     subgraph "Host Volumes"
@@ -36,15 +36,20 @@ graph TD
     *   **Target Locking**: Prevents overlapping actions on the same target.
     *   **Audit Manager**: Automatically generates a Markdown report and JSONL logs in the `audit/` folder.
 
-2.  **Universal Agent ("Smart Operator")**:
+2.  **Kali Agent ("Smart Operator")**:
     *   **Specialization**: Containers are "mission-aware" at runtime.
     *   **Two Pathways**: Executes via skill classes (JSON envelope output) or Python sandbox — no raw shell commands.
     *   **Skills Library**: A mounted library of one-tool-per-class Python modules with structured JSON output.
 
+3.  **Playwright Executor**:
+    *   **Browser-native**: A lightweight `python:3.12-slim` container with Playwright + Chromium. No Kali tooling.
+    *   **Two Pathways**: `playwright_skill` (imports a `BaseBrowserSkill` subclass) or `playwright` (raw Python/Playwright script in a subprocess).
+    *   **Selective claiming**: Only picks up tasks with `action_type: "playwright"` or `"playwright_skill"`; Kali tasks are left for the Kali operator.
+
 ## 🛡 Features & Safety
 
 *   **Concurrency**: Uses `fcntl` file locking for safe state access and target-level execution locks.
-*   **Networking**: Pre-configured for MaOS environments (`192.168.64.1`) with full host proxy and `proxychains4` integration.
+*   **Networking**: Pre-configured for Docker Desktop on macOS/Windows (`host.docker.internal`). Linux users set `TASKMASTER_HOST` to the `docker0` bridge IP. Full host proxy and `proxychains4` integration included.
 *   **Persistent Loot**: All files saved to `/loot` in a container appear in `audit/loot/` on your host.
 
 ## 🚀 Getting Started
@@ -96,7 +101,13 @@ Each skill wraps exactly one CLI tool and produces a standardized JSON envelope 
 | `cloud.AwsCliAudit` | `aws` | AWS identity, S3, and IAM auditing |
 | `cloud.GcloudAudit` | `gcloud` | GCP project and config auditing |
 
-See `skills/TEMPLATE.md` for creating new skills.
+**Browser skills** (run in the Playwright executor, extend `BaseBrowserSkill` from `skills/browser.py`):
+
+| Base Class | Engine | Description |
+|------------|--------|-------------|
+| `browser.BaseBrowserSkill` | Playwright | Abstract base for browser-automation skills. Subclasses implement `run_browser(page, context, **kwargs)`. |
+
+See `skills/TEMPLATE.md` for creating new skills (both CLI and browser variants).
 
 ## 📊 Dashboard
 
@@ -118,6 +129,8 @@ uv run python server.py --http
 
 *   `audit/`: Contains the `session_report.md` and persistent `loot/`.
 *   `dashboard/`: Web UI — API handlers, Jinja2 templates, static assets.
-*   `skills/`: Reusable Python modules for specialized tasks.
-*   `executors/`: Dockerfile and operator logic for Kali Linux.
+*   `skills/`: Reusable Python modules for specialized tasks. `base.py` for CLI skills, `browser.py` for Playwright-based skills.
+*   `executors/`: Operator logic and Dockerfiles for both executor types:
+    *   `Dockerfile` + `kali_operator.py` — Kali Linux agent (CLI tools, `skill`/`python` action types)
+    *   `Dockerfile.playwright` + `playwright_operator.py` — Playwright agent (browser, `playwright_skill`/`playwright` action types)
 *   `tools/`: 13 MCP tool handlers for orchestration (spawning, tracking, waiting, cleanup).

@@ -22,14 +22,12 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
-if command -v container &> /dev/null; then
-    RUNTIME="container"
-elif command -v docker &> /dev/null; then
+if command -v docker &> /dev/null; then
     RUNTIME="docker"
 elif command -v podman &> /dev/null; then
     RUNTIME="podman"
 else
-    echo "❌ Error: No container runtime found (container, docker, or podman)"
+    echo "❌ Error: No container runtime found (docker or podman)"
     exit 1
 fi
 

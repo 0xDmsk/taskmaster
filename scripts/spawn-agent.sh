@@ -15,7 +15,7 @@ if [ -f .env ]; then
 fi
 
 IMAGE_NAME="${AGENT_IMAGE_NAME:-kali-smart-operator}"
-TASKMASTER_HOST="${TASKMASTER_HOST:-192.168.64.1}"
+TASKMASTER_HOST="${TASKMASTER_HOST:-host.docker.internal}"
 TASKMASTER_PORT="${TASKMASTER_PORT:-5000}"
 LOOT_DIR="${LOOT_DIR:-$PROJECT_ROOT/audit/loot}"
 SKILLS_DIR="${SKILLS_DIR:-$PROJECT_ROOT/skills}"
@@ -31,14 +31,12 @@ echo "Taskmaster: $TASKMASTER_HOST:$TASKMASTER_PORT"
 echo ""
 
 # Detect container runtime
-if command -v container &> /dev/null; then
-    RUNTIME="container"
-elif command -v docker &> /dev/null; then
+if command -v docker &> /dev/null; then
     RUNTIME="docker"
 elif command -v podman &> /dev/null; then
     RUNTIME="podman"
 else
-    echo "❌ Error: No container runtime found (container, docker, or podman)"
+    echo "❌ Error: No container runtime found (docker or podman)"
     exit 1
 fi
 
