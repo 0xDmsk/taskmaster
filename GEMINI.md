@@ -49,6 +49,7 @@ Before queuing an execution, explicitly decide between these three options:
     *   Choose this when the task clearly maps to one installed tool and the tool adds real value over plain Python.
     *   Good examples: `nmap` port scanning, `ffuf` content discovery, `gobuster` DNS brute-force, `nuclei` takeover checks.
     *   Do not use a skill just because one exists. If the task is only “fetch one page and summarize headers/title/scripts,” a skill is usually overkill.
+    *   For ProjectDiscovery-backed skills, assume the agent may need to install the binary with `pdtm` before first use if it is missing.
 
 2.  **Use `action_type: "python"`**
     *   Choose this for lightweight passive HTTP requests, HTML parsing, JSON parsing, response-header inspection, small transformations, and glue logic between previous findings.
@@ -78,6 +79,7 @@ Avoid these planning mistakes:
 *   Do not create a new skill for a one-off page fetch, one-off regex extraction, or small response comparison.
 *   Do not force a skill when the external binary may be absent and Python can solve the task directly.
 *   Do not use browser automation when plain HTTP requests are sufficient.
+*   Do not create a new skill just to wrap one missing ProjectDiscovery binary; prefer the existing skill plus `pdtm` bootstrap if the workflow already fits.
 
 ## 🛠 Available Skills
 

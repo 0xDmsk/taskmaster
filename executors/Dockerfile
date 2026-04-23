@@ -2,6 +2,7 @@ FROM --platform=linux/arm64 kalilinux/kali-rolling
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
+ENV PATH=/root/.pdtm/go/bin:$PATH
 
 # Disable docs, manpages, locales
 RUN printf "path-exclude /usr/share/doc/*\n\
@@ -44,6 +45,17 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /usr/local/bin/uv && \
     mv /root/.local/bin/uvx /usr/local/bin/uvx
 
+# Install PDTM from ProjectDiscovery release assets
+ARG PDTM_VERSION=v0.1.3
+RUN set -eux; \
+    asset_url="$(curl -fsSL https://api.github.com/repos/projectdiscovery/pdtm/releases/tags/${PDTM_VERSION} | \
+      jq -r '.assets[] | select(.name | test("linux_arm64.zip$")) | .browser_download_url' | head -n1)"; \
+    test -n "$asset_url"; \
+    curl -fsSL "$asset_url" -o /tmp/pdtm.zip; \
+    unzip -j /tmp/pdtm.zip -d /usr/local/bin pdtm; \
+    chmod +x /usr/local/bin/pdtm; \
+    rm -f /tmp/pdtm.zip
+
 # -------- Cloud & K8s tooling (kept minimal) --------
 
 # AWS CLI v2 (ARM64)
@@ -83,6 +95,7 @@ RUN apt update && \
 
 # -------- Taskmaster Integration --------
 COPY skills /app/skills
+COPY targeting.py /app/targeting.py
 ENV PYTHONPATH /app:$PYTHONPATH
 COPY executors/kali_operator.py /usr/local/bin/kali-operator
 RUN chmod +x /usr/local/bin/kali-operator

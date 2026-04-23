@@ -8,6 +8,7 @@ Use this template when creating new skills in the `skills/` directory.
 2. **Two abstract methods** — `build_command()` constructs the CLI command, `parse_output()` parses results into structured findings
 3. **JSON envelope** — `run()` is concrete and assembles a standard envelope automatically
 4. **Earn the abstraction** — create a skill only when the workflow is reusable and tool-backed; do not create skills for one-off fetch/parse tasks that plain Python can handle
+5. **Declare installation behavior** — if the skill depends on a ProjectDiscovery tool that may be installed on demand, set `auto_install_with_pdtm = True`
 
 ## File Naming
 - Filename: `[category].py` (e.g., `web.py`, `cloud.py`, `network.py`)
@@ -26,6 +27,7 @@ class YourToolAction(BaseSkill):
 
     tool = "toolname"                          # CLI tool name
     tool_version_command = "toolname --version" # version detection command
+    auto_install_with_pdtm = False             # True for supported ProjectDiscovery tools
 
     def build_command(self, **kwargs) -> str:
         """Construct the exact CLI command to run."""
@@ -79,3 +81,5 @@ Do not create a new skill when:
 - A few lines of Python can fetch a page, parse JSON, inspect headers, or transform previous findings
 - The logic is one-off and unlikely to be reused
 - The task is mostly orchestration or glue between existing outputs
+
+If a suitable ProjectDiscovery-backed skill already exists but the binary is missing, prefer enabling/using PDTM-backed installation instead of creating a duplicate skill.

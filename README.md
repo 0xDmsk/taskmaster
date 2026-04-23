@@ -40,6 +40,7 @@ graph TD
     *   **Specialization**: Containers are "mission-aware" at runtime.
     *   **Two Pathways**: Executes via skill classes (JSON envelope output) or Python sandbox — no raw shell commands.
     *   **Skills Library**: A mounted library of one-tool-per-class Python modules with structured JSON output.
+    *   **PDTM bootstrapping**: ProjectDiscovery-backed skills can install their own missing binaries on first use via `pdtm`.
 
 3.  **Playwright Executor**:
     *   **Browser-native**: A lightweight `python:3.12-slim` container with Playwright + Chromium. No Kali tooling.
@@ -53,6 +54,7 @@ When choosing how to execute a task:
 - Use `action_type: "skill"` when an existing external tool materially improves the result.
 - Create a new skill only for reusable tool-backed workflows, not for one-off parsing or fetch tasks.
 - Use Playwright only when rendered DOM or browser interaction is required.
+- If a ProjectDiscovery-backed skill is the right fit, it may bootstrap its binary through `pdtm` if the tool is not already present.
 
 ## 🛡 Features & Safety
 

@@ -25,6 +25,8 @@ class BaseSkill(ABC):
     tool: str = ""
     tool_version_command: str = ""
     schema: dict | None = None
+    auto_install_with_pdtm: bool = False
+    pdtm_project: str | None = None
 
     def __init__(self, target=None):
         self.target = target
@@ -56,7 +58,8 @@ class BaseSkill(ABC):
         if skill_name.startswith("skills."):
             skill_name = skill_name[len("skills.") :]
 
-        if self.tool and not shutil.which(self.tool):
+        tool_error = self._ensure_tool_available()
+        if tool_error:
             completed_at = datetime.now(timezone.utc).isoformat()
             return {
                 "skill": skill_name,
@@ -69,7 +72,7 @@ class BaseSkill(ABC):
                 "command": "",
                 "findings": {},
                 "artifacts": [],
-                "errors": [f"Required tool '{self.tool}' is not installed in this executor image."],
+                "errors": [tool_error],
             }
 
         # Detect tool version
@@ -165,6 +168,57 @@ class BaseSkill(ABC):
             return ""
         except Exception:
             return ""
+
+    def _ensure_tool_available(self) -> str | None:
+        """Ensure the declared tool exists, optionally installing it via PDTM."""
+        if not self.tool:
+            return None
+
+        if shutil.which(self.tool):
+            return None
+
+        install_error = self._attempt_pdtm_install()
+        if install_error:
+            return install_error
+
+        if shutil.which(self.tool):
+            return None
+
+        return f"Required tool '{self.tool}' is not installed in this executor image."
+
+    def _attempt_pdtm_install(self) -> str | None:
+        """Attempt to install the tool via PDTM when the skill opts into it."""
+        if not self.auto_install_with_pdtm:
+            return None
+
+        if not shutil.which("pdtm"):
+            return (
+                f"Required tool '{self.tool}' is not installed in this executor image, "
+                "and PDTM is unavailable for auto-install."
+            )
+
+        project = self.pdtm_project or self.tool
+        try:
+            result = subprocess.run(
+                ["pdtm", "-duc", "-nc", "-i", project],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            return f"PDTM timed out while installing '{project}'."
+        except Exception as e:
+            return f"PDTM failed while installing '{project}': {e}"
+
+        if result.returncode == 0:
+            return None
+
+        details = "\n".join(
+            part.strip() for part in (result.stdout, result.stderr) if part and part.strip()
+        )
+        if details:
+            return f"PDTM failed to install '{project}': {details}"
+        return f"PDTM failed to install '{project}'."
 
     def execute_shell(self, command, timeout=300):
         """Helper to run shell commands safely."""

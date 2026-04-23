@@ -42,6 +42,7 @@ class SubfinderEnum(BaseSkill):
 
     tool = "subfinder"
     tool_version_command = "subfinder -version 2>&1"
+    auto_install_with_pdtm = True
 
     def build_command(self, **kwargs) -> str:
         domain = kwargs.get("domain") or self.target

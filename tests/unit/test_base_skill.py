@@ -5,6 +5,7 @@ Unit tests for the refactored BaseSkill envelope assembly.
 import json
 import os
 import sys
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
@@ -45,6 +46,17 @@ class FailParseSkill(BaseSkill):
 
     def parse_output(self, stdout, stderr, exit_code) -> dict:
         raise RuntimeError("parse boom")
+
+
+class PdtmSkill(BaseSkill):
+    tool = "httpx"
+    auto_install_with_pdtm = True
+
+    def build_command(self, **kwargs) -> str:
+        return "httpx -version"
+
+    def parse_output(self, stdout, stderr, exit_code) -> dict:
+        return {"message": stdout.strip()}
 
 
 # --- Tests ---
@@ -129,3 +141,37 @@ class TestArtifactTracking:
         assert path in skill._artifacts
         with open(path) as f:
             assert json.load(f) == {"key": "value"}
+
+
+class TestPdtmBootstrap:
+    def test_auto_installs_supported_tool_via_pdtm(self):
+        skill = PdtmSkill(target="localhost")
+
+        with patch("skills.base.shutil.which") as mock_which, patch(
+            "skills.base.subprocess.run"
+        ) as mock_run:
+            mock_which.side_effect = [None, "/usr/local/bin/pdtm", "/root/.pdtm/go/bin/httpx"]
+            mock_run.side_effect = [
+                Mock(returncode=0, stdout="", stderr=""),
+                Mock(returncode=0, stdout="httpx v1.0.0\n", stderr=""),
+                Mock(returncode=0, stdout="httpx v1.0.0\n", stderr=""),
+            ]
+
+            result = skill.run()
+
+        assert result["status"] == "success"
+        assert mock_run.call_args_list[0].args[0] == ["pdtm", "-duc", "-nc", "-i", "httpx"]
+
+    def test_returns_clear_error_when_pdtm_install_fails(self):
+        skill = PdtmSkill(target="localhost")
+
+        with patch("skills.base.shutil.which") as mock_which, patch(
+            "skills.base.subprocess.run"
+        ) as mock_run:
+            mock_which.side_effect = [None, "/usr/local/bin/pdtm"]
+            mock_run.return_value = Mock(returncode=1, stdout="", stderr="boom")
+
+            result = skill.run()
+
+        assert result["status"] == "error"
+        assert "PDTM failed to install" in result["errors"][0]

@@ -9,6 +9,7 @@ class NucleiTakeover(BaseSkill):
 
     tool = "nuclei"
     tool_version_command = "nuclei -version 2>&1"
+    auto_install_with_pdtm = True
 
     def build_command(self, **kwargs) -> str:
         targets = kwargs.get("targets") or kwargs.get("subdomains")

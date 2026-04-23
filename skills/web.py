@@ -56,6 +56,7 @@ class HttpxDetect(BaseSkill):
     """Technology detection using httpx."""
 
     tool = "httpx"
+    auto_install_with_pdtm = True
     tool_version_command = "httpx -version 2>&1"
 
     def build_command(self, **kwargs) -> str:

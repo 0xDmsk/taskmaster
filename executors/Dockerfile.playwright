@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir playwright && \
 
 # -------- Taskmaster Integration --------
 COPY skills /app/skills
+COPY targeting.py /app/targeting.py
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 COPY executors/playwright_operator.py /usr/local/bin/playwright-operator
