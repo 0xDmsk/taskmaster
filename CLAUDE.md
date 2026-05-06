@@ -55,7 +55,7 @@ Kali Linux container (executors/Dockerfile)
     /loot → audit/loot/         # Shared volume for artifacts
 ```
 
-**Execution flow:** `request_security_action` → `spawn_agent` → `claim_execution` → skill runs → `complete_execution` → session report generated.
+**Execution flow:** `request_security_action` queues work only. The default next step is `spawn_agent`, unless you have already verified a compatible live worker for the same target and executor type. After provisioning, use `wait_for_completion` as the normal monitor path. Use `query_execution_status` mainly for debugging or recovery.
 
 ## Key Concepts
 
@@ -77,4 +77,11 @@ Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `
 
 ## Agent Operational Guide
 
-See `GEMINI.md` for the full worker-queue model and mission briefing template at `policies/agent_mission_template.md`.
+Standard workflow:
+1. Queue work with `request_security_action`.
+2. Spawn a compatible agent with `spawn_agent` unless a matching live worker has already been verified for the target.
+3. Monitor with `wait_for_completion`.
+
+Do not assume that a `QUEUED` execution provisions a worker by itself.
+
+See `GEMINI.md` for the fuller worker-queue model and `policies/agent_mission_template.md` for mission briefing structure.

@@ -5,6 +5,12 @@ All notable changes to Taskmaster will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Planner-facing execution guidance now makes provisioning explicit: `request_security_action` only queues work, `spawn_agent` is the default next step unless a compatible live worker has already been verified for the target, and `query_execution_status` is positioned as a debugging/recovery tool rather than the standard monitor path.
+- Added the same provisioning guidance to `CLAUDE.md` and a new repo-local `AGENTS.md` so non-Gemini agents receive the same workflow expectations.
+
 ## [0.5.0] - 2026-04-21
 
 ### Added

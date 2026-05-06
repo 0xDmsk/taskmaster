@@ -16,7 +16,7 @@
   },
 
   "globalShortcuts": {
-    "taskmaster_status": "query_execution_status",
+    "taskmaster_debug_status": "query_execution_status",
     "taskmaster_request": "request_security_action",
     "taskmaster_spawn": "spawn_agent",
     "taskmaster_wait": "wait_for_completion"

@@ -37,13 +37,19 @@ TOOLS = {
         "description": (
             "Request execution of a security-related action. Commands are validated "
             "against macOS VM platform constraints — raw-socket scans (nmap -sS, -sU, "
-            "-O) are blocked. Use nmap -sT."
+            "-O) are blocked. Use nmap -sT. This tool only queues work; after it "
+            "returns QUEUED, spawn or reuse a compatible agent, then monitor with "
+            "wait_for_completion."
         ),
         "handler": handle_request,
         "schema": load_tool_schema("request_security_action"),
     },
     "spawn_agent": {
-        "description": "Spawn a new Kali agent container for a specific target or task",
+        "description": (
+            "Spawn a new agent container for a specific target or task. This is the "
+            "default next step after request_security_action unless you have already "
+            "verified a compatible live worker for that target."
+        ),
         "handler": handle_spawn_agent,
         "inputSchema": {
             "type": "object",
@@ -107,7 +113,11 @@ TOOLS = {
         },
     },
     "query_execution_status": {
-        "description": "Get current status of an execution by execution_id",
+        "description": (
+            "Get current status of an execution by execution_id. Prefer "
+            "wait_for_completion for the standard workflow; use this mainly for "
+            "debugging, recovery, or explicit spot-checks."
+        ),
         "handler": handle_query_execution_status,
         "inputSchema": {
             "type": "object",
@@ -285,7 +295,9 @@ TOOLS = {
     "wait_for_completion": {
         "description": (
             "Block until an execution reaches COMPLETED or FAILED (or timeout). "
-            "Eliminates polling — call once, get the result when ready."
+            "Eliminates polling — call once, get the result when ready. Use this "
+            "after the execution has been queued and a compatible worker has been "
+            "spawned or explicitly verified as already running."
         ),
         "handler": handle_wait_for_completion,
         "inputSchema": {

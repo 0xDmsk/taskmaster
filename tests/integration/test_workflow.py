@@ -116,6 +116,27 @@ class TestFullLifecycle:
         assert result["error"] == "Planning guardrail triggered"
         assert "action_type 'python'" in result["suggestion"]
 
+    def test_request_response_includes_provisioning_hint(self):
+        payload = {
+            "agent_role": "recon",
+            "phase": "reconnaissance",
+            "target": "10.0.0.9",
+            "action_type": "skill",
+            "skill": "network.NmapScan",
+            "arguments": {"flags": "-sT -sV"},
+            "justification": "Initial reconnaissance to identify open ports and services on target system",
+            "expected_output": "JSON envelope with scan results",
+        }
+
+        result = handle_request(payload)
+
+        assert result["status"] == "QUEUED"
+        assert "only queued the execution" in result["message"]
+        assert result["recommended_next_steps"] == [
+            "Spawn a compatible agent with spawn_agent unless a matching live worker is already running",
+            "Then call wait_for_completion with this execution_id",
+        ]
+
     def test_passive_web_recon_guardrail_can_be_overridden(self):
         payload = {
             "agent_role": "recon",

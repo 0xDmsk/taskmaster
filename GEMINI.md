@@ -169,11 +169,13 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
 1.  **Analyze**: Look at the current `audit/session_report.md` and check `docker ps` for active workers.
 2.  **Request**: Use `request_security_action` to queue the task.
 3.  **Provision**: 
-    *   **Reuse**: If an agent for the `TARGET` is already running, wait for it to pick up the task.
-    *   **Spawn**: Only use `spawn_agent` if no active worker exists or if scaling is required.
+    *   **Default**: After queuing an execution, immediately call `spawn_agent`.
+    *   **Reuse**: Skip `spawn_agent` only if you have already verified that a compatible worker is currently running for the same `TARGET` and executor type.
+    *   **Do not assume**: A `QUEUED` execution does not provision a worker by itself. `request_security_action` only writes to the queue.
     *   Pass `agent_type: "kali"` (default) for CLI-based tasks or `agent_type: "playwright"` for browser-based tasks. The correct container image and operator command are selected automatically.
     *   Use the structured mission template from `policies/agent_mission_template.md`.
 4.  **Monitor**: Call `wait_for_completion` with the `execution_id`. The tool blocks server-side until the execution reaches `COMPLETED` or `FAILED` (default timeout: 10 min). If it times out, call it again or investigate.
+    *   **Do not poll by default**: Do not call `query_execution_status` as the normal next step after queuing work. Use it only for debugging, recovery, or an explicit spot-check.
     *   **Note**: Do NOT attempt to read `/loot` or container logs until Taskmaster confirms completion.
 5.  **Pivot**: Read the JSON envelope from the execution result — `findings` contains structured data, `artifacts` lists saved files.
 6.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.

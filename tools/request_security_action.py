@@ -205,7 +205,15 @@ def handle_request(payload):
     result = {
         "execution_id": execution_id,
         "status": "QUEUED",
-        "message": "Security action accepted for processing",
+        "message": (
+            "Security action accepted for processing. This only queued the "
+            "execution; spawn a compatible agent unless you have already "
+            "verified a matching live worker for this target."
+        ),
+        "recommended_next_steps": [
+            "Spawn a compatible agent with spawn_agent unless a matching live worker is already running",
+            "Then call wait_for_completion with this execution_id",
+        ],
     }
 
     if warnings:
