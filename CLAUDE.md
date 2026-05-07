@@ -79,11 +79,19 @@ Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `
 
 ## Agent Operational Guide
 
+This section applies whenever Claude is the orchestrating LLM driving Taskmaster (not just when editing source code in this repo). Sister files `AGENTS.md` (Codex) and `GEMINI.md` carry the same workflow — keep them in sync when changing it.
+
 Standard workflow:
-1. Queue work with `request_security_action`.
-2. Spawn a compatible agent with `spawn_agent` unless a matching live worker has already been verified for the target.
-3. Monitor with `wait_for_completion`.
+1. **Queue** — call `request_security_action`.
+2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
+3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
+4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable findings, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. Match the level of detail you would surface to a human reviewer in the CLI.
+5. **Cleanup** — once a target assessment or phase is finalized, use `cleanup_agents` to decommission the worker fleet.
 
-Do not assume that a `QUEUED` execution provisions a worker by itself.
+Do not assume that a `QUEUED` execution provisions a worker by itself. Use `query_execution_status` mainly for debugging, recovery, or explicit spot-checks — not as the default next step after queuing work.
 
-See `GEMINI.md` for the fuller worker-queue model and `policies/agent_mission_template.md` for mission briefing structure.
+### Interpretation field — required for good UX
+
+Every finalization call should include `interpretation`. Without it the dashboard's findings panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs.
+
+See `AGENTS.md` for the canonical model-agnostic guide, `GEMINI.md` for the fuller worker-queue context, and `policies/agent_mission_template.md` for mission briefing structure plus the interpretation wrap-up.

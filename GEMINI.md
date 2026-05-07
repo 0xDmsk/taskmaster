@@ -1,6 +1,6 @@
-# Gemini Operational Guide: Taskmaster Infrastructure
+# Orchestrator Operational Guide: Taskmaster Infrastructure
 
-This document serves as the "mental model" for AI agents operating the Taskmaster platform.
+This document serves as the "mental model" for **any AI agent** operating the Taskmaster platform — Gemini, Claude, Codex, or others. The filename is `GEMINI.md` only because the Gemini CLI auto-loads it; sister files `AGENTS.md` (Codex) and `CLAUDE.md` (Claude Code) carry the same operational workflow. **Keep all three in sync when changing the workflow.**
 
 ## ⚠️ CRITICAL: Platform Constraints (Read First)
 
