@@ -141,6 +141,9 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
 ```
 
 ### Running a Raw Playwright Script
+
+**The Playwright executor runs Python, not JavaScript.** Scripts are executed via the container's Python interpreter using the `playwright.sync_api` (or `async_api`) bindings. Submitting a Node/JS script will fail. The script must print a single JSON envelope to stdout.
+
 ```json
 {
   "action_type": "playwright",

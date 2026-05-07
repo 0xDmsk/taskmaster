@@ -1,6 +1,6 @@
 {
   "name": "request_security_action",
-  "description": "Request execution of a security-related action in a controlled environment. Supports two action types: 'skill' (invoke a named skill class) and 'python' (run Python code in a sandbox). See skills/TEMPLATE.md for creating new skills.",
+  "description": "Request execution of a security-related action in a controlled environment. Supports skill, python, and Playwright execution modes. See skills/TEMPLATE.md for creating new skills.",
   "inputSchema": {
     "type": "object",
     "required": [
@@ -40,9 +40,11 @@
         "type": "string",
         "enum": [
           "skill",
-          "python"
+          "python",
+          "playwright",
+          "playwright_skill"
         ],
-        "description": "Type of execution: 'skill' to invoke a skill class, 'python' to run sandbox code"
+        "description": "Type of execution: 'skill' to invoke a skill class, 'python' to run sandbox Python code on a Kali agent, 'playwright' to run a raw Python Playwright script on a Playwright agent (NOT JavaScript), or 'playwright_skill' to invoke a browser skill"
       },
       "skill": {
         "type": "string",
@@ -56,6 +58,10 @@
       "command": {
         "type": "string",
         "description": "Python code to execute. Required when action_type is 'python'."
+      },
+      "script": {
+        "type": "string",
+        "description": "Python source using playwright.sync_api or async_api (e.g. 'from playwright.sync_api import sync_playwright'). The Playwright executor runs this with the container's Python interpreter — JavaScript/Node scripts will fail. Script must print a single JSON envelope to stdout. Required when action_type is 'playwright'."
       },
       "allow_complex_tooling": {
         "type": "boolean",

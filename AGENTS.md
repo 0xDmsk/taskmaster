@@ -18,6 +18,12 @@ Use `query_execution_status` mainly for debugging, recovery, or explicit spot-ch
 - Use `agent_type: "kali"` for CLI-based `skill` and `python` actions.
 - Use `agent_type: "playwright"` for `playwright` and `playwright_skill` actions.
 
+## Executor Languages
+
+- `action_type: "python"` — Python only (sandboxed `exec()` on the Kali agent).
+- `action_type: "playwright"` — **Python only**. The Playwright operator invokes the container's Python interpreter and the `playwright.sync_api`/`async_api` bindings. JavaScript/Node scripts will fail. The script must print a single JSON envelope to stdout.
+- `action_type: "skill"` / `"playwright_skill"` — invokes a Python skill class on the matching agent.
+
 ## Mission Briefings
 
 When spawning a worker, use the structure in `policies/agent_mission_template.md`.

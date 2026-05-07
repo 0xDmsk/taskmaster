@@ -78,7 +78,7 @@ Uses the STDIO-to-HTTP bridge script to connect MCP clients to a running Taskmas
       "command": "python3",
       "args": ["/path/to/taskmaster/scripts/mcp-http-bridge.py"],
       "env": {
-        "TASKMASTER_HOST": "host.docker.internal",
+        "TASKMASTER_HOST": "127.0.0.1",
         "TASKMASTER_PORT": "5000"
       }
     }
@@ -141,7 +141,7 @@ ip addr show docker0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
 
 ```bash
 # Test if HTTP server is reachable
-curl -s -X POST http://host.docker.internal:5000/mcp \
+curl -s -X POST http://127.0.0.1:5000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 
@@ -157,7 +157,7 @@ All configurations support these environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TASKMASTER_HOST` | `host.docker.internal` | Host IP for server |
+| `TASKMASTER_HOST` | `127.0.0.1` for host-side clients; `host.docker.internal` inside Docker Desktop containers | Hostname used to reach the Taskmaster server |
 | `TASKMASTER_PORT` | `5000` | TCP port for server |
 | `TASKMASTER_WORK_DIR` | (cwd) | Assessment output directory |
 | `HTTP_PROXY` | — | Proxy URL passed to agent containers |
@@ -246,7 +246,7 @@ source ~/.zshrc  # or ~/.bashrc
 2. Verify JSON syntax in client messages
 3. Test with curl:
    ```bash
-   curl -X POST http://host.docker.internal:5000/mcp \
+   curl -X POST http://127.0.0.1:5000/mcp \
      -H "Content-Type: application/json" \
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
    ```
