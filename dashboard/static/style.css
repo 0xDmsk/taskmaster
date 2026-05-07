@@ -279,6 +279,35 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     word-break: break-word;
 }
 
+.code-block {
+    background: var(--bg-tertiary);
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-primary);
+    margin: 0.25rem 0;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 2;
+}
+
+.code-block.shell::before {
+    content: "$ ";
+    color: var(--text-muted);
+    user-select: none;
+}
+
+/* Pygments overrides: keep our code-block chrome regardless of Pygments style */
+pre.code-block.hl {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    line-height: 1.45;
+}
+
 .finding-meta {
     display: flex;
     gap: 1rem;
@@ -415,6 +444,163 @@ tr:hover td { background: rgba(255,255,255,0.02); }
     transition: background 0.15s, color 0.15s;
 }
 .expand-btn:hover { background: var(--border); color: var(--text-primary); }
+
+/* Pretty JSON renderer — readable structured view of findings/artifacts/errors */
+.pretty-json {
+    font-family: var(--sans);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.pretty-json .pj-dl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.85rem;
+    row-gap: 0.3rem;
+    margin: 0.15rem 0;
+    align-items: start;
+}
+
+.pretty-json .pj-dl .pj-dl {
+    border-left: 1px solid var(--border);
+    padding-left: 0.6rem;
+    margin-left: 0.1rem;
+}
+
+.pretty-json .pj-key {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    font-family: var(--mono);
+    padding-top: 0.1rem;
+    word-break: break-word;
+}
+
+.pretty-json .pj-val {
+    margin: 0;
+    min-width: 0;
+    word-break: break-word;
+}
+
+.pretty-json .pj-list {
+    margin: 0.1rem 0;
+    padding-left: 1.1rem;
+    list-style: disc;
+}
+
+.pretty-json .pj-list li {
+    margin: 0.15rem 0;
+    word-break: break-word;
+}
+
+.pretty-json .pj-list li::marker {
+    color: var(--text-muted);
+}
+
+.pretty-json .pj-string {
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.pretty-json .pj-num { color: #ff9b72; font-family: var(--mono); }
+.pretty-json .pj-bool { color: #79c0ff; font-family: var(--mono); }
+.pretty-json .pj-null,
+.pretty-json .pj-empty { color: var(--text-muted); font-style: italic; font-size: 0.78rem; }
+.pretty-json .pj-truncated { color: var(--text-muted); }
+.pretty-json .pj-link { word-break: break-all; }
+
+.pretty-json .pj-text {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-primary);
+    margin: 0.15rem 0;
+}
+
+.pretty-json .pj-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    margin: 0.25rem 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.pretty-json .pj-table th {
+    text-align: left;
+    background: var(--bg-secondary);
+    padding: 0.4rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+
+.pretty-json .pj-table td {
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    word-break: break-word;
+}
+
+.pretty-json .pj-table tr:last-child td { border-bottom: none; }
+
+.pretty-json--errors .pj-string,
+.pretty-json--errors .pj-text {
+    color: var(--status-failed);
+}
+
+.pretty-json--errors .pj-text {
+    border-color: rgba(248, 81, 73, 0.3);
+}
+
+/* Semantic value colors */
+.pretty-json .pj-sev-critical { color: #f85149; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem; }
+.pretty-json .pj-sev-high     { color: #ffa657; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem; }
+.pretty-json .pj-sev-medium   { color: #d29922; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem; }
+.pretty-json .pj-sev-low      { color: #58a6ff; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem; }
+.pretty-json .pj-sev-info     { color: #8b949e; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.78rem; }
+
+.pretty-json .pj-status-success { color: var(--status-completed); font-weight: 600; }
+.pretty-json .pj-status-error   { color: var(--status-failed);    font-weight: 600; }
+.pretty-json .pj-status-warn    { color: var(--status-claimed);   font-weight: 600; }
+.pretty-json .pj-status-running { color: var(--status-running);   font-weight: 600; }
+.pretty-json .pj-status-queued  { color: var(--status-queued);    font-weight: 600; }
+
+/* HTTP status code coloring (number values + lines inside <pre>) */
+.pretty-json .pj-http-1xx { color: #8b949e; font-weight: 600; }
+.pretty-json .pj-http-2xx { color: #3fb950; font-weight: 600; }
+.pretty-json .pj-http-3xx { color: #79c0ff; font-weight: 600; }
+.pretty-json .pj-http-4xx { color: #ffa657; font-weight: 600; }
+.pretty-json .pj-http-5xx { color: #f85149; font-weight: 600; }
+.pretty-json .pj-http-proto { color: #c9a4ff; font-weight: 600; }
+.pretty-json .pj-http-header { color: #79c0ff; }
+
+/* Markdown-ish content inside <pre> blocks */
+.pretty-json .pj-md-h     { color: #d2a8ff; font-weight: 600; }
+.pretty-json .pj-md-fence { color: var(--text-muted); }
+
+/* Log-level prefixes (error:, warning:, ...) at line starts */
+.pretty-json .pj-log-error,
+.pretty-json .pj-log-fatal,
+.pretty-json .pj-log-critical { color: var(--status-failed); font-weight: 600; }
+.pretty-json .pj-log-warning,
+.pretty-json .pj-log-warn     { color: var(--status-claimed); font-weight: 600; }
+.pretty-json .pj-log-info,
+.pretty-json .pj-log-notice   { color: var(--accent); font-weight: 600; }
+.pretty-json .pj-log-debug    { color: var(--text-muted); font-weight: 600; }
 
 /* Severity badges */
 .badge-severity-critical { background: rgba(248,81,73,0.2); color: #f85149; }
