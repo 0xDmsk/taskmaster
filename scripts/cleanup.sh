@@ -41,13 +41,15 @@ fi
 
 # Ask before cleaning state
 echo "Clean runtime state? (y/n)"
-echo "  - state/executions.json"
+echo "  - state/executions.db (+ -wal, -shm)"
+echo "  - state/executions.json (legacy)"
 echo "  - audit/audit_log.jsonl"
 echo "  - audit/session_report.md"
 read -r response
 
 if [[ "$response" =~ ^[Yy]$ ]]; then
     echo "Cleaning state files..."
+    rm -f state/executions.db state/executions.db-wal state/executions.db-shm
     rm -f state/executions.json
     rm -f audit/audit_log.jsonl
     rm -f audit/session_report.md
