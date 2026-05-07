@@ -106,6 +106,7 @@ def get_execution_detail(execution_id):
     detail = dict(e)
     detail["parsed_request"] = _parse_request(e.get("request")) or {}
     detail["parsed_result"] = _parse_result(e.get("result")) or {}
+    detail["interpretation"] = e.get("interpretation")
     return detail
 
 
@@ -148,7 +149,8 @@ def get_findings():
             continue
         entry_findings = result.get("findings", [])
         artifacts = result.get("artifacts", [])
-        if not entry_findings and not artifacts:
+        interpretation = e.get("interpretation")
+        if not entry_findings and not artifacts and not interpretation:
             continue
 
         request = _parse_request(e.get("request")) or {}
@@ -185,5 +187,6 @@ def get_findings():
             "remediation": remediation,
             "references": references,
             "description": description,
+            "interpretation": e.get("interpretation"),
         })
     return findings

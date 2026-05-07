@@ -445,6 +445,85 @@ pre.code-block.hl {
 }
 .expand-btn:hover { background: var(--border); color: var(--text-primary); }
 
+/* LLM analysis / interpretation block */
+.analysis-section {
+    background: linear-gradient(180deg, rgba(88,166,255,0.06), rgba(88,166,255,0.02));
+    border: 1px solid rgba(88,166,255,0.25);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.analysis-section > h4 {
+    color: var(--accent);
+    border-bottom: none;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0;
+}
+
+.analysis-body {
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    line-height: 1.55;
+    color: var(--text-primary);
+}
+
+.analysis-body .md-p { margin: 0 0 0.55rem 0; }
+.analysis-body .md-p:last-child { margin-bottom: 0; }
+
+.analysis-body .md-h { margin: 0.85rem 0 0.4rem; line-height: 1.3; color: var(--text-primary); }
+.analysis-body .md-h:first-child { margin-top: 0; }
+.analysis-body .md-h1 { font-size: 1rem; font-weight: 600; }
+.analysis-body .md-h2 { font-size: 0.95rem; font-weight: 600; }
+.analysis-body .md-h3 { font-size: 0.9rem; font-weight: 600; color: var(--accent); }
+.analysis-body .md-h4,
+.analysis-body .md-h5,
+.analysis-body .md-h6 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.analysis-body .md-ul,
+.analysis-body .md-ol {
+    margin: 0.3rem 0 0.55rem 1.2rem;
+    padding: 0;
+}
+.analysis-body .md-ul li,
+.analysis-body .md-ol li { margin: 0.2rem 0; }
+.analysis-body .md-ul li::marker { color: var(--accent); }
+.analysis-body .md-ol li::marker { color: var(--text-secondary); }
+
+.analysis-body .md-code {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 0.05rem 0.35rem;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--text-primary);
+}
+
+.analysis-body .md-pre {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0.4rem 0;
+}
+
+.analysis-body strong { color: var(--text-primary); }
+.analysis-body em { color: var(--text-secondary); }
+
 /* Pretty JSON renderer — readable structured view of findings/artifacts/errors */
 .pretty-json {
     font-family: var(--sans);

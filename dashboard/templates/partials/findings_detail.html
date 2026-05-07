@@ -29,6 +29,12 @@
             {{ f.justification }}
         </div>
         {% endif %}
+        {% if f.interpretation %}
+        <div class="analysis-section" style="margin-top:0.6rem">
+            <h4 style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem">Analysis</h4>
+            <div class="analysis-body">{{ f.interpretation | analysis }}</div>
+        </div>
+        {% endif %}
         {% if f.description %}
         <div style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-primary)">
             {{ f.description }}

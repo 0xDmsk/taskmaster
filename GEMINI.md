@@ -181,7 +181,8 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
     *   **Do not poll by default**: Do not call `query_execution_status` as the normal next step after queuing work. Use it only for debugging, recovery, or an explicit spot-check.
     *   **Note**: Do NOT attempt to read `/loot` or container logs until Taskmaster confirms completion.
 5.  **Pivot**: Read the JSON envelope from the execution result — `findings` contains structured data, `artifacts` lists saved files.
-6.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.
+6.  **Record analysis**: Call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument — a short markdown summary of what the raw output means: notable findings, ports/services, suspected misconfigurations, and the next investigative step you'd take. The dashboard surfaces this above the raw findings; without it, only the executor's stdout is visible. The interpretation should match what you would tell the user in the CLI when reviewing the result.
+7.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.
 
 ## 🏗 Skill Expansion Protocol
 If a task is complex and no existing skill fits:

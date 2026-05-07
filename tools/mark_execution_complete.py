@@ -5,6 +5,7 @@ def handle_mark_execution_complete(args):
     execution_id = args.get("execution_id")
     executor_id = args.get("executor_id")
     result = args.get("result")
+    interpretation = args.get("interpretation")
     status = args.get("status", "COMPLETED")
 
     if not execution_id or not executor_id:
@@ -15,7 +16,8 @@ def handle_mark_execution_complete(args):
             execution_id=execution_id,
             requested_status=status,
             executor_id=executor_id,
-            result=result
+            result=result,
+            interpretation=interpretation,
         )
     except ValueError as e:
         return {"error": str(e)}

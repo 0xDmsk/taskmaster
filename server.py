@@ -158,6 +158,14 @@ TOOLS = {
                     "type": "string",
                     "description": "Result text or error info",
                 },
+                "interpretation": {
+                    "type": "string",
+                    "description": (
+                        "Natural-language analysis of the result the calling LLM produced "
+                        "after reviewing the raw output. Markdown is supported. "
+                        "Surfaced in the dashboard above the raw findings."
+                    ),
+                },
                 "status": {
                     "type": "string",
                     "enum": ["COMPLETED", "FAILED"],
@@ -206,6 +214,14 @@ TOOLS = {
                     "type": "string",
                     "description": "Execution output / findings",
                 },
+                "interpretation": {
+                    "type": "string",
+                    "description": (
+                        "Natural-language analysis of the result the calling LLM produced "
+                        "after reviewing the raw output. Markdown is supported. "
+                        "Surfaced in the dashboard above the raw findings."
+                    ),
+                },
             },
         },
     },
@@ -221,6 +237,13 @@ TOOLS = {
                 "error_info": {
                     "type": "string",
                     "description": "Error description or traceback",
+                },
+                "interpretation": {
+                    "type": "string",
+                    "description": (
+                        "Natural-language analysis of why the execution failed. "
+                        "Markdown is supported. Surfaced in the dashboard above raw errors."
+                    ),
                 },
             },
         },

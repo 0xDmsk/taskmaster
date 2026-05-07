@@ -4,6 +4,7 @@ def handle_fail_execution(args):
     execution_id = args.get("execution_id")
     executor_id = args.get("executor_id")
     error_info = args.get("error_info")
+    interpretation = args.get("interpretation")
 
     if not execution_id or not executor_id:
         return {"error": "execution_id and executor_id are required"}
@@ -13,7 +14,8 @@ def handle_fail_execution(args):
             execution_id=execution_id,
             requested_status="FAILED",
             executor_id=executor_id,
-            result=error_info
+            result=error_info,
+            interpretation=interpretation,
         )
     except ValueError as e:
         return {"error": str(e)}

@@ -62,6 +62,12 @@
             {% endif %}
         </div>
         <div>
+            {% if e.interpretation %}
+            <div class="detail-section analysis-section">
+                <h4>Analysis</h4>
+                <div class="analysis-body">{{ e.interpretation | analysis }}</div>
+            </div>
+            {% endif %}
             {% set res = e.parsed_result %}
             {% if res %}
             <div class="detail-section">

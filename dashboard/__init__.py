@@ -91,6 +91,120 @@ def _http_status_class(code: int) -> str | None:
     return None
 
 
+_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+
+
+def _inline_md(escaped_line: str) -> str:
+    """Apply inline markdown (code, bold, italic, urls) to an already-escaped line."""
+    out = _URL_RE.sub(
+        r'<a class="pj-link" href="\1" target="_blank" rel="noopener">\1</a>',
+        escaped_line,
+    )
+    out = _INLINE_CODE_RE.sub(r'<code class="md-code">\1</code>', out)
+    out = _BOLD_RE.sub(r"<strong>\1</strong>", out)
+    out = _ITALIC_RE.sub(r"<em>\1</em>", out)
+    return out
+
+
+def render_analysis(text):
+    """Render an LLM interpretation/analysis blob as readable HTML.
+
+    Lightweight markdown: ATX headers (# … ######), unordered/ordered lists,
+    fenced code blocks (```), inline code, bold, italic, paragraph breaks,
+    and clickable URLs. Unknown content falls through as plain paragraphs.
+    """
+    if not text:
+        return Markup("")
+
+    lines = str(text).splitlines()
+    html_parts: list[str] = []
+    para_buf: list[str] = []
+    list_kind: str | None = None  # 'ul' or 'ol' or None
+    in_fence = False
+    fence_buf: list[str] = []
+
+    def flush_para():
+        if para_buf:
+            joined = "<br>".join(_inline_md(escape(line)) for line in para_buf)
+            html_parts.append(f'<p class="md-p">{joined}</p>')
+            para_buf.clear()
+
+    def flush_list():
+        nonlocal list_kind
+        if list_kind:
+            html_parts.append(f"</{list_kind}>")
+            list_kind = None
+
+    def open_list(kind):
+        nonlocal list_kind
+        if list_kind != kind:
+            flush_list()
+            cls = "md-ul" if kind == "ul" else "md-ol"
+            html_parts.append(f'<{kind} class="{cls}">')
+            list_kind = kind
+
+    for raw in lines:
+        line = raw.rstrip()
+
+        if in_fence:
+            if line.strip().startswith("```"):
+                code = "\n".join(fence_buf)
+                html_parts.append(f'<pre class="md-pre"><code>{escape(code)}</code></pre>')
+                fence_buf = []
+                in_fence = False
+            else:
+                fence_buf.append(raw)
+            continue
+
+        if line.strip().startswith("```"):
+            flush_para()
+            flush_list()
+            in_fence = True
+            continue
+
+        if not line.strip():
+            flush_para()
+            flush_list()
+            continue
+
+        m_h = re.match(r"^(#{1,6})\s+(.+)$", line)
+        if m_h:
+            flush_para()
+            flush_list()
+            level = len(m_h.group(1))
+            text_inner = _inline_md(escape(m_h.group(2)))
+            html_parts.append(f'<h{level} class="md-h md-h{level}">{text_inner}</h{level}>')
+            continue
+
+        m_ul = re.match(r"^\s*[-*+]\s+(.+)$", line)
+        if m_ul:
+            flush_para()
+            open_list("ul")
+            html_parts.append(f"<li>{_inline_md(escape(m_ul.group(1)))}</li>")
+            continue
+
+        m_ol = re.match(r"^\s*\d+[.)]\s+(.+)$", line)
+        if m_ol:
+            flush_para()
+            open_list("ol")
+            html_parts.append(f"<li>{_inline_md(escape(m_ol.group(1)))}</li>")
+            continue
+
+        flush_list()
+        para_buf.append(line)
+
+    if in_fence and fence_buf:
+        # Unterminated fence — render what we have.
+        code = "\n".join(fence_buf)
+        html_parts.append(f'<pre class="md-pre"><code>{escape(code)}</code></pre>')
+    flush_para()
+    flush_list()
+
+    return Markup("".join(html_parts))
+
+
 def _highlight_pre(escaped: str) -> str:
     """Apply lightweight semantic highlighting to escaped multiline text."""
     out = _URL_RE.sub(
@@ -222,6 +336,7 @@ _env = Environment(
 )
 _env.filters["highlight"] = highlight_code
 _env.filters["pretty_json"] = pretty_json
+_env.filters["analysis"] = render_analysis
 _env.globals["pygments_css"] = PYGMENTS_CSS
 
 

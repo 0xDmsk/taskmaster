@@ -56,6 +56,7 @@ def transition_execution(
     requested_status: str,
     executor_id: str,
     result: Optional[str] = None,
+    interpretation: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Attempt to transition an execution to a new lifecycle status.
@@ -94,6 +95,9 @@ def transition_execution(
 
     if result is not None:
         updates["result"] = result
+
+    if interpretation is not None:
+        updates["interpretation"] = interpretation
 
     # Atomic target-busy check + update for RUNNING transitions
     if requested_status == "RUNNING":

@@ -71,6 +71,10 @@ def update_report(execution_record):
                 f.write(f"- **Justification:** {req.get('justification', 'N/A')}\n")
                 f.write(f"- **Command:** `{req.get('command', 'N/A')}`\n")
 
+                interpretation = execution_record.get("interpretation")
+                if interpretation:
+                    f.write(f"\n#### Analysis\n\n{interpretation}\n")
+
                 result_text = execution_record.get("result", "")
                 if result_text and "[STRUCTURED_DATA]" in result_text:
                     parts = result_text.split("[STRUCTURED_DATA]")

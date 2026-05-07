@@ -22,11 +22,16 @@ CREATE TABLE IF NOT EXISTS executions (
     updated_by TEXT,
     executor_id TEXT,
     request TEXT NOT NULL DEFAULT '{}',
-    result TEXT
+    result TEXT,
+    interpretation TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_target_status ON executions (target, status);
 CREATE INDEX IF NOT EXISTS idx_status ON executions (status);
 """
+
+_REQUIRED_COLUMNS = {
+    "interpretation": "TEXT",
+}
 
 
 def _db_path():
@@ -43,12 +48,22 @@ def _ensure_db():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.executescript(_SCHEMA)
+    _add_missing_columns(conn)
+    conn.commit()
     conn.close()
 
     # Auto-migrate from legacy JSON file
     json_file = os.path.join(os.path.dirname(db), "executions.json")
     if os.path.exists(json_file):
         _migrate_from_json(json_file, db)
+
+
+def _add_missing_columns(conn):
+    """Online migration: add new columns to legacy DBs without dropping data."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(executions)").fetchall()}
+    for column, sql_type in _REQUIRED_COLUMNS.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE executions ADD COLUMN {column} {sql_type}")
 
 
 def _migrate_from_json(json_file, db):
