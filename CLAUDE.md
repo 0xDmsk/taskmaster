@@ -18,7 +18,9 @@ make start        # Start MCP server
 make spawn        # Spawn interactive agent
 
 # Build
-make build        # Build Kali agent container (executors/Dockerfile)
+make build              # Build both agent containers (Kali + Playwright)
+make build-kali         # Build only the Kali agent container (executors/Dockerfile)
+make build-playwright   # Build only the Playwright agent container (executors/Dockerfile.playwright)
 
 # Test & Lint
 make test         # Run pytest with coverage

@@ -1,13 +1,15 @@
-.PHONY: help install build build-playwright start test clean lint format dev
+.PHONY: help install build build-kali build-playwright start test clean lint format dev
 
 # Default target
 help:
 	@echo "Taskmaster - Agentic Security Orchestration Platform"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make install    - Install dependencies with UV"
-	@echo "  make build      - Build the Kali agent container"
-	@echo "  make start      - Start the MCP server"
+	@echo "  make install         - Install dependencies with UV"
+	@echo "  make build           - Build both agent containers (Kali + Playwright)"
+	@echo "  make build-kali      - Build only the Kali agent container"
+	@echo "  make build-playwright- Build only the Playwright agent container"
+	@echo "  make start           - Start the MCP server"
 	@echo "  make test       - Run the test suite"
 	@echo "  make lint       - Run code linters (ruff)"
 	@echo "  make format     - Format code with black"
@@ -22,9 +24,12 @@ install:
 	uv sync
 	@echo "✅ Dependencies installed"
 
-# Build agent container
-build:
-	@echo "🏗️  Building agent container..."
+# Build all agent containers
+build: build-kali build-playwright
+
+# Build kali agent container
+build-kali:
+	@echo "🏗️  Building Kali agent container..."
 	./scripts/build.sh
 
 # Build playwright executor container

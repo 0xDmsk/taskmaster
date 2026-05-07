@@ -21,6 +21,7 @@ from tools.spawn_agent import handle_spawn_agent
 from tools.cleanup_agents import handle_cleanup_agents
 from tools.recover_execution import handle_recover_execution
 from tools.wait_for_completion import handle_wait_for_completion
+from tools.reaper import start_reaper_thread
 
 
 def load_tool_schema(tool_name):
@@ -784,6 +785,8 @@ def main():
         help="HTTP server port (default: $TASKMASTER_PORT or 5000)",
     )
     args = parser.parse_args()
+
+    start_reaper_thread()
 
     if args.http:
         run_http(args.host, args.port)

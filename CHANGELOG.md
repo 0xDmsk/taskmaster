@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Agent reaper** (`tools/reaper.py`): background daemon thread started by the MCP server that periodically stops Taskmaster-managed agent containers under three conditions — hard age cap (default 4h), stale heartbeat on a claimed/running execution (default 2h since `updated_at`, also force-fails the execution to release the target lock), and idle past grace (default 15 min with no claimed work). Configurable via `TASKMASTER_REAPER_ENABLED`, `_INTERVAL`, `_IDLE_TIMEOUT`, `_STALE_TIMEOUT`, `_MAX_AGE`.
+- 9 new unit tests in `tests/unit/test_reaper.py` covering each reap path, the keep cases, non-Taskmaster container filtering, and docker-timestamp parsing.
+
 ### Changed
+- `make build` now builds **both** the Kali and Playwright agent containers. Use `make build-kali` or `make build-playwright` for partial rebuilds.
 - Planner-facing execution guidance now makes provisioning explicit: `request_security_action` only queues work, `spawn_agent` is the default next step unless a compatible live worker has already been verified for the target, and `query_execution_status` is positioned as a debugging/recovery tool rather than the standard monitor path.
 - Added the same provisioning guidance to `CLAUDE.md` and a new repo-local `AGENTS.md` so non-Gemini agents receive the same workflow expectations.
 
