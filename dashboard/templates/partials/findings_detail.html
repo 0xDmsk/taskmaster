@@ -62,17 +62,24 @@
             {% endif %}
         </div>
         {% endif %}
-        {% if f.findings %}
-        <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Findings</h4>
-        <div class="pretty-json">{{ f.findings | pretty_json }}</div>
-        {% endif %}
-        {% if f.artifacts %}
-        <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Artifacts</h4>
-        <div class="pretty-json">{{ f.artifacts | pretty_json }}</div>
-        {% endif %}
-        {% if f.errors %}
-        <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--status-failed)">Errors</h4>
-        <div class="pretty-json pretty-json--errors">{{ f.errors | pretty_json }}</div>
+        {% if f.findings or f.artifacts or f.errors %}
+        <details class="agent-output"{% if not f.interpretation %} open{% endif %}>
+            <summary><span class="ao-toggle">See agent output</span></summary>
+            <div class="agent-output-body">
+                {% if f.findings %}
+                <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Findings</h4>
+                <div class="pretty-json">{{ f.findings | pretty_json }}</div>
+                {% endif %}
+                {% if f.artifacts %}
+                <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Artifacts</h4>
+                <div class="pretty-json">{{ f.artifacts | pretty_json }}</div>
+                {% endif %}
+                {% if f.errors %}
+                <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--status-failed)">Errors</h4>
+                <div class="pretty-json pretty-json--errors">{{ f.errors | pretty_json }}</div>
+                {% endif %}
+            </div>
+        </details>
         {% endif %}
     </div>
 </details>

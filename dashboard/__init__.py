@@ -1,5 +1,6 @@
 """Dashboard package — Jinja2 environment setup and render helpers."""
 
+import json
 import os
 import re
 
@@ -83,6 +84,36 @@ _LOG_PREFIX_RE = re.compile(
 
 def _looks_like_url(s: str) -> bool:
     return s.startswith(("http://", "https://")) and " " not in s and "\n" not in s
+
+
+_JSON_MAX_BYTES = 2_000_000
+
+
+def _try_parse_structured(s: str):
+    """If s is a JSON document or NDJSON, return the parsed value; else None.
+
+    Many security tools emit either a single JSON array/object or one JSON
+    object per line (NDJSON, e.g. subfinder, dnsx, naabu). Detecting either
+    form lets us render the data as a real list/table instead of as one
+    giant escaped string.
+    """
+    s = s.strip()
+    if not s or len(s) > _JSON_MAX_BYTES:
+        return None
+
+    if s[0] in "{[":
+        try:
+            return json.loads(s)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    lines = [ln for ln in s.splitlines() if ln.strip()]
+    if len(lines) >= 2 and all(ln.lstrip()[0:1] in "{[" for ln in lines):
+        try:
+            return [json.loads(ln) for ln in lines]
+        except (json.JSONDecodeError, ValueError):
+            return None
+    return None
 
 
 def _http_status_class(code: int) -> str | None:
@@ -273,6 +304,9 @@ def pretty_json(value, depth=0, parent_key=None):
         if not value:
             return Markup('<span class="pj-empty">empty</span>')
         if "\n" in value or len(value) > _PRETTY_INLINE_MAX:
+            parsed = _try_parse_structured(value)
+            if parsed is not None and not isinstance(parsed, (str, int, float, bool)):
+                return pretty_json(parsed, depth + 1, parent_key=parent_key)
             return Markup(f'<pre class="pj-text">{_highlight_pre(escape(value))}</pre>')
         if _looks_like_url(value):
             safe = escape(value)

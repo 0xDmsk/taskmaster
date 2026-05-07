@@ -445,6 +445,64 @@ pre.code-block.hl {
 }
 .expand-btn:hover { background: var(--border); color: var(--text-primary); }
 
+/* Agent output toggle — hides raw findings/artifacts/errors behind a summary */
+details.agent-output {
+    margin-top: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+details.agent-output > summary {
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    user-select: none;
+}
+
+details.agent-output > summary::-webkit-details-marker { display: none; }
+
+details.agent-output > summary .ao-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 0.35rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    font-family: var(--sans);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+details.agent-output > summary .ao-toggle::before {
+    content: "\25b6";
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+}
+
+details.agent-output[open] > summary .ao-toggle::before { transform: rotate(90deg); }
+
+details.agent-output > summary:hover .ao-toggle {
+    background: var(--border);
+    color: var(--text-primary);
+    border-color: var(--text-muted);
+}
+
+details.agent-output[open] > summary .ao-toggle {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.agent-output-body {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--border);
+}
+
 /* LLM analysis / interpretation block */
 .analysis-section {
     background: linear-gradient(180deg, rgba(88,166,255,0.06), rgba(88,166,255,0.02));

@@ -95,23 +95,30 @@
                     {% endif %}
                 </dl>
             </div>
-            {% if res.findings %}
-            <div class="detail-section">
-                <h4>Findings</h4>
-                <div class="pretty-json">{{ res.findings | pretty_json }}</div>
-            </div>
-            {% endif %}
-            {% if res.artifacts %}
-            <div class="detail-section">
-                <h4>Artifacts</h4>
-                <div class="pretty-json">{{ res.artifacts | pretty_json }}</div>
-            </div>
-            {% endif %}
-            {% if res.errors %}
-            <div class="detail-section">
-                <h4 style="color:var(--status-failed)">Errors</h4>
-                <div class="pretty-json pretty-json--errors">{{ res.errors | pretty_json }}</div>
-            </div>
+            {% if res.findings or res.artifacts or res.errors %}
+            <details class="agent-output"{% if not e.interpretation %} open{% endif %}>
+                <summary><span class="ao-toggle">See agent output</span></summary>
+                <div class="agent-output-body">
+                    {% if res.findings %}
+                    <div class="detail-section">
+                        <h4>Findings</h4>
+                        <div class="pretty-json">{{ res.findings | pretty_json }}</div>
+                    </div>
+                    {% endif %}
+                    {% if res.artifacts %}
+                    <div class="detail-section">
+                        <h4>Artifacts</h4>
+                        <div class="pretty-json">{{ res.artifacts | pretty_json }}</div>
+                    </div>
+                    {% endif %}
+                    {% if res.errors %}
+                    <div class="detail-section">
+                        <h4 style="color:var(--status-failed)">Errors</h4>
+                        <div class="pretty-json pretty-json--errors">{{ res.errors | pretty_json }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+            </details>
             {% endif %}
             {% else %}
             <div class="detail-section">
