@@ -245,18 +245,30 @@ def main_loop():
 
             print(f"[+] Claimed task {eid} ({action_type})")
 
-            # Start
-            call_taskmaster(
+            # Start — bail out if the server rejects the transition
+            # (e.g. another RUNNING execution is holding the target lock).
+            # Without this check we'd silently run the action and then
+            # fail every downstream state write, leaving the row stuck
+            # at CLAIMED until the reaper sweeps it.
+            start = call_taskmaster(
                 "start_execution",
                 {"execution_id": eid, "executor_id": EXECUTOR_ID},
             )
+            if "error" in start:
+                print(
+                    f"[!] start_execution rejected for {eid}: {start['error']}"
+                )
+                print(
+                    f"[!] Skipping {eid} — claim will be cleared by recovery"
+                )
+                continue
 
             # Execute
             result_data = execute_action(task)
 
-            # Finish
+            # Finish — surface any rejection so the wedge is visible in logs
             if result_data["status"] == "COMPLETED":
-                call_taskmaster(
+                resp = call_taskmaster(
                     "complete_execution",
                     {
                         "execution_id": eid,
@@ -264,9 +276,15 @@ def main_loop():
                         "result": result_data["result"],
                     },
                 )
-                print(f"[+] Task {eid} completed")
+                if "error" in resp:
+                    print(
+                        f"[!] complete_execution rejected for {eid}: "
+                        f"{resp['error']}"
+                    )
+                else:
+                    print(f"[+] Task {eid} completed")
             else:
-                call_taskmaster(
+                resp = call_taskmaster(
                     "fail_execution",
                     {
                         "execution_id": eid,
@@ -274,7 +292,13 @@ def main_loop():
                         "error_info": result_data["result"],
                     },
                 )
-                print(f"[-] Task {eid} failed")
+                if "error" in resp:
+                    print(
+                        f"[!] fail_execution rejected for {eid}: "
+                        f"{resp['error']}"
+                    )
+                else:
+                    print(f"[-] Task {eid} failed")
 
         time.sleep(1)
 
