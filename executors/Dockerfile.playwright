@@ -7,12 +7,27 @@ ENV DISPLAY=:99
 # Install noVNC stack plus Playwright browser dependencies.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+      ca-certificates \
+      openssl \
       fluxbox \
       novnc \
       websockify \
       x11vnc \
       xvfb && \
     rm -rf /var/lib/apt/lists/*
+
+# -------- Burp Suite CA (optional) --------
+# Drop your DER-exported Burp CA at executors/burp-cacert.der and it will be
+# installed into the system trust store so Chromium accepts Burp's MITM cert.
+# Gitignored — per-developer. The wildcard pattern (BuildKit) makes the COPY
+# a no-op when the file is absent.
+COPY executors/burp-cacert.de[r] /tmp/burp-cacert.der
+RUN if [ -s /tmp/burp-cacert.der ]; then \
+        openssl x509 -inform DER -in /tmp/burp-cacert.der \
+            -out /usr/local/share/ca-certificates/burp-cacert.crt && \
+        update-ca-certificates; \
+    fi && \
+    rm -f /tmp/burp-cacert.der
 
 RUN pip install --no-cache-dir playwright && \
     playwright install chromium --with-deps && \

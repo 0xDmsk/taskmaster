@@ -7,6 +7,7 @@ import socket
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import redirect_stderr, redirect_stdout
 from targeting import targets_match
@@ -21,10 +22,21 @@ AGENT_MISSION = os.environ.get("AGENT_MISSION")  # Optional: mission description
 
 def configure_proxychains():
     """
-    Configures /etc/proxychains4.conf to use the host proxy.
+    Configures /etc/proxychains4.conf to point at $HTTP_PROXY so that tools
+    invoked via `proxychains4` flow through the same upstream as the
+    HTTP_PROXY-aware clients (curl, requests, etc.). Skips silently if no
+    proxy is configured.
     """
-    proxy_host = os.environ.get("TASKMASTER_HOST", "host.docker.internal")
-    proxy_port = "8888"  # Based on user's host proxy configuration
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    if not http_proxy:
+        return
+
+    parsed = urllib.parse.urlparse(http_proxy)
+    proxy_host = parsed.hostname
+    proxy_port = parsed.port or 8080
+    if not proxy_host:
+        print(f"[!] Could not parse HTTP_PROXY={http_proxy!r}; leaving proxychains4 unconfigured")
+        return
 
     conf_path = "/etc/proxychains4.conf"
     if not os.path.exists(conf_path):

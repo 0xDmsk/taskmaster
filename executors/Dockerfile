@@ -15,6 +15,7 @@ path-include /usr/share/locale/en*\n" \
 RUN apt update && \
     apt install -y --no-install-recommends \
     ca-certificates \
+    openssl \
     curl \
     jq \
     git \
@@ -92,6 +93,19 @@ RUN apt update && \
     apt install -y --no-install-recommends docker.io && \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
+
+# -------- Burp Suite CA (optional) --------
+# Drop your DER-exported Burp CA at executors/burp-cacert.der and it will be
+# installed into the system trust store so HTTPS requests through Burp don't
+# fail cert verification. Gitignored — per-developer. The wildcard pattern
+# (BuildKit) makes the COPY a no-op when the file is absent.
+COPY executors/burp-cacert.de[r] /tmp/burp-cacert.der
+RUN if [ -s /tmp/burp-cacert.der ]; then \
+        openssl x509 -inform DER -in /tmp/burp-cacert.der \
+            -out /usr/local/share/ca-certificates/burp-cacert.crt && \
+        update-ca-certificates; \
+    fi && \
+    rm -f /tmp/burp-cacert.der
 
 # -------- Taskmaster Integration --------
 COPY skills /app/skills

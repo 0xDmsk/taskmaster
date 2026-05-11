@@ -38,6 +38,9 @@ audit/session_report.md
 .env
 .env.local
 
+# User-specific Burp Suite CA (per-developer; drop your own DER export here)
+executors/burp-cacert.der
+
 # Logs
 *.log
 
