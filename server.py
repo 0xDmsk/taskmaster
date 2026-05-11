@@ -108,7 +108,15 @@ TOOLS = {
                 },
                 "proxy_url": {
                     "type": "string",
-                    "description": "HTTP proxy URL for the container",
+                    "description": (
+                        "HTTP proxy URL for the container (e.g. "
+                        "http://host.docker.internal:8080 for Burp Suite). "
+                        "Off by default — only set this when the user has "
+                        "asked to route traffic through an intercepting "
+                        "proxy. When set, the container's HTTP/HTTPS_PROXY "
+                        "env vars are populated and proxychains4 is "
+                        "configured to match."
+                    ),
                 },
             },
         },

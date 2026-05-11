@@ -58,12 +58,11 @@ def handle_spawn_agent(arguments):
         or os.environ.get("TASKMASTER_PORT")
         or "5000"
     )
-    proxy_url = (
-        arguments.get("proxy_url")
-        or env_vars.get("HTTP_PROXY")
-        or os.environ.get("HTTP_PROXY")
-        or ""
-    )
+    # Proxy is opt-in per-call only. We deliberately do NOT fall back to the
+    # MCP server's HTTP_PROXY or .env — Docker containers route to external
+    # networks directly, so the only reason to set a proxy here is when the
+    # caller explicitly wants traffic to flow through Burp (or similar).
+    proxy_url = arguments.get("proxy_url") or ""
     interactive_hold_ms = (
         arguments.get("interactive_hold_ms")
         or env_vars.get("PLAYWRIGHT_INTERACTIVE_HOLD_MS")
