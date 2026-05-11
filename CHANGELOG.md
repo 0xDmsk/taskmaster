@@ -10,11 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Agent reaper** (`tools/reaper.py`): background daemon thread started by the MCP server that periodically stops Taskmaster-managed agent containers under three conditions — hard age cap (default 4h), stale heartbeat on a claimed/running execution (default 2h since `updated_at`, also force-fails the execution to release the target lock), and idle past grace (default 15 min with no claimed work). Configurable via `TASKMASTER_REAPER_ENABLED`, `_INTERVAL`, `_IDLE_TIMEOUT`, `_STALE_TIMEOUT`, `_MAX_AGE`.
 - 9 new unit tests in `tests/unit/test_reaper.py` covering each reap path, the keep cases, non-Taskmaster container filtering, and docker-timestamp parsing.
+- **Burp Suite CA trust** in both agent images: drop a DER-exported Burp CA at `executors/burp-cacert.der` (gitignored, per-developer) and it's installed into the system trust store via `update-ca-certificates`. Kali tools and Chromium will then accept Burp's MITM cert without `verify=False` workarounds. Uses a BuildKit wildcard COPY so builds still work when the cert is absent.
 
 ### Changed
 - `make build` now builds **both** the Kali and Playwright agent containers. Use `make build-kali` or `make build-playwright` for partial rebuilds.
 - Planner-facing execution guidance now makes provisioning explicit: `request_security_action` only queues work, `spawn_agent` is the default next step unless a compatible live worker has already been verified for the target, and `query_execution_status` is positioned as a debugging/recovery tool rather than the standard monitor path.
 - Added the same provisioning guidance to `CLAUDE.md` and a new repo-local `AGENTS.md` so non-Gemini agents receive the same workflow expectations.
+- `spawn_agent` proxy is now **opt-in per call**: pass `proxy_url=...` explicitly to route container traffic through an intercepting proxy. The previous fallback to `.env`/shell `HTTP_PROXY` is removed — Docker containers reach external networks directly, and the always-on proxy injection was a leftover from the macOS-VM era that broke whenever Burp wasn't listening. Setting `HTTP_PROXY` in `.env` no longer affects spawned agents (`.env.example` updated to reflect this).
+- `configure_proxychains` (kali operator) now parses `$HTTP_PROXY` to learn the upstream host/port instead of using `$TASKMASTER_HOST` and a hardcoded `8888`. Tools invoked via `proxychains4` now flow through the same upstream as `HTTP_PROXY`-aware clients (curl, requests, etc.); skips configuration silently when no proxy is set.
+
+### Fixed
+- **Wedged target locks**: both operators previously discarded the responses from `start_execution`, `complete_execution`, and `fail_execution`. If one execution got stuck `RUNNING` (e.g. an agent crash mid-action), every later CLAIMED→RUNNING transition for that target was silently rejected by the target-lock policy, the operator kept running the action and failing every state write, and rows stayed at CLAIMED until the reaper swept them — with no diagnostic signal anywhere. Operators now check each response: a rejected start skips execution with a logged reason, and rejected complete/fail calls print the server's error so the wedge is visible in `docker logs`.
 
 ## [0.5.0] - 2026-04-21
 
