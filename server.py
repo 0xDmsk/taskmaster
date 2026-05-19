@@ -123,7 +123,11 @@ TOOLS = {
     },
     "query_execution_status": {
         "description": (
-            "Get current status of an execution by execution_id. Prefer "
+            "Get current status of an execution by execution_id. Returns a slim "
+            "projection by default (status, phase, executor, seconds_since_update, "
+            "and boolean flags for whether result/interpretation are populated) — "
+            "use fetch_execution_result to read the actual result body. Pass "
+            "verbose=true to get the full execution record. Prefer "
             "wait_for_completion for the standard workflow; use this mainly for "
             "debugging, recovery, or explicit spot-checks."
         ),
@@ -135,6 +139,14 @@ TOOLS = {
                 "execution_id": {
                     "type": "string",
                     "description": "The execution ID to query",
+                },
+                "verbose": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, include the full execution record "
+                        "(request payload, result body, interpretation). "
+                        "Default false — keeps responses small."
+                    ),
                 },
             },
         },
