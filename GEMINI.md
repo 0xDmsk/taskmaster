@@ -182,7 +182,8 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
     *   **Note**: Do NOT attempt to read `/loot` or container logs until Taskmaster confirms completion.
 5.  **Pivot**: Read the JSON envelope from the execution result — `findings` contains structured data, `artifacts` lists saved files.
 6.  **Record analysis**: Call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument — a short markdown summary of what the raw output means: notable findings, ports/services, suspected misconfigurations, and the next investigative step you'd take. The dashboard surfaces this above the raw findings; without it, only the executor's stdout is visible. The interpretation should match what you would tell the user in the CLI when reviewing the result.
-7.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.
+7.  **Record notes**: Append novel captures to `recon-data.md` and promote anything worth triage to `Findings.md` in the current working directory (see Note-Taking Discipline below).
+8.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.
 
 ## 🏗 Skill Expansion Protocol
 If a task is complex and no existing skill fits:
@@ -205,3 +206,12 @@ If a task is complex and no existing skill fits:
 The `audit/session_report.md` is our primary deliverable.
 - Ensure `justification` is professional and security-focused.
 - If a task fails, use a `python` analysis action to investigate the logs in `audit/loot/` before retrying.
+
+## 🗒 Note-Taking Discipline
+
+Every engagement should produce two living files in the **current working directory** (the assessment folder you were launched from — not `audit/`):
+
+- `Findings.md` — numbered `F-NNN` triage log. Each entry: **Where / Observation / Why it matters / Reproduction (when actionable) / Status / Recommendation**. Includes informational and positive observations (e.g. "PII filter rejects synthetic canary input"). Severity is a working estimate pending triage.
+- `recon-data.md` — raw data dossier underlying the findings. Captures, tables, endpoint shapes, request/response samples. Numbered sections (`1.1`, `2.4`, `12.x`) that `Findings.md` cites via `§{section}`.
+
+Create both files on first observation; do not wait for the user to ask. Append after every execution that produced novel data. When a hypothesis flips, add a dated follow-up paragraph rather than rewriting history. Full structure and worked examples in `policies/note_taking_template.md`.
