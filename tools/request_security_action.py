@@ -28,7 +28,10 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         },
         "phase": {"type": "string"},
         "target": {"type": "string"},
-        "action_type": {"type": "string", "enum": ["skill", "python", "playwright", "playwright_skill"]},
+        "action_type": {
+            "type": "string",
+            "enum": ["skill", "python", "playwright", "playwright_skill", "report_skill"],
+        },
         "skill": {"type": "string"},
         "arguments": {"type": "object"},
         "command": {"type": "string"},
@@ -130,6 +133,12 @@ def handle_request(payload):
             return {
                 "error": "Validation failed",
                 "details": "'script' field is required when action_type is 'playwright'",
+            }
+    elif action_type == "report_skill":
+        if not payload.get("skill"):
+            return {
+                "error": "Validation failed",
+                "details": "'skill' field is required when action_type is 'report_skill'",
             }
 
     if _should_prefer_python_guardrail(payload):

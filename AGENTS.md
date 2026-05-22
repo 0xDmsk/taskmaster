@@ -29,12 +29,24 @@ Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, in
 
 - Use `agent_type: "kali"` for CLI-based `skill` and `python` actions.
 - Use `agent_type: "playwright"` for `playwright` and `playwright_skill` actions.
+- Use `agent_type: "reporting"` for `report_skill` actions — producing the final docx deliverables from settled findings, late in the engagement.
+
+### Writing report content
+
+When you build the `finding` dict you pass to a reporting skill, write for the **client**, not the internal team:
+
+- Plain, succinct language; a few short paragraphs per field at most.
+- **Never reference** `Findings.md`, `recon-data.md`, `F-NNN` IDs, or `§N.M` recon section markers — those are internal working files that are not shared with the client. Ground claims in URLs, parameters, response headers, or `/loot` artifacts the client can verify.
+- `description` = what was found (concrete). `impact` = why it matters in plain consequences (not "severe security impact"). `proof_of_concept` = a self-contained, copy-pasteable reproduction. `remediation` = specific actions, not generic platitudes.
+- Severity is a final value — strip "(pending triage)" qualifiers before rendering.
+
+The full style contract is documented in the module docstring of `skills/reporting.py` and in `templates/README.md`.
 
 ## Executor Languages
 
 - `action_type: "python"` — Python only (sandboxed `exec()` on the Kali agent).
 - `action_type: "playwright"` — **Python only**. The Playwright operator invokes the container's Python interpreter and the `playwright.sync_api`/`async_api` bindings. JavaScript/Node scripts will fail. The script must print a single JSON envelope to stdout.
-- `action_type: "skill"` / `"playwright_skill"` — invokes a Python skill class on the matching agent.
+- `action_type: "skill"` / `"playwright_skill"` / `"report_skill"` — invokes a Python skill class on the matching agent (`BaseSkill` / `BaseBrowserSkill` / `BaseReportSkill` respectively).
 
 ## Mission Briefings
 
@@ -56,3 +68,4 @@ Create both files on first observation; do not wait for the user to ask. Append 
 - `policies/agent_mission_template.md`: mission briefing template + interpretation wrap-up
 - `policies/note_taking_template.md`: `Findings.md` / `recon-data.md` structure and conventions
 - `policies/platform_constraints.md`: macOS VM networking limitations
+- `templates/README.md`: how to turn an example docx into a docxtpl template the reporting executor can render

@@ -2,6 +2,16 @@
 
 Use this template when creating new skills in the `skills/` directory.
 
+There are three skill kinds. Pick the base class that matches the work:
+
+| Base class | Module | Executor | Use for |
+|------------|--------|----------|---------|
+| `BaseSkill` | `skills/base.py` | Kali | CLI-tool wrappers (one tool per class). The template below covers this case in full. |
+| `BaseBrowserSkill` | `skills/browser.py` | Playwright | Browser automation; subclasses implement `run_browser(page, context, **kwargs)`. |
+| `BaseReportSkill` | `skills/reporting.py` | Reporting | Document rendering (docxtpl); subclasses implement `render(**kwargs)`. See `templates/README.md` for the docxtpl template authoring guide. |
+
+The rest of this file documents the CLI-tool case (`BaseSkill`). The browser and reporting bases follow the same JSON-envelope contract — only the abstract method differs.
+
 ## Design Rules
 
 1. **One tool per skill class** — each skill wraps exactly one CLI tool

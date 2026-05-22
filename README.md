@@ -47,6 +47,12 @@ graph TD
     *   **Two Pathways**: `playwright_skill` (imports a `BaseBrowserSkill` subclass) or `playwright` (raw Python/Playwright script in a subprocess).
     *   **Selective claiming**: Only picks up tasks with `action_type: "playwright"` or `"playwright_skill"`; Kali tasks are left for the Kali operator.
 
+4.  **Reporting Executor**:
+    *   **Document renderer**: A slim `python:3.12` container with `docxtpl`, `python-docx`, and `pyyaml`. No security tooling — its only job is to turn structured findings into branded deliverables.
+    *   **One Pathway**: `report_skill` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport`).
+    *   **Selective claiming**: Only picks up tasks with `action_type: "report_skill"`; everything else is left for the Kali / Playwright operators.
+    *   **Template-driven**: Renders a docxtpl template (`templates/finding_template.docx`) produced from a hand-formatted example via `scripts/build_finding_template.py`. Source-document layout (fonts, table widths, headers/footers) is preserved, so the output opens cleanly in Word and Google Docs.
+
 ### Planning Guidance
 
 When choosing how to execute a task:
@@ -54,6 +60,7 @@ When choosing how to execute a task:
 - Use `action_type: "skill"` when an existing external tool materially improves the result.
 - Create a new skill only for reusable tool-backed workflows, not for one-off parsing or fetch tasks.
 - Use Playwright only when rendered DOM or browser interaction is required.
+- Use `action_type: "report_skill"` (with `agent_type: "reporting"`) for producing the final assessment deliverables once findings are settled.
 - If a ProjectDiscovery-backed skill is the right fit, it may bootstrap its binary through `pdtm` if the tool is not already present.
 
 When a browser is required, spawn the worker with `agent_type: "playwright"` so the task is claimed by the Playwright executor instead of a Kali operator.
@@ -147,7 +154,14 @@ Each skill wraps exactly one CLI tool and produces a standardized JSON envelope 
 | `browser.BaseBrowserSkill` | Playwright | Abstract base for browser-automation skills. Subclasses implement `run_browser(page, context, **kwargs)`. |
 | `browser.RenderedPageObserve` | Playwright | Resilient rendered-page observation using `domcontentloaded` plus a settle delay, with DOM and resource summaries. |
 
-See `skills/TEMPLATE.md` for creating new skills (both CLI and browser variants).
+**Reporting skills** (run in the Reporting executor, extend `BaseReportSkill` from `skills/reporting.py`):
+
+| Skill Class | Backend | Description |
+|-------------|---------|-------------|
+| `reporting.BaseReportSkill` | docxtpl | Abstract base for document-rendering skills. Subclasses implement `render(**kwargs) -> dict`. |
+| `reporting.FindingDocxReport` | docxtpl | Renders one branded docx per finding from a structured dict, list of findings, or YAML/JSON file. Uses `templates/finding_template.docx`; writes to `/loot/reports/` by default. |
+
+See `skills/TEMPLATE.md` for creating new skills (CLI, browser, and reporting variants) and `templates/README.md` for converting an example docx into a docxtpl template the reporting executor can render.
 
 ## 📊 Dashboard
 
@@ -167,10 +181,13 @@ uv run python server.py --http
 
 ## 🔑 Directory Structure
 
-*   `audit/`: Contains the `session_report.md` and persistent `loot/`.
+*   `audit/`: Contains the `session_report.md` and persistent `loot/` (including `loot/reports/` for rendered docx deliverables).
 *   `dashboard/`: Web UI — API handlers, Jinja2 templates, static assets.
-*   `skills/`: Reusable Python modules for specialized tasks. `base.py` for CLI skills, `browser.py` for Playwright-based skills.
-*   `executors/`: Operator logic and Dockerfiles for both executor types:
+*   `skills/`: Reusable Python modules for specialized tasks. `base.py` for CLI skills, `browser.py` for Playwright-based skills, `reporting.py` for document-rendering skills.
+*   `executors/`: Operator logic and Dockerfiles for all three executor types:
     *   `Dockerfile` + `kali_operator.py` — Kali Linux agent (CLI tools, `skill`/`python` action types)
     *   `Dockerfile.playwright` + `playwright_operator.py` — Playwright agent (browser, `playwright_skill`/`playwright` action types)
+    *   `Dockerfile.reporting` + `report_operator.py` — Reporting agent (docxtpl renderer, `report_skill` action type)
+*   `templates/`: docxtpl-tagged document templates consumed by the reporting executor. See `templates/README.md` for how to produce a new template from an example docx.
+*   `scripts/`: Build / spawn helpers. Notable: `scripts/build_finding_template.py` rewrites an example docx into a docxtpl-tagged template under `templates/`.
 *   `tools/`: 13 MCP tool handlers for orchestration (spawning, tracking, waiting, cleanup).

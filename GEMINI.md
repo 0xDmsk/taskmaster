@@ -38,7 +38,7 @@ nmap -sS -sV -O target
 
 ## 🎯 Core Objectives
 1.  **Autonomous Execution**: Do not just suggest commands; spawn agents to execute them.
-2.  **Structured Data**: Prefer the simplest execution pathway that can reliably produce the needed result. Use `action_type: "skill"` for established tool workflows, `action_type: "python"` for lightweight fetch/parse/custom logic, and `action_type: "playwright_skill"` or `"playwright"` for browser work.
+2.  **Structured Data**: Prefer the simplest execution pathway that can reliably produce the needed result. Use `action_type: "skill"` for established tool workflows, `action_type: "python"` for lightweight fetch/parse/custom logic, `action_type: "playwright_skill"` or `"playwright"` for browser work, and `action_type: "report_skill"` for rendering the final docx deliverables.
 3.  **Self-Documentation**: Ensure every action has a strong `justification` for the audit report.
 
 ## 🧭 Execution Path Selection
@@ -60,6 +60,18 @@ Before queuing an execution, explicitly decide between these three options:
     *   Choose this only when the task is likely to recur and requires a stable wrapper around one external tool or one repeatable browser workflow.
     *   A new skill should encapsulate real reusable behavior, not a one-off fetch or a tiny parsing script.
     *   If the task is novel but short-lived, solve it with `python` first instead of expanding the skill library prematurely.
+
+4.  **Render a report deliverable**
+    *   Choose this once the findings underlying a target or engagement are settled and you need a Word/Google-Docs-friendly artifact.
+    *   Use `action_type: "report_skill"` with the appropriate `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`). Pass either a single `finding` dict, a list of `findings`, or a `findings_path` pointing at a YAML/JSON file derived from the engagement's `Findings.md`.
+    *   Spawn the worker with `agent_type: "reporting"`. The reporting executor renders one docx per finding using `templates/finding_template.docx` and writes them to `/loot/reports/` by default.
+    *   Do not invoke a reporting skill mid-engagement to render speculative findings — the template assumes severities and CVSS values are already settled.
+    *   **Translate, do not transcribe.** `Findings.md` and `recon-data.md` are internal working files that the client never sees. When you build the finding dict you pass to the renderer:
+        * Never carry over `F-NNN` triage IDs, `§N.M` recon section markers, "(pending triage)" qualifiers, or phrases like "as noted in the assessment log". Use the deliverable's own identifier (`finding.id`) instead.
+        * Ground every claim in something the client can verify themselves — a URL, parameter, response header, or an artifact saved to `/loot`.
+        * Keep each field tight: `description` = what (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions ("apply output encoding on `q` and serve a CSP that disallows inline scripts"), not platitudes ("implement XSS defenses").
+        * A few short paragraphs per field is plenty — the table layout breaks on wall-of-text prose.
+        * Full style contract lives in the `skills/reporting.py` module docstring and `templates/README.md`.
 
 ## 🎭 When To Use Playwright
 
@@ -89,6 +101,7 @@ Use this checklist:
 *   **Need the same external tool workflow repeatedly across targets** → create a new `skill`
 *   **Need to combine prior findings, post-process JSON, or reshape data** → `python`
 *   **Need a real browser session to see what a user sees** → spawn `agent_type: "playwright"`
+*   **Need a Word/Google-Docs deliverable from settled findings** → `report_skill` on `agent_type: "reporting"`
 
 ## 🚫 Anti-Patterns
 
@@ -120,6 +133,14 @@ Avoid these planning mistakes:
 
 Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_browser(page, context, **kwargs) -> dict`. The orchestrator handles browser lifecycle, loot saving, and envelope assembly.
 
+### Reporting Skills (run in the Reporting executor — `action_type: "report_skill"`)
+
+Extend `BaseReportSkill` from `skills/reporting.py`. Subclasses implement `render(**kwargs) -> dict`. The orchestrator handles timing, artifact tracking, and envelope assembly.
+
+| Skill Class | Backend | Use For |
+|-------------|---------|---------|
+| `reporting.FindingDocxReport` | docxtpl | Render one branded docx per finding from a structured dict / list / YAML / JSON. Output goes to `/loot/reports/` by default. |
+
 ### Invoking a Kali Skill
 ```json
 {
@@ -139,6 +160,20 @@ Extend `BaseBrowserSkill` from `skills/browser.py`. Subclasses implement `run_br
   "arguments": {"wait_until": "domcontentloaded", "settle_ms": 5000}
 }
 ```
+
+### Invoking a Reporting Skill
+```json
+{
+  "action_type": "report_skill",
+  "skill": "reporting.FindingDocxReport",
+  "target": "example.test",
+  "arguments": {
+    "findings_path": "/loot/findings.yaml",
+    "output_dir": "/loot/reports"
+  }
+}
+```
+Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The renderer writes one docx per finding into `output_dir` and lists them in the envelope's `artifacts` array.
 
 ### Running a Raw Playwright Script
 

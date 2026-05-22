@@ -1,0 +1,32 @@
+FROM --platform=linux/arm64 python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Minimal system deps — docxtpl/python-docx are pure-Python plus lxml,
+# and lxml's wheels ship with their own libxml2/libxslt. No apt packages
+# are required at runtime; we keep certificates around for any HTTPS
+# fetches the agent may need (e.g. pulling references over the network).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      openssl && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+      docxtpl>=0.20.0 \
+      python-docx>=1.1.0 \
+      jinja2>=3.1.0 \
+      pyyaml>=6.0
+
+# -------- Taskmaster Integration --------
+COPY skills /app/skills
+COPY templates /app/templates
+COPY targeting.py /app/targeting.py
+ENV PYTHONPATH=/app:$PYTHONPATH
+
+COPY executors/report_operator.py /usr/local/bin/report-operator
+RUN chmod +x /usr/local/bin/report-operator
+
+WORKDIR /work
+CMD ["/usr/local/bin/report-operator"]

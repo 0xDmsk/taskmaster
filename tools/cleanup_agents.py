@@ -4,7 +4,7 @@ import sys
 
 from targeting import targets_match
 
-KNOWN_AGENT_IMAGES = {"kali-smart-operator", "playwright-operator"}
+KNOWN_AGENT_IMAGES = {"kali-smart-operator", "playwright-operator", "report-operator"}
 
 
 def _inspect_container(container_name):
@@ -41,7 +41,11 @@ def _image_name(inspect_data):
 
 
 def _is_taskmaster_agent(container_name, inspect_data):
-    if container_name.startswith("kali-agent") or container_name.startswith("playwright-agent"):
+    if (
+        container_name.startswith("kali-agent")
+        or container_name.startswith("playwright-agent")
+        or container_name.startswith("reporting-agent")
+    ):
         return True
 
     labels = inspect_data.get("Config", {}).get("Labels", {}) if inspect_data else {}

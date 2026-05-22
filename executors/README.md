@@ -1,6 +1,6 @@
 # Taskmaster Executors
 
-Taskmaster ships two executor containers. Each claims a distinct subset of task `action_type` values — they coexist on the same queue without conflict.
+Taskmaster ships three executor containers. Each claims a distinct subset of task `action_type` values — they coexist on the same queue without conflict.
 
 ---
 
@@ -11,7 +11,7 @@ A **minimal, macOS-friendly, Apple Silicon–native Kali Linux container** desig
 *   **Taskmaster Integration**: Ships with `kali-operator`, a Python-based agent that connects to the Taskmaster MCP server to claim and execute tasks.
 *   **Two-Pathway Execution**: Supports `action_type: "skill"` (one-tool-per-class with JSON envelope output) and `action_type: "python"` (Python sandbox for custom analysis). Raw shell execution has been removed.
 *   **Modern Tooling**: Includes `uv`, `pipx`, `proxychains4`, and the full `impacket` script suite.
-*   **Skips**: tasks with `action_type` of `"playwright"` or `"playwright_skill"` — those are left for the Playwright executor.
+*   **Skips**: tasks with `action_type` of `"playwright"`, `"playwright_skill"`, or `"report_skill"` — those are left for their dedicated executors.
 
 ## 🎭 Playwright Executor (`Dockerfile.playwright` + `playwright_operator.py`)
 
@@ -21,6 +21,15 @@ A **lightweight `python:3.12-slim` container** with Playwright + Chromium. No Ka
 *   **Two-Pathway Execution**: `action_type: "playwright_skill"` imports a `BaseBrowserSkill` subclass and calls `run()`; `action_type: "playwright"` runs a raw Python/Playwright script in a subprocess.
 *   **Proxy support**: Set `BROWSER_PROXY` env var to route browser traffic through Burp or ZAP.
 *   **Interactive browser exposure**: Playwright agents default to a headful Chromium session with a local noVNC view so operators can handle MFA, bot checks, and cookie banners in the live browser.
+
+## 📄 Reporting Executor (`Dockerfile.reporting` + `report_operator.py`)
+
+A **slim `python:3.12` container** with `docxtpl`, `python-docx`, `jinja2`, and `pyyaml`. No security tooling — its only job is to turn structured findings into branded deliverables.
+
+*   **Taskmaster Integration**: Ships with `report-operator`, which polls Taskmaster and exclusively claims tasks with `action_type: "report_skill"`. Everything else is left for the Kali / Playwright operators.
+*   **One-Pathway Execution**: `action_type: "report_skill"` imports a `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`) and calls `run()`. The skill renders templates from `/app/templates` and writes documents to `/loot/reports/` by default.
+*   **Template provenance**: Templates are produced from a hand-formatted example docx by `scripts/build_finding_template.py`. The builder preserves the source's table layout, fonts, and headers/footers; only the placeholder text in specific cells/paragraphs is rewritten with Jinja tags. See `templates/README.md` for the layout contract and how to adapt the builder for a new template variant.
+*   **Output safety**: docxtpl renders run through a Jinja env with `autoescape=True`, so finding content containing `<`, `>`, or `&` (typical XSS PoCs) survives intact instead of breaking the document XML.
 
 ---
 
@@ -70,6 +79,28 @@ Build and spawn via Makefile:
 ```bash
 make build-playwright   # builds playwright-operator image
 ```
+
+### Reporting Operator
+
+Build and spawn via Makefile:
+```bash
+make build-reporting    # builds report-operator image
+```
+
+Or via the `spawn_agent` MCP tool with `agent_type: "reporting"`:
+```json
+{
+  "tool": "spawn_agent",
+  "arguments": {
+    "agent_type": "reporting",
+    "target": "example.test",
+    "mission": "Render final docx deliverables for the example.test engagement."
+  }
+}
+```
+
+The agent will claim any queued `report_skill` execution against the configured target and write the rendered docx files into `audit/loot/reports/` on the host.
+
 
 Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:
 ```json

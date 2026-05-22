@@ -39,7 +39,7 @@ def handle_spawn_agent(arguments):
 
     target = arguments.get("target")
     mission = arguments.get("mission")
-    agent_type = arguments.get("agent_type", "kali")  # "kali" | "playwright"
+    agent_type = arguments.get("agent_type", "kali")  # "kali" | "playwright" | "reporting"
     agent_id = arguments.get("agent_id", f"{agent_type}-agent-{uuid.uuid4().hex[:6]}")
     interactive_browser = _bool_arg(
         arguments.get("interactive_browser"), default=(agent_type == "playwright")
@@ -71,6 +71,9 @@ def handle_spawn_agent(arguments):
     )
     if agent_type == "playwright":
         image_name = "playwright-operator"
+        operator_cmd = None
+    elif agent_type == "reporting":
+        image_name = "report-operator"
         operator_cmd = None
     else:
         image_name = "kali-smart-operator"

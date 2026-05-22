@@ -18,9 +18,10 @@ make start        # Start MCP server
 make spawn        # Spawn interactive agent
 
 # Build
-make build              # Build both agent containers (Kali + Playwright)
+make build              # Build all three agent containers (Kali + Playwright + Reporting)
 make build-kali         # Build only the Kali agent container (executors/Dockerfile)
 make build-playwright   # Build only the Playwright agent container (executors/Dockerfile.playwright)
+make build-reporting    # Build only the Reporting agent container (executors/Dockerfile.reporting)
 
 # Test & Lint
 make test         # Run pytest with coverage
@@ -67,7 +68,7 @@ Kali Linux container (executors/Dockerfile)
 
 **Skills:** Each skill extends `skills/base.py:BaseSkill` with one tool per class. Subclasses implement `build_command(**kwargs) -> str` and `parse_output(stdout, stderr, exit_code) -> dict`. The concrete `run()` orchestrator produces a JSON envelope with `skill`, `target`, `status`, `findings`, `artifacts`, `errors`. See `skills/TEMPLATE.md` for creating new skills.
 
-**Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). The Playwright operator (`executors/playwright_operator.py`) supports `"playwright_skill"` (imports a `BaseBrowserSkill` subclass) and `"playwright"` (raw script run via the container's Python interpreter using `playwright.sync_api`/`async_api` — **Python only, not JavaScript**). All four pathways produce JSON envelope output.
+**Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). The Playwright operator (`executors/playwright_operator.py`) supports `"playwright_skill"` (imports a `BaseBrowserSkill` subclass) and `"playwright"` (raw script run via the container's Python interpreter using `playwright.sync_api`/`async_api` — **Python only, not JavaScript**). The Reporting operator (`executors/report_operator.py`) supports `"report_skill"` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport` — to render branded deliverables via docxtpl). All five pathways produce JSON envelope output.
 
 **Audit:** Every state transition is logged to `audit/audit_log.jsonl`. Final report at `audit/session_report.md`.
 
@@ -103,5 +104,16 @@ Create both files on first observation; do not wait for the user to ask. Append 
 ### Interpretation field — required for good UX
 
 Every finalization call should include `interpretation`. Without it the dashboard's findings panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs.
+
+### Writing report content (`report_skill` deliverables)
+
+When invoking `reporting.FindingDocxReport` (or any `BaseReportSkill`), the dict you pass becomes the **client-facing deliverable**. Translate, do not transcribe:
+
+- Never carry over `F-NNN` triage IDs, `§N.M` recon section markers, or "(pending triage)" qualifiers from `Findings.md` / `recon-data.md`. Those files are internal working artifacts and are not shared with the client; referencing them in the deliverable creates confusion.
+- Each field has one job: `description` = what was found (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions.
+- Plain, succinct language — a few short paragraphs per field, not pages of prose.
+- Severity is a final value; strip working-estimate qualifiers.
+
+Full style contract lives in the `skills/reporting.py` module docstring and `templates/README.md`.
 
 See `AGENTS.md` for the canonical model-agnostic guide, `GEMINI.md` for the fuller worker-queue context, `policies/agent_mission_template.md` for mission briefing structure plus the interpretation wrap-up, and `policies/note_taking_template.md` for the `Findings.md` / `recon-data.md` structure.
