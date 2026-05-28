@@ -11,6 +11,16 @@ path-exclude /usr/share/locale/*\n\
 path-include /usr/share/locale/en*\n" \
 > /etc/dpkg/dpkg.cfg.d/01_nodoc
 
+# Kali mirror hardening. The default `http.kali.org` round-robins through
+# community mirrors, some of which lag the package index (we hit 404s on
+# transitive deps like libexpat1 mid-build). Replace the stock
+# `kali.sources` (deb822 format) with the Cloudflare-backed `kali.download`
+# CDN, and tell apt to retry transient failures a few times.
+RUN printf 'Types: deb\nURIs: http://kali.download/kali/\nSuites: kali-rolling\nComponents: main contrib non-free non-free-firmware\nSigned-By: /usr/share/keyrings/kali-archive-keyring.gpg\n' \
+        > /etc/apt/sources.list.d/kali.sources && \
+    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' \
+        > /etc/apt/apt.conf.d/80-retries
+
 # Core + light pentest tools + new additions (pipx, impacket-scripts, ping, proxychains)
 RUN apt update && \
     apt install -y --no-install-recommends \
