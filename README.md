@@ -43,8 +43,8 @@ graph TD
     *   **PDTM bootstrapping**: ProjectDiscovery-backed skills can install their own missing binaries on first use via `pdtm`.
 
 3.  **Playwright Executor**:
-    *   **Browser-native**: A lightweight `python:3.12-slim` container with Playwright + Chromium. No Kali tooling.
-    *   **Two Pathways**: `playwright_skill` (imports a `BaseBrowserSkill` subclass) or `playwright` (raw Python/Playwright script in a subprocess).
+    *   **Browser-native**: A lightweight `python:3.12-slim` container shipping three selectable browser engines for fingerprint-protected targets — vanilla Playwright (Chromium), Patchright (anti-detection Chromium drop-in, **default**), and Camoufox (fingerprint-hardened custom Firefox). No Kali tooling.
+    *   **Two Pathways**: `playwright_skill` (imports a `BaseBrowserSkill` subclass) or `playwright` (raw Python/Playwright script in a subprocess). Both honor the per-spawn `browser_engine` setting via the `BROWSER_ENGINE` env var.
     *   **Selective claiming**: Only picks up tasks with `action_type: "playwright"` or `"playwright_skill"`; Kali tasks are left for the Kali operator.
 
 4.  **Reporting Executor**:
@@ -114,6 +114,7 @@ Playwright agents expose a local noVNC browser view by default. This is useful w
 - `interactive_browser`: defaults to `true` for `agent_type: "playwright"`. Set `false` only for fully unattended browser runs.
 - `interactive_hold_ms`: how long a browser skill should keep the live session open before collecting final findings.
 - `novnc_port`: optional fixed localhost port for the noVNC session. If omitted, Taskmaster selects a free port automatically.
+- `browser_engine`: `"playwright" | "patchright" | "camoufox"`. Defaults to `"patchright"`. Use `"camoufox"` when a target sits behind aggressive bot defenses that Patchright still trips (Akamai Bot Manager, PerimeterX). Use `"playwright"` only when you specifically need a non-patched baseline. See the "Bot-Protected Targets" section in `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` for the full three-tier ladder, including `curl_cffi` for JS-free recon on a Kali agent.
 
 Example:
 ```json

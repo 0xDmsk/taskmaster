@@ -70,6 +70,8 @@ Kali Linux container (executors/Dockerfile)
 
 **Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). The Playwright operator (`executors/playwright_operator.py`) supports `"playwright_skill"` (imports a `BaseBrowserSkill` subclass) and `"playwright"` (raw script run via the container's Python interpreter using `playwright.sync_api`/`async_api` — **Python only, not JavaScript**). The Reporting operator (`executors/report_operator.py`) supports `"report_skill"` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport` — to render branded deliverables via docxtpl). All five pathways produce JSON envelope output.
 
+**Browser engines:** The Playwright agent ships three engines selectable per-spawn via `browser_engine` on `spawn_agent`: `playwright` (vanilla Chromium), `patchright` (anti-detection Chromium drop-in, **default**), `camoufox` (fingerprint-hardened Firefox). `BaseBrowserSkill` dispatches at run time on the engine; skills written for vanilla Playwright work unchanged across all three.
+
 **Audit:** Every state transition is logged to `audit/audit_log.jsonl`. Final report at `audit/session_report.md`.
 
 **MCP Tools (in `tools/`):** `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`.
@@ -91,6 +93,20 @@ Standard workflow:
 6. **Cleanup** — once a target assessment or phase is finalized, use `cleanup_agents` to decommission the worker fleet.
 
 Do not assume that a `QUEUED` execution provisions a worker by itself. Use `query_execution_status` mainly for debugging, recovery, or explicit spot-checks — not as the default next step after queuing work.
+
+### Bot-Protected Targets (Akamai, Cloudflare, Datadome…)
+
+Fingerprint-based bot defenses block below the HTTP layer — `ERR_HTTP2_PROTOCOL_ERROR`, silent 403s, challenge pages, or a "Burp Suite" upstream-failure page rendered by Burp itself. Burp cannot help here: its own Java TLS stack is part of what's detected. Skip the proxy for these targets and lean on the agent's own logging.
+
+Three-tier ladder — pick the **lowest tier** that yields the data you need:
+
+1. **`curl_cffi`** — Kali agent, `action_type: "python"`. JS not needed (API probes, OAuth/redirect chasing, sitemap/robots, raw endpoint enum). Wraps a real Chrome/Firefox/Safari TLS+HTTP2 fingerprint around a `requests`-like API.
+   ```python
+   from curl_cffi import requests
+   r = requests.get("https://target", impersonate="chrome124")
+   ```
+2. **Patchright** — Playwright agent with `browser_engine: "patchright"` (default). Anti-detection Chromium drop-in. First choice when JS is required.
+3. **Camoufox** — Playwright agent with `browser_engine: "camoufox"`. Fingerprint-hardened custom Firefox. Escalate to it when Patchright is still getting flagged.
 
 ### Note-Taking Discipline
 

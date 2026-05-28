@@ -23,8 +23,9 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] Pentest tools (nmap, ffuf, gobuster, sqlmap)
 - [x] Cloud tools (aws-cli, gcloud, kubectl, helm)
 - [x] Proxychains4 integration
-- [x] Playwright executor container (`Dockerfile.playwright`) — browser-only, minimal footprint
-- [x] `playwright_operator.py` — polls Taskmaster and exclusively claims `playwright`/`playwright_skill` tasks
+- [x] Playwright executor container (`Dockerfile.playwright`) — browser-only, three selectable engines: vanilla Playwright (Chromium), Patchright (anti-detection Chromium drop-in), Camoufox (fingerprint-hardened Firefox). Engine chosen per-spawn via `browser_engine`; defaults to `patchright`.
+- [x] `playwright_operator.py` — polls Taskmaster and exclusively claims `playwright`/`playwright_skill` tasks; propagates `BROWSER_ENGINE` to skills and raw scripts.
+- [x] `curl_cffi` + `httpx[http2]` in the Kali image — browser-fingerprint-impersonating HTTP for `python`/`skill` actions on bot-protected targets that don't need JS execution.
 
 ### MCP Tools
 - [x] `request_security_action` - Queue security tasks

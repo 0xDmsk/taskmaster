@@ -1,6 +1,6 @@
 {
   "name": "request_security_action",
-  "description": "Request execution of a security-related action in a controlled environment. Supports skill, python, and Playwright execution modes. See skills/TEMPLATE.md for creating new skills.",
+  "description": "Request execution of a security-related action in a controlled environment. Supports skill, python, and Playwright execution modes. For bot-protected targets (Akamai/Cloudflare/Datadome), escalate lightest-to-heaviest: curl_cffi inside a python action -> patchright browser engine -> camoufox browser engine (set browser_engine on spawn_agent). See skills/TEMPLATE.md for creating new skills.",
   "inputSchema": {
     "type": "object",
     "required": [

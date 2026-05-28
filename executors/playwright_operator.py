@@ -26,6 +26,7 @@ TASKMASTER_PORT = int(os.environ.get("TASKMASTER_PORT", 5000))
 EXECUTOR_ID = os.environ.get("EXECUTOR_ID", f"playwright-{socket.gethostname()}")
 TARGET_SCOPE = os.environ.get("TARGET_SCOPE")
 AGENT_MISSION = os.environ.get("AGENT_MISSION")
+BROWSER_ENGINE = os.environ.get("BROWSER_ENGINE", "patchright")
 
 SUPPORTED_ACTION_TYPES = {"playwright", "playwright_skill"}
 
@@ -132,6 +133,7 @@ def _execute_playwright_script(payload):
     env["TARGET"] = target or ""
     env["LOOT_DIR"] = "/loot"
     env["PLAYWRIGHT_ARGS"] = json.dumps(arguments)
+    env["BROWSER_ENGINE"] = BROWSER_ENGINE
 
     script_file = None
     try:
@@ -199,6 +201,7 @@ def _execute_playwright_script(payload):
 
 def main_loop():
     print(f"[*] Playwright Operator started (ID: {EXECUTOR_ID})")
+    print(f"[*] Browser engine: {BROWSER_ENGINE}")
     if TARGET_SCOPE:
         print(f"[*] Target Scope restricted to: {TARGET_SCOPE}")
     if AGENT_MISSION:

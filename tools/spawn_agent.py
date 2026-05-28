@@ -44,6 +44,18 @@ def handle_spawn_agent(arguments):
     interactive_browser = _bool_arg(
         arguments.get("interactive_browser"), default=(agent_type == "playwright")
     )
+    # Browser engine selection for the playwright agent. patchright is the
+    # default because it beats most lightweight bot defenses out of the box;
+    # camoufox is the escalation when patchright still gets fingerprinted.
+    browser_engine = (arguments.get("browser_engine") or "patchright").lower()
+    if browser_engine not in {"playwright", "patchright", "camoufox"}:
+        return {
+            "status": "error",
+            "message": (
+                f"Invalid browser_engine {browser_engine!r}; expected "
+                "'playwright', 'patchright', or 'camoufox'."
+            ),
+        }
 
     # Configuration - check .env first, then process env, then default
     taskmaster_host = normalize_taskmaster_host(
@@ -140,6 +152,7 @@ def handle_spawn_agent(arguments):
         cmd.extend(["-e", "SECLISTS_PATH=/usr/share/seclists"])
 
     if agent_type == "playwright":
+        cmd.extend(["-e", f"BROWSER_ENGINE={browser_engine}"])
         if interactive_browser:
             novnc_port = int(arguments.get("novnc_port") or _allocate_host_port())
             novnc_url = f"http://127.0.0.1:{novnc_port}/vnc.html"
@@ -192,6 +205,7 @@ def handle_spawn_agent(arguments):
             "container_id": container_id,
             "target": target,
             "interactive_browser": interactive_browser,
+            "browser_engine": browser_engine if agent_type == "playwright" else None,
             "novnc_url": novnc_url,
         }
     except subprocess.CalledProcessError as e:

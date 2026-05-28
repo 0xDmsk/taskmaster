@@ -91,6 +91,25 @@ When you choose this path:
 *   Keep `interactive_browser` enabled unless the task is explicitly unattended; Playwright agents expose a local noVNC session by default
 *   Increase `interactive_hold_ms` when the user may need time to complete MFA, SSO, cookie consent, or bot challenges in the live browser session
 
+## 🛡 Bot-Protected Targets (Akamai, Cloudflare, Datadome…)
+
+When a target is gated by fingerprint-based bot defenses, vanilla headless Chromium and Burp's outbound TLS stack both get blocked **below** the HTTP layer. Symptoms: `ERR_HTTP2_PROTOCOL_ERROR`, silent 403s, persistent challenge pages, or a "Burp Suite"-titled upstream-failure page rendered by Burp itself. Burp cannot fix this — its own Java TLS fingerprint is part of the signal. Drop the proxy for these targets and rely on the agent's own logging.
+
+Pick the **lowest tier** that yields the data you need:
+
+1.  **`curl_cffi`** (Kali agent, `action_type: "python"`) — use when JavaScript is not required. API probes, OAuth/redirect chasing, sitemap/robots, raw endpoint enumeration. Wraps a real Chrome/Firefox/Safari TLS + HTTP/2 fingerprint around a `requests`-like API.
+
+    ```python
+    from curl_cffi import requests
+    r = requests.get("https://target", impersonate="chrome124")
+    ```
+
+2.  **Patchright** (Playwright agent, `browser_engine: "patchright"`) — anti-detection Playwright drop-in on Chromium. **Default** for `spawn_agent(agent_type="playwright")`. Pick this first when JS is needed.
+
+3.  **Camoufox** (Playwright agent, `browser_engine: "camoufox"`) — fingerprint-hardened custom Firefox. Escalate to it when Patchright still gets flagged. Slower cold start and narrower site-compat surface — don't reach for it first.
+
+`BaseBrowserSkill` reads the engine from kwargs / the `BROWSER_ENGINE` env var (set by `spawn_agent`), so existing browser skills work unchanged across all three engines.
+
 ## ✅ Decision Heuristics
 
 Use this checklist:
@@ -102,6 +121,8 @@ Use this checklist:
 *   **Need to combine prior findings, post-process JSON, or reshape data** → `python`
 *   **Need a real browser session to see what a user sees** → spawn `agent_type: "playwright"`
 *   **Need a Word/Google-Docs deliverable from settled findings** → `report_skill` on `agent_type: "reporting"`
+*   **Target is behind Akamai/Cloudflare/Datadome and JS isn't needed** → `python` action with `curl_cffi`
+*   **JS-rendered target throws ERR_HTTP2_PROTOCOL_ERROR / silent 403 / challenge page** → `agent_type: "playwright"` with `browser_engine: "patchright"`, escalate to `"camoufox"` if patchright still fails
 
 ## 🚫 Anti-Patterns
 

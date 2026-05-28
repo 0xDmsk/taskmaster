@@ -398,10 +398,24 @@ class TestVersionDetection:
         mock_playwright_module = MagicMock()
         mock_playwright_module.__version__ = "1.48.0"
         with patch.dict(sys.modules, {"playwright": mock_playwright_module}):
-            version = TitleFetcher(target="t")._playwright_version()
+            version = TitleFetcher(target="t")._engine_version("playwright")
         assert version == "1.48.0"
 
     def test_returns_empty_string_on_import_error(self):
         with patch.dict(sys.modules, {"playwright": None}):
-            version = TitleFetcher(target="t")._playwright_version()
+            version = TitleFetcher(target="t")._engine_version("playwright")
         assert version == ""
+
+    def test_patchright_version_resolved(self):
+        mock_patchright = MagicMock()
+        mock_patchright.__version__ = "1.50.0"
+        with patch.dict(sys.modules, {"patchright": mock_patchright}):
+            version = TitleFetcher(target="t")._engine_version("patchright")
+        assert version == "1.50.0"
+
+    def test_camoufox_version_resolved(self):
+        mock_camoufox = MagicMock()
+        mock_camoufox.__version__ = "0.4.11"
+        with patch.dict(sys.modules, {"camoufox": mock_camoufox}):
+            version = TitleFetcher(target="t")._engine_version("camoufox")
+        assert version == "0.4.11"

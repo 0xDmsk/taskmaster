@@ -71,6 +71,21 @@ TOOLS = {
                         "Playwright agents."
                     ),
                 },
+                "browser_engine": {
+                    "type": "string",
+                    "enum": ["playwright", "patchright", "camoufox"],
+                    "description": (
+                        "Which browser stack the Playwright agent should use. "
+                        "'patchright' (default) is a Playwright drop-in with "
+                        "anti-detection patches on Chromium; pick it first. "
+                        "'camoufox' is a custom Firefox tuned for fingerprint "
+                        "resistance — escalate to it when patchright still gets "
+                        "blocked (ERR_HTTP2_PROTOCOL_ERROR, silent 403, visible "
+                        "challenge page). 'playwright' is vanilla Chromium and "
+                        "should only be used when you specifically need a "
+                        "non-patched baseline."
+                    ),
+                },
                 "interactive_hold_ms": {
                     "type": "integer",
                     "description": (

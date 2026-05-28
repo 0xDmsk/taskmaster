@@ -9,6 +9,19 @@ try:
 except ImportError:
     sync_playwright = None  # Available only inside the playwright container
 
+try:
+    from patchright.sync_api import sync_playwright as sync_patchright
+except ImportError:
+    sync_patchright = None
+
+try:
+    from camoufox.sync_api import Camoufox
+except ImportError:
+    Camoufox = None
+
+
+_VALID_ENGINES = {"playwright", "patchright", "camoufox"}
+
 
 def _env_flag(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)
@@ -41,13 +54,19 @@ class BaseBrowserSkill(ABC):
     and JSON envelope assembly automatically.
 
     Optional class attributes:
-        browser_type: str   — "chromium" (default), "firefox", or "webkit"
-        headless: bool      — True (default)
-        schema: dict | None — JSON Schema for the findings field
+        browser_type: str    — "chromium" (default), "firefox", or "webkit"
+        browser_engine: str  — "playwright" (default), "patchright", or "camoufox".
+                               Picked at run() time from kwargs, then the
+                               BROWSER_ENGINE env var, then this class attribute.
+                               "patchright" pins to chromium; "camoufox" pins
+                               to its bundled firefox.
+        headless: bool       — True (default)
+        schema: dict | None  — JSON Schema for the findings field
     """
 
     tool = "playwright"
     browser_type: str = "chromium"
+    browser_engine: str = "playwright"
     headless: bool = True
     schema: dict | None = None
 
@@ -77,6 +96,16 @@ class BaseBrowserSkill(ABC):
         returns a JSON envelope compatible with the Taskmaster result format.
         """
         target = kwargs.pop("target", None) or self.target
+        engine = (
+            kwargs.pop("browser_engine", None)
+            or os.environ.get("BROWSER_ENGINE")
+            or self.browser_engine
+        ).lower()
+        if engine not in _VALID_ENGINES:
+            raise ValueError(
+                f"Unknown browser_engine {engine!r}; expected one of "
+                f"{sorted(_VALID_ENGINES)}"
+            )
         self.target = target
         self._artifacts = []
         self._errors = []
@@ -90,20 +119,7 @@ class BaseBrowserSkill(ABC):
         status = "success"
 
         try:
-            if sync_playwright is None:
-                raise RuntimeError(
-                    "playwright is not installed. Run inside the playwright-operator container."
-                )
-            with sync_playwright() as pw:  # type: ignore[operator]
-                launcher = getattr(pw, self.browser_type)
-                browser = launcher.launch(**self._launch_options())
-                context = browser.new_context(
-                    ignore_https_errors=True,
-                    **self._context_options(),
-                )
-                page = context.new_page()
-                findings = self.run_browser(page, context, **kwargs)
-                browser.close()
+            findings = self._run_with_engine(engine, kwargs)
         except Exception:
             self._errors.append(traceback.format_exc())
             status = "error"
@@ -117,12 +133,64 @@ class BaseBrowserSkill(ABC):
             "started_at": started_at,
             "completed_at": completed_at,
             "tool": self.tool,
-            "tool_version": self._playwright_version(),
+            "tool_version": self._engine_version(engine),
+            "engine": engine,
             "command": "",
             "findings": findings,
             "artifacts": list(self._artifacts),
             "errors": list(self._errors),
         }
+
+    def _run_with_engine(self, engine: str, kwargs: dict) -> dict:
+        if engine == "camoufox":
+            if Camoufox is None:
+                raise RuntimeError(
+                    "camoufox is not installed. Run inside the playwright-operator container."
+                )
+            cam_opts = self._camoufox_options()
+            with Camoufox(**cam_opts) as browser:
+                context = browser.new_context(
+                    ignore_https_errors=True,
+                    **self._context_options(),
+                )
+                page = context.new_page()
+                return self.run_browser(page, context, **kwargs)
+
+        if engine == "patchright":
+            if sync_patchright is None:
+                raise RuntimeError(
+                    "patchright is not installed. Run inside the playwright-operator container."
+                )
+            with sync_patchright() as pw:  # type: ignore[operator]
+                # Patchright always uses its patched chromium.
+                browser = pw.chromium.launch(**self._launch_options())
+                context = browser.new_context(
+                    ignore_https_errors=True,
+                    **self._context_options(),
+                )
+                page = context.new_page()
+                try:
+                    return self.run_browser(page, context, **kwargs)
+                finally:
+                    browser.close()
+
+        # engine == "playwright"
+        if sync_playwright is None:
+            raise RuntimeError(
+                "playwright is not installed. Run inside the playwright-operator container."
+            )
+        with sync_playwright() as pw:  # type: ignore[operator]
+            launcher = getattr(pw, self.browser_type)
+            browser = launcher.launch(**self._launch_options())
+            context = browser.new_context(
+                ignore_https_errors=True,
+                **self._context_options(),
+            )
+            page = context.new_page()
+            try:
+                return self.run_browser(page, context, **kwargs)
+            finally:
+                browser.close()
 
     # ------------------------------------------------------------------ #
     # Helpers available to subclasses                                       #
@@ -182,8 +250,35 @@ class BaseBrowserSkill(ABC):
             options["slow_mo"] = slow_mo
         return options
 
-    def _playwright_version(self) -> str:
+    def _camoufox_options(self) -> dict:
+        """
+        Launch options for the Camoufox context-manager. Camoufox wraps the
+        browser+context boot in one call and accepts its own proxy/humanize/
+        geoip flags rather than the playwright launch dict.
+        """
+        options = {"headless": _env_flag("PLAYWRIGHT_HEADLESS", self.headless)}
+        slow_mo = _env_int("PLAYWRIGHT_SLOW_MO_MS")
+        if slow_mo > 0:
+            options["slow_mo"] = slow_mo
+        proxy_url = os.environ.get("BROWSER_PROXY")
+        if proxy_url:
+            options["proxy"] = {"server": proxy_url}
+        # Camoufox-native evasion knobs. Off by default to keep behaviour
+        # predictable; opt in per-spawn via env if a target needs them.
+        if _env_flag("CAMOUFOX_HUMANIZE"):
+            options["humanize"] = True
+        if _env_flag("CAMOUFOX_GEOIP"):
+            options["geoip"] = True
+        return options
+
+    def _engine_version(self, engine: str) -> str:
         try:
+            if engine == "patchright":
+                import patchright  # noqa: PLC0415
+                return getattr(patchright, "__version__", "")
+            if engine == "camoufox":
+                import camoufox  # noqa: PLC0415
+                return getattr(camoufox, "__version__", "")
             import playwright  # noqa: PLC0415
             return getattr(playwright, "__version__", "")
         except Exception:

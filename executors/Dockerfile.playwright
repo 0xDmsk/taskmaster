@@ -29,8 +29,20 @@ RUN if [ -s /tmp/burp-cacert.der ]; then \
     fi && \
     rm -f /tmp/burp-cacert.der
 
-RUN pip install --no-cache-dir playwright && \
+# Three browser engines, in evasion-tier order:
+#   playwright  — vanilla Chromium. Cheapest, easiest fingerprint to detect.
+#   patchright  — drop-in Playwright fork with anti-detection patches (Chromium).
+#   camoufox    — custom-built Firefox tuned for fingerprint resistance.
+# Skills/scripts pick at run time via the BROWSER_ENGINE env var (default
+# patchright). Installing all three means one image serves the full ladder.
+RUN pip install --no-cache-dir \
+        playwright \
+        patchright \
+        "camoufox[geoip]" && \
     playwright install chromium --with-deps && \
+    playwright install firefox --with-deps && \
+    patchright install chromium && \
+    python -m camoufox fetch && \
     rm -rf /var/lib/apt/lists/*
 
 # -------- Taskmaster Integration --------

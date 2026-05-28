@@ -42,6 +42,25 @@ When you build the `finding` dict you pass to a reporting skill, write for the *
 
 The full style contract is documented in the module docstring of `skills/reporting.py` and in `templates/README.md`.
 
+## Bot-Protected Targets (Akamai, Cloudflare, Datadome…)
+
+When a target sits behind fingerprint-based bot defenses, plain headless Chromium and Burp's outbound Java TLS stack both get blocked **below** the HTTP layer — you see `ERR_HTTP2_PROTOCOL_ERROR`, silent 403s, challenge pages, or a "Burp Suite" upstream-failure page rendered by Burp itself. Burp cannot fix this; its own outbound fingerprint is part of what's being detected. Skip the proxy for these targets and lean on the agent's own logging instead.
+
+Pick the **lowest tier** that produces the data you need:
+
+1. **`curl_cffi`** — Kali agent, `action_type: "python"`. Use when you do not need JavaScript execution: API probes, OAuth/redirect chasing, raw endpoint enumeration, sitemap/robots fetches. Wraps a real Chrome/Firefox/Safari TLS + HTTP/2 fingerprint around a `requests`-like API. Fastest by far.
+
+   ```python
+   from curl_cffi import requests
+   r = requests.get("https://target", impersonate="chrome124")
+   ```
+
+2. **Patchright** — Playwright agent, `browser_engine: "patchright"` on `spawn_agent`. Drop-in Playwright replacement with anti-detection patches on Chromium. Default for `agent_type: "playwright"` — pick this first when JS is required.
+
+3. **Camoufox** — Playwright agent, `browser_engine: "camoufox"`. Custom-built Firefox tuned for fingerprint resistance. Escalate to it when Patchright still gets flagged (HTTP/2 protocol errors, persistent challenge pages, silent 403s). Slower cold start and narrower site-compat surface than Patchright, so don't reach for it first.
+
+`BaseBrowserSkill` reads the engine from kwargs / the `BROWSER_ENGINE` env var (set by `spawn_agent`), so a skill written for vanilla Playwright works unchanged across all three engines.
+
 ## Executor Languages
 
 - `action_type: "python"` — Python only (sandboxed `exec()` on the Kali agent).

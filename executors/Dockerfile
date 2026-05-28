@@ -25,6 +25,7 @@ RUN apt update && \
     sqlmap \
     dnsutils \
     python3-impacket \
+    python3-pip \
     python3-requests \
     impacket-scripts \
     iputils-ping \
@@ -45,6 +46,15 @@ RUN apt update && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
     mv /root/.local/bin/uv /usr/local/bin/uv && \
     mv /root/.local/bin/uvx /usr/local/bin/uvx
+
+# Browser-fingerprint-impersonating HTTP for skill/python actions. curl_cffi
+# wraps a Chrome/Firefox/Safari TLS+HTTP2 fingerprint around a requests-like
+# API, which clears Cloudflare/Akamai bot walls that block plain
+# requests/httpx without paying the cost of a real browser. httpx[http2]
+# rounds out the toolbox for the cases that only need HTTP/2 + async.
+RUN pip install --break-system-packages --no-cache-dir \
+        "curl_cffi" \
+        "httpx[http2]"
 
 # Install PDTM from ProjectDiscovery release assets
 ARG PDTM_VERSION=v0.1.3
