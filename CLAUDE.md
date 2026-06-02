@@ -121,6 +121,8 @@ Create both files on first observation; do not wait for the user to ask. Append 
 
 Every finalization call should include `interpretation`. Without it the dashboard's findings panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs.
 
+**Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
+
 ### Writing report content (`report_skill` deliverables)
 
 When invoking `reporting.FindingDocxReport` (or any `BaseReportSkill`), the dict you pass becomes the **client-facing deliverable**. Translate, do not transcribe:

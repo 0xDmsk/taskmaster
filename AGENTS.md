@@ -25,6 +25,8 @@ Every finalization call should include `interpretation`. Without it, the dashboa
 
 Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs — same level of detail you would surface to a human reviewer.
 
+**Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
+
 ## Executor Selection
 
 - Use `agent_type: "kali"` for CLI-based `skill` and `python` actions.

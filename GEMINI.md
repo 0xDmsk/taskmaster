@@ -271,3 +271,5 @@ Every engagement should produce two living files in the **current working direct
 - `recon-data.md` — raw data dossier underlying the findings. Captures, tables, endpoint shapes, request/response samples. Numbered sections (`1.1`, `2.4`, `12.x`) that `Findings.md` cites via `§{section}`.
 
 Create both files on first observation; do not wait for the user to ask. Append after every execution that produced novel data. When a hypothesis flips, add a dated follow-up paragraph rather than rewriting history. Full structure and worked examples in `policies/note_taking_template.md`.
+
+**Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.

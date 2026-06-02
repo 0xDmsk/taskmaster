@@ -198,7 +198,12 @@ TOOLS = {
                     "description": (
                         "Natural-language analysis of the result the calling LLM produced "
                         "after reviewing the raw output. Markdown is supported. "
-                        "Surfaced in the dashboard above the raw findings."
+                        "Surfaced in the dashboard above the raw findings. "
+                        "Voice: pentester drafting working notes — plain and concrete, "
+                        "cite the URL/header/parameter/payload that proves the claim instead "
+                        "of abstract risk language. No scaremongering, no marketing tone. "
+                        "Length follows the observation; a few sentences is often enough. "
+                        "Full tone contract in policies/note_taking_template.md."
                     ),
                 },
                 "status": {
@@ -254,7 +259,12 @@ TOOLS = {
                     "description": (
                         "Natural-language analysis of the result the calling LLM produced "
                         "after reviewing the raw output. Markdown is supported. "
-                        "Surfaced in the dashboard above the raw findings."
+                        "Surfaced in the dashboard above the raw findings. "
+                        "Voice: pentester drafting working notes — plain and concrete, "
+                        "cite the URL/header/parameter/payload that proves the claim instead "
+                        "of abstract risk language. No scaremongering, no marketing tone. "
+                        "Length follows the observation; a few sentences is often enough. "
+                        "Full tone contract in policies/note_taking_template.md."
                     ),
                 },
             },
@@ -277,7 +287,11 @@ TOOLS = {
                     "type": "string",
                     "description": (
                         "Natural-language analysis of why the execution failed. "
-                        "Markdown is supported. Surfaced in the dashboard above raw errors."
+                        "Markdown is supported. Surfaced in the dashboard above raw errors. "
+                        "Voice: pentester drafting working notes — plain and concrete, "
+                        "name the failing command/URL/parameter, no scaremongering, no "
+                        "marketing tone. A couple of sentences is usually enough. "
+                        "Full tone contract in policies/note_taking_template.md."
                     ),
                 },
             },

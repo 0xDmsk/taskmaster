@@ -11,6 +11,22 @@ These files are **default behavior**. Create them on first observation; do not w
 
 ---
 
+## Tone & voice (applies to every prose field in both files)
+
+Write as a pentester drafting working notes that will later feed a client report. The register is **concrete, neutral, and professional** — close to a code-review comment, not a marketing page or a threat briefing.
+
+- **Cite the evidence, don't dress it up.** Ground every claim in the URL, header, parameter, response body, or payload that proves it. "GET `/api/v1/users` returns 200 anonymously with a JSON list of email addresses" beats "the endpoint is dangerously exposed".
+- **No scaremongering.** Avoid "catastrophic", "devastating", "trivially exploitable", "complete compromise" unless the evidence on the page actually supports that exact claim. Overstatement burns credibility with the reviewer who reads the raw capture next.
+- **No marketing or vendor voice.** "Robust", "world-class", "leverages best-in-class", "comprehensive" — strip them. Same for hedging fluff like "it appears that potentially…".
+- **Prefer the specific consequence over abstract risk.** "An unauthenticated request returns the admin email and a password-reset token" is useful; "severe security impact" is not.
+- **Length follows the observation.** A one-line finding is fine when there is one line to say. Expand only when the reasoning, reproduction, or impact chain actually needs the room. The structural headers (`Where` / `Observation` / `Why it matters` / etc.) can each be a single sentence.
+- **Plain technical English.** Jargon is fine when it is the precise word (e.g. `SAMEORIGIN`, `SameSite=Lax`, IDOR). Acronyms get expanded on first use within a finding only when the audience is likely mixed.
+- **Stay in the working-notes register.** These files are internal — write the way you would brief a colleague at a whiteboard, not the way the final report will read.
+
+The same voice applies to the `interpretation` argument you pass when finalizing an execution. The deliverable docx has its own (also-plain) style contract in `skills/reporting.py` and `templates/README.md`.
+
+---
+
 ## `Findings.md` structure
 
 ### Header (write once, update as scope shifts)

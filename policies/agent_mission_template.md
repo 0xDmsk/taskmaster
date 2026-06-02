@@ -40,3 +40,5 @@ SUCCESS_CRITERIA: List of verified subdomains"
 ## Wrap-up: `interpretation` argument
 
 When finishing an execution via `mark_execution_complete`, `complete_execution`, or `fail_execution`, pass an `interpretation` string with the orchestrating LLM's analysis of the raw output. Keep it tight (a few sentences to a few short paragraphs) and use markdown — headings, `**bold**`, `- bullets`, and inline `code` are rendered in the dashboard's "Analysis" panel above the raw findings. Treat it as the same summary you would surface to the user in the CLI: what was found, what it means, and the suggested next step.
+
+**Voice:** pentester drafting working notes — plain and concrete, cite the URL/header/parameter/payload that proves the claim, no scaremongering, no marketing tone. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
