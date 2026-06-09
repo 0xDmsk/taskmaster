@@ -182,7 +182,7 @@ Open the resulting docx in **both** Word and Google Docs and confirm:
 If the template should be the default for a new skill or replace `finding_template.docx`, update:
 
 - `_DEFAULT_TEMPLATE_CANDIDATES` in `skills/reporting.py` if the path changes.
-- `executors/Dockerfile.reporting` — the `COPY templates /app/templates` line picks up new templates automatically, but rebuild the container (`make build-reporting`) to make them available inside the agent.
+- `executors/Dockerfile.reporting` — the `COPY templates /app/templates` line bakes templates into the image as a fallback. In normal dev flow you don't need to rebuild: `spawn_agent` bind-mounts the host `templates/` directory onto `/app/templates` for reporting agents, so template edits take effect on the next spawn. Rebuild (`make build-reporting`) only when you want the new templates baked into the shipped image, or when running the container without the bind mount (e.g. in CI).
 - The builder script's `DEFAULT_SOURCE` / `DEFAULT_OUTPUT` if you want it to be the no-args target.
 
 ## Beyond plain text: rich content

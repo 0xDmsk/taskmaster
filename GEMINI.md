@@ -231,7 +231,7 @@ Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The
     *   **Default**: After queuing an execution, immediately call `spawn_agent`.
     *   **Reuse**: Skip `spawn_agent` only if you have already verified that a compatible worker is currently running for the same `TARGET` and executor type.
     *   **Do not assume**: A `QUEUED` execution does not provision a worker by itself. `request_security_action` only writes to the queue.
-    *   Pass `agent_type: "kali"` (default) for CLI-based tasks or `agent_type: "playwright"` for browser-based tasks. The correct container image and operator command are selected automatically.
+    *   Pass `agent_type: "kali"` (default) for CLI-based tasks, `agent_type: "playwright"` for browser-based tasks, or `agent_type: "reporting"` for rendering client-facing deliverables via `action_type: "report_skill"`. The correct container image and operator command are selected automatically.
     *   Use the structured mission template from `policies/agent_mission_template.md`.
 4.  **Monitor**: Call `wait_for_completion` with the `execution_id`. The tool blocks server-side until the execution reaches `COMPLETED` or `FAILED` (default timeout: 10 min). If it times out, call it again or investigate.
     *   **Do not poll by default**: Do not call `query_execution_status` as the normal next step after queuing work. Use it only for debugging, recovery, or an explicit spot-check.

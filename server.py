@@ -57,10 +57,12 @@ TOOLS = {
             "properties": {
                 "agent_type": {
                     "type": "string",
-                    "enum": ["kali", "playwright"],
+                    "enum": ["kali", "playwright", "reporting"],
                     "description": (
-                        "Executor type to launch. Use 'kali' for CLI/python tasks "
-                        "or 'playwright' for browser-rendered tasks."
+                        "Executor type to launch. Use 'kali' for CLI/python tasks, "
+                        "'playwright' for browser-rendered tasks, or 'reporting' "
+                        "for rendering client-facing deliverables via 'report_skill' "
+                        "actions (e.g. reporting.FindingDocxReport)."
                     ),
                 },
                 "interactive_browser": {

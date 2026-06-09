@@ -61,7 +61,7 @@ def _is_taskmaster_agent(container_name, inspect_data):
 
 def handle_cleanup_agents(arguments):
     """
-    Stops and removes agent containers (kali-agent-* and playwright-agent-*).
+    Stops and removes agent containers (kali-agent-*, playwright-agent-*, and reporting-agent-*).
     Filters:
       - target: Only cleanup agents assigned to this target (via TARGET_SCOPE env)
       - agent_id: Cleanup a specific agent

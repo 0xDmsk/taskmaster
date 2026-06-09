@@ -94,6 +94,7 @@ def handle_spawn_agent(arguments):
     # Paths derived from config
     loot_dir = os.path.abspath(os.path.join(config.WORK_DIR, "audit", "loot"))
     skills_dir = os.path.abspath(os.path.join(config.PROJECT_DIR, "skills"))
+    templates_dir = os.path.abspath(os.path.join(config.PROJECT_DIR, "templates"))
     seclists_path = env_vars.get("SECLISTS_PATH") or os.environ.get("SECLISTS_PATH")
 
     cmd = [
@@ -113,6 +114,12 @@ def handle_spawn_agent(arguments):
         "-v",
         f"{skills_dir}:/work/skills",  # Mount host skills to /work/skills
     ]
+
+    # Shadow the reporting container's baked-in /app/templates with the host
+    # copy so template edits land without a rebuild. Skip when the host dir
+    # is missing so we don't blank out the bundled fallback.
+    if agent_type == "reporting" and os.path.isdir(templates_dir):
+        cmd.extend(["-v", f"{templates_dir}:/app/templates"])
 
     if seclists_path:
         cmd.extend(["-v", f"{os.path.abspath(seclists_path)}:/usr/share/seclists"])
