@@ -64,7 +64,7 @@ Before queuing an execution, explicitly decide between these three options:
 4.  **Render a report deliverable**
     *   Choose this once the findings underlying a target or engagement are settled and you need a Word/Google-Docs-friendly artifact.
     *   Use `action_type: "report_skill"` with the appropriate `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`). Pass either a single `finding` dict, a list of `findings`, or a `findings_path` pointing at a YAML/JSON file derived from the engagement's `Findings.md`.
-    *   Spawn the worker with `agent_type: "reporting"`. The reporting executor renders one docx per finding using `templates/finding_template.docx` and writes them to `/loot/reports/` by default.
+    *   Spawn the worker with `agent_type: "reporting"`. The reporting executor renders a **single combined docx** for all findings using `templates/finding_template.docx`, writing to `/reports/` (host: `runtime/reports/`) by default. Filename derives from the common dotted id prefix (e.g. `BHI-OFFSEC-25.05-findings-2026-06-10.docx`) or the target slug when ids don't share a prefix.
     *   Do not invoke a reporting skill mid-engagement to render speculative findings — the template assumes severities and CVSS values are already settled.
     *   **Translate, do not transcribe.** `Findings.md` and `recon-data.md` are internal working files that the client never sees. When you build the finding dict you pass to the renderer:
         * Never carry over `F-NNN` triage IDs, `§N.M` recon section markers, "(pending triage)" qualifiers, or phrases like "as noted in the assessment log". Use the deliverable's own identifier (`finding.id`) instead.
@@ -160,7 +160,7 @@ Extend `BaseReportSkill` from `skills/reporting.py`. Subclasses implement `rende
 
 | Skill Class | Backend | Use For |
 |-------------|---------|---------|
-| `reporting.FindingDocxReport` | docxtpl | Render one branded docx per finding from a structured dict / list / YAML / JSON. Output goes to `/loot/reports/` by default. |
+| `reporting.FindingDocxReport` | docxtpl | Render a single branded docx containing one or more findings (page break between findings) from a structured dict / list / YAML / JSON. Output goes to `/reports/` (host `runtime/reports/`) by default. |
 
 ### Invoking a Kali Skill
 ```json
@@ -190,7 +190,7 @@ Extend `BaseReportSkill` from `skills/reporting.py`. Subclasses implement `rende
   "target": "example.test",
   "arguments": {
     "findings_path": "/loot/findings.yaml",
-    "output_dir": "/loot/reports"
+    "output_dir": "/reports"
   }
 }
 ```
@@ -225,7 +225,7 @@ Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The
 
 ## 🔄 The Standard Loop (Worker-Queue Model)
 
-1.  **Analyze**: Look at the current `audit/session_report.md` and check `docker ps` for active workers.
+1.  **Analyze**: Look at the current `runtime/audit/session_report.md` and check `docker ps` for active workers.
 2.  **Request**: Use `request_security_action` to queue the task.
 3.  **Provision**: 
     *   **Default**: After queuing an execution, immediately call `spawn_agent`.
@@ -249,8 +249,9 @@ If a task is complex and no existing skill fits:
 4.  **Invoke**: Spawn an agent and call that new skill via `action_type: "skill"`.
 
 ## 📦 Data Management (Loot)
-- **Host Path**: `audit/loot/`
+- **Host Path**: `runtime/loot/` (under `WORK_DIR`)
 - **Container Path**: `/loot/`
+- **Reports** mount only on reporting agents — host `runtime/reports/` → container `/reports/`.
 - Skills automatically save artifacts to `/loot` and track them in the envelope's `artifacts` list.
 - All findings are returned as structured JSON in the envelope's `findings` field — no manual parsing needed.
 
@@ -259,9 +260,9 @@ If a task is complex and no existing skill fits:
 - **Phase Order**: Respect the transition from `reconnaissance` -> `enumeration` -> `exploitation`. Do not skip phases without an override justification.
 
 ## 📝 Reporting Standards
-The `audit/session_report.md` is our primary deliverable.
+The `runtime/audit/session_report.md` is our primary engagement log; client deliverables land in `runtime/reports/`.
 - Ensure `justification` is professional and security-focused.
-- If a task fails, use a `python` analysis action to investigate the logs in `audit/loot/` before retrying.
+- If a task fails, use a `python` analysis action to investigate the logs in `runtime/loot/` before retrying.
 
 ## 🗒 Note-Taking Discipline
 

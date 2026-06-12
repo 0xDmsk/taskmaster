@@ -65,9 +65,10 @@ If Taskmaster discovers vulnerabilities:
 
 Taskmaster maintains comprehensive audit logs:
 
-- `audit/session_report.md` - Human-readable assessment report
-- `audit/audit_log.jsonl` - Machine-readable event log
-- `audit/loot/` - Artifacts and evidence
+- `runtime/audit/session_report.md` - Human-readable assessment report
+- `runtime/audit/audit_log.jsonl` - Machine-readable event log
+- `runtime/loot/` - Artifacts and evidence
+- `runtime/reports/` - Rendered docx deliverables
 
 **These logs should be:**
 - Protected with appropriate file permissions

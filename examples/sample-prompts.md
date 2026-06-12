@@ -340,7 +340,8 @@ Perform a PCI DSS compliance check on our payment processing infrastructure:
 ## 📚 Learning Resources
 
 After trying these prompts:
-- Review `audit/session_report.md` for structured findings
-- Check `audit/audit_log.jsonl` for detailed execution logs
-- Examine `audit/loot/` for raw tool outputs
+- Review `runtime/audit/session_report.md` for structured findings
+- Check `runtime/audit/audit_log.jsonl` for detailed execution logs
+- Examine `runtime/loot/` for raw tool outputs
+- Open the rendered docx deliverables in `runtime/reports/`
 - Study successful workflows to create custom prompts

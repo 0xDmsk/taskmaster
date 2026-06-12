@@ -6,9 +6,7 @@ from datetime import datetime, timedelta
 
 import config
 
-_DB_PATH = os.environ.get(
-    "STATE_DB", os.path.join(config.WORK_DIR, "state", "executions.db")
-)
+_DB_PATH = os.environ.get("STATE_DB", os.path.join(config.STATE_DIR, "executions.db"))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS executions (

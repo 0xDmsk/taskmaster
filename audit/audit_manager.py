@@ -5,7 +5,7 @@ from datetime import datetime
 
 import config
 
-AUDIT_DIR = os.path.join(config.WORK_DIR, "audit")
+AUDIT_DIR = config.AUDIT_DIR
 LOG_FILE = os.path.join(AUDIT_DIR, "audit_log.jsonl")
 REPORT_FILE = os.path.join(AUDIT_DIR, "session_report.md")
 

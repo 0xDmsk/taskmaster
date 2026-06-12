@@ -7,7 +7,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-cd "$PROJECT_ROOT"
+# Honor TASKMASTER_WORK_DIR if the server was launched against a per-engagement
+# folder. Falls back to the project root, which matches the in-place dev flow.
+WORK_DIR="${TASKMASTER_WORK_DIR:-$PROJECT_ROOT}"
+cd "$WORK_DIR"
 
 echo "🧹 Taskmaster Cleanup"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -41,36 +44,37 @@ fi
 
 # Ask before cleaning state
 echo "Clean runtime state? (y/n)"
-echo "  - state/executions.db (+ -wal, -shm)"
-echo "  - state/executions.json (legacy)"
-echo "  - audit/audit_log.jsonl"
-echo "  - audit/session_report.md"
+echo "  - runtime/state/executions.db (+ -wal, -shm)"
+echo "  - runtime/audit/audit_log.jsonl"
+echo "  - runtime/audit/session_report.md"
 read -r response
 
 if [[ "$response" =~ ^[Yy]$ ]]; then
     echo "Cleaning state files..."
-    rm -f state/executions.db state/executions.db-wal state/executions.db-shm
-    rm -f state/executions.json
-    rm -f audit/audit_log.jsonl
-    rm -f audit/session_report.md
+    rm -f runtime/state/executions.db runtime/state/executions.db-wal runtime/state/executions.db-shm
+    rm -f runtime/audit/audit_log.jsonl
+    rm -f runtime/audit/session_report.md
     echo "✅ State cleaned"
 else
     echo "⏭️  Skipping state cleanup"
 fi
 echo ""
 
-# Ask before cleaning loot
-echo "Clean loot directory? (y/n)"
-echo "  - audit/loot/*"
+# Ask before cleaning loot and reports
+echo "Clean loot and reports? (y/n)"
+echo "  - runtime/loot/*"
+echo "  - runtime/reports/*"
 read -r response
 
 if [[ "$response" =~ ^[Yy]$ ]]; then
-    echo "Cleaning loot..."
-    rm -rf audit/loot/*
-    touch audit/loot/.gitkeep
-    echo "✅ Loot cleaned"
+    echo "Cleaning loot and reports..."
+    rm -rf runtime/loot/*
+    rm -rf runtime/reports/*
+    touch runtime/loot/.gitkeep
+    touch runtime/reports/.gitkeep
+    echo "✅ Loot and reports cleaned"
 else
-    echo "⏭️  Skipping loot cleanup"
+    echo "⏭️  Skipping loot/reports cleanup"
 fi
 echo ""
 

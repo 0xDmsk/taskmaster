@@ -26,6 +26,8 @@ import sys
 from pathlib import Path
 
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 
 
@@ -75,6 +77,67 @@ def _replace_cell_text(cell, new_text: str) -> None:
 
 def _delete_paragraph(paragraph: Paragraph) -> None:
     paragraph._element.getparent().remove(paragraph._element)
+
+
+def _new_text_paragraph(text: str) -> "OxmlElement":
+    """Return a fresh <w:p> containing a single run with the given text."""
+    para = OxmlElement("w:p")
+    run = OxmlElement("w:r")
+    t = OxmlElement("w:t")
+    t.text = text
+    t.set(qn("xml:space"), "preserve")
+    run.append(t)
+    para.append(run)
+    return para
+
+
+def _new_page_break_paragraph() -> "OxmlElement":
+    """Return a <w:p> whose only content is a hard page break."""
+    para = OxmlElement("w:p")
+    run = OxmlElement("w:r")
+    br = OxmlElement("w:br")
+    br.set(qn("w:type"), "page")
+    run.append(br)
+    para.append(run)
+    return para
+
+
+def _wrap_body_in_findings_loop(doc) -> None:
+    """Wrap the entire finding body in `{%p for finding in findings %}`.
+
+    A single doc.render() call then produces one output containing every
+    finding, with a hard page break between them (but not before the first).
+    The Jinja loop variable shadows the original `finding` name, so the
+    existing `{{ finding.* }}` tags work unchanged.
+    """
+    paragraphs = doc.paragraphs
+    if not paragraphs:
+        raise RuntimeError("Template has no top-level paragraphs to wrap.")
+
+    heading = paragraphs[0]._element
+    # `addprevious` makes the new element the immediate previous sibling, so
+    # repeated calls on the same anchor land the inserted elements in the
+    # same left-to-right order as the calls.
+    heading.addprevious(_new_text_paragraph("{%p for finding in findings %}"))
+    heading.addprevious(_new_text_paragraph("{%p if not loop.first %}"))
+    heading.addprevious(_new_page_break_paragraph())
+    heading.addprevious(_new_text_paragraph("{%p endif %}"))
+
+    # The closing endfor must sit after every body-level element belonging
+    # to the finding (heading paragraph, all the section tables, prose
+    # paragraphs, the references loop). The last body paragraph is the
+    # references `{%p endfor %}` — anchor on it.
+    closer_anchor = None
+    for paragraph in reversed(doc.paragraphs):
+        if "{%p endfor %}" in paragraph.text:
+            closer_anchor = paragraph._element
+            break
+    if closer_anchor is None:
+        raise RuntimeError(
+            "Could not locate the references `{%p endfor %}` paragraph; cannot "
+            "place the findings-loop closer."
+        )
+    closer_anchor.addnext(_new_text_paragraph("{%p endfor %}"))
 
 
 def build(source: Path, output: Path) -> None:
@@ -168,6 +231,10 @@ def build(source: Path, output: Path) -> None:
         if leftover is None:
             break
         _delete_paragraph(leftover)
+
+    # Final step — wrap the whole body in a `{%p for finding in findings %}`
+    # loop so one render produces a single docx for any number of findings.
+    _wrap_body_in_findings_loop(doc)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(output))

@@ -238,15 +238,66 @@ class BaseReportSkill(ABC):
             return ""
 
 
+_DEFAULT_OUTPUT_CANDIDATES = ("/reports", "/loot/reports")
+
+
+def _default_output_dir() -> str:
+    """Pick where rendered docx files should land by default.
+
+    Inside the reporting container, `/reports` maps to
+    `<WORK_DIR>/runtime/reports/` on the host — that's where engagement
+    deliverables belong. If that mount isn't present (legacy spawn, ad-hoc
+    container, host run without docker), fall back to the loot tree so the
+    output is at least somewhere recoverable.
+    """
+    for candidate in _DEFAULT_OUTPUT_CANDIDATES:
+        parent = os.path.dirname(candidate) or "/"
+        if os.path.isdir(candidate) or os.path.isdir(parent):
+            return candidate
+    return _DEFAULT_OUTPUT_CANDIDATES[-1]
+
+
+def _common_dotted_prefix(ids: list[str]) -> str:
+    """Return the longest leading dotted segment shared by every id.
+
+    For pwndoc-style ids like `BHI-OFFSEC-25.05.F01`, the project tag
+    `BHI-OFFSEC-25.05` is the natural batch filename. Falls back to "" if
+    no shared prefix exists at the segment boundary.
+    """
+    if not ids:
+        return ""
+    segments_per_id = [str(i).split(".") for i in ids]
+    shared: list[str] = []
+    for parts in zip(*segments_per_id):
+        first = parts[0]
+        if all(p == first for p in parts):
+            shared.append(first)
+        else:
+            break
+    # Drop the final segment if it looks like a per-finding tag (e.g. F01,
+    # 001, VULN-7) — the prefix should describe the project, not the
+    # individual finding.
+    if shared and len(shared) == len(segments_per_id[0]):
+        shared = shared[:-1]
+    return ".".join(shared)
+
+
 class FindingDocxReport(BaseReportSkill):
-    """Render one or more findings into branded docx files via docxtpl.
+    """Render one or more findings into a single branded docx via docxtpl.
+
+    The template wraps the finding body in `{%p for finding in findings %}`,
+    so each call produces exactly one output file regardless of how many
+    findings are supplied. Single-finding renders keep the per-finding
+    `{id}-{title}.docx` filename; multi-finding renders derive a project-level
+    filename from the common id prefix (or the target).
 
     Arguments (`run(**kwargs)`):
         finding: dict | None
             A single finding (see module docstring for the expected
-            keys). If omitted, `findings_path` must be supplied.
+            keys). If omitted, `findings` or `findings_path` must be supplied.
         findings: list[dict] | None
-            Multiple findings to render in one call.
+            Multiple findings — combined into one docx, one finding per
+            page.
         findings_path: str | None
             Path to a YAML or JSON file holding either a single finding
             (`dict`) or a list of findings.
@@ -254,15 +305,14 @@ class FindingDocxReport(BaseReportSkill):
             Override the template location. Defaults to the bundled
             `templates/finding_template.docx`.
         output_dir: str | None
-            Directory to write the docx files into. Defaults to
-            `<loot>/reports`. The directory is created if missing.
+            Directory to write the docx into. Defaults to `/reports` when
+            the reporting container's reports mount is present, otherwise
+            `/loot/reports`. Created if missing.
 
     Returns (in the envelope's `findings`):
         {
-            "rendered": [
-                {"finding_id": "...", "output_path": "/loot/reports/...docx"},
-                ...
-            ],
+            "output_path": "/reports/BHI-OFFSEC-25.05-findings-2026-06-10.docx",
+            "finding_ids": ["BHI-OFFSEC-25.05.F01", ...],
             "template_path": "/app/templates/finding_template.docx"
         }
     """
@@ -276,8 +326,8 @@ class FindingDocxReport(BaseReportSkill):
                 "container (executors/Dockerfile.reporting) or `uv sync` first."
             )
 
-        findings = self._collect_findings(kwargs)
-        if not findings:
+        raw_findings = self._collect_findings(kwargs)
+        if not raw_findings:
             raise ValueError(
                 "No findings provided. Pass `finding`, `findings`, or `findings_path`."
             )
@@ -286,36 +336,42 @@ class FindingDocxReport(BaseReportSkill):
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Template not found: {template_path}")
 
-        output_dir = kwargs.get("output_dir") or os.path.join(self.loot_path, "reports")
+        output_dir = kwargs.get("output_dir") or _default_output_dir()
         os.makedirs(output_dir, exist_ok=True)
+
+        normalized = [_normalize_finding(raw) for raw in raw_findings]
 
         # Autoescape protects against finding content containing XML
         # specials like `<script>` or `&` — without it docxtpl emits raw
         # text into <w:t> elements and breaks the document.
         jinja_env = _JinjaEnvironment(autoescape=True)
 
-        rendered: list[dict] = []
-        for raw in findings:
-            normalized = _normalize_finding(raw)
-            doc = DocxTemplate(template_path)
-            doc.render({"finding": normalized}, jinja_env=jinja_env)
+        doc = DocxTemplate(template_path)
+        doc.render({"findings": normalized}, jinja_env=jinja_env)
 
-            filename = f"{_slugify(normalized['id'])}-{_slugify(normalized['title'])}.docx"
-            output_path = os.path.join(output_dir, filename)
-            doc.save(output_path)
-            self.save_artifact_path(output_path)
-            rendered.append(
-                {
-                    "finding_id": normalized["id"],
-                    "title": normalized["title"],
-                    "output_path": output_path,
-                }
-            )
+        filename = self._derive_filename(normalized)
+        output_path = os.path.join(output_dir, filename)
+        doc.save(output_path)
+        self.save_artifact_path(output_path)
 
         return {
-            "rendered": rendered,
+            "output_path": output_path,
+            "finding_ids": [f["id"] for f in normalized],
             "template_path": template_path,
         }
+
+    def _derive_filename(self, normalized: list[dict]) -> str:
+        # Single-finding renders keep the per-finding naming so one-off
+        # deliverables stay self-describing.
+        if len(normalized) == 1:
+            only = normalized[0]
+            return f"{_slugify(only['id'])}-{_slugify(only['title'])}.docx"
+
+        prefix = _common_dotted_prefix([f["id"] for f in normalized])
+        if not prefix:
+            prefix = _slugify(self.target or "engagement")
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return f"{_slugify(prefix)}-findings-{date}.docx"
 
     def _collect_findings(self, kwargs: dict) -> list[dict]:
         items: list[dict] = []

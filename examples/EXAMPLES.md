@@ -280,7 +280,7 @@ source ~/.zshrc  # or ~/.bashrc
 
 1. **Network Exposure**: Only bind to localhost (`127.0.0.1`) unless needed
 2. **Authorization**: Ensure proper authorization before security testing
-3. **Audit Logs**: Always review `audit/audit_log.jsonl` after sessions
+3. **Audit Logs**: Always review `runtime/audit/audit_log.jsonl` after sessions
 4. **Credentials**: Never commit API keys or credentials to config files
 
 ## 🆘 Getting Help
@@ -288,6 +288,6 @@ source ~/.zshrc  # or ~/.bashrc
 If you encounter issues:
 
 1. Check `SETUP.md` for detailed setup instructions
-2. Review server logs: `tail -f audit/audit_log.jsonl`
+2. Review server logs: `tail -f runtime/audit/audit_log.jsonl`
 3. Test with curl: `curl -X POST http://HOST:PORT/mcp -H "Content-Type: application/json" -d '...'`
 4. Open a GitHub issue with configuration and error details

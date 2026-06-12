@@ -12,7 +12,7 @@ Net effect: the output opens cleanly in Word **and Google Docs** because there i
 
 ## How the renderer is used
 
-The reporting executor (`executors/report_operator.py`) invokes `reporting.FindingDocxReport` like any other skill. Templates are mounted in the container at `/app/templates/`, and rendered output is written to `/loot/reports/`.
+The reporting executor (`executors/report_operator.py`) invokes `reporting.FindingDocxReport` like any other skill. Templates are mounted in the container at `/app/templates/`, and rendered output is written to `/reports/` (host `<WORK_DIR>/runtime/reports/`). Falls back to `/loot/reports/` when the dedicated `/reports` mount is absent.
 
 ```python
 from skills.reporting import FindingDocxReport
@@ -20,9 +20,11 @@ from skills.reporting import FindingDocxReport
 FindingDocxReport(target="example.test").run(
     finding={...},                  # or findings=[...], or findings_path="..."
     template_path="/app/templates/finding_template.docx",   # optional override
-    output_dir="/loot/reports",                              # optional override
+    output_dir="/reports",                                   # optional override
 )
 ```
+
+The template body is wrapped in a `{%p for finding in findings %}` loop, so a single render produces one docx for any number of findings (page break between them). Single-finding callers (`finding=…`) still get one finding per file, named `{id}-{title}.docx`. Multi-finding renders derive their filename from the common dotted prefix of the finding ids (e.g. `BHI-OFFSEC-25.05-findings-2026-06-10.docx`), or from the target slug when ids don't share one.
 
 ## The layout contract
 

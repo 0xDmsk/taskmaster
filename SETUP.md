@@ -87,8 +87,8 @@ uv sync
 ### 4. Initialize Directories
 
 ```bash
-# Create required directories
-mkdir -p audit/loot state
+# Create required directories under WORK_DIR (defaults to cwd)
+mkdir -p runtime/loot runtime/reports runtime/audit runtime/state
 
 # Verify structure
 tree -L 2
@@ -227,11 +227,14 @@ After setup, your directory should look like:
 
 ```
 taskmaster/
-├── audit/
-│   ├── audit_log.jsonl      # Event log
-│   ├── session_report.md    # Assessment report
-│   └── loot/                # Artifacts from agents
-│       └── .gitkeep
+├── runtime/                 # Runtime artifacts (under WORK_DIR, gitignored)
+│   ├── loot/                # Agent tool outputs
+│   ├── reports/             # Rendered docx deliverables
+│   ├── audit/
+│   │   ├── audit_log.jsonl
+│   │   └── session_report.md
+│   └── state/
+│       └── executions.db    # SQLite + WAL
 ├── executors/
 │   ├── Dockerfile
 │   ├── kali_operator.py
@@ -249,8 +252,7 @@ taskmaster/
 │   ├── subdomain.py
 │   ├── cloud.py
 │   └── ...
-├── state/
-│   ├── executions.json      # Runtime state (auto-created)
+├── state/                   # Python package
 │   ├── state.py
 │   └── storage.py
 ├── tools/
@@ -263,6 +265,8 @@ taskmaster/
 ├── server.py                # MCP server entry point
 └── README.md
 ```
+
+> The `runtime/` folder lives wherever you start the server from (its parent is `WORK_DIR`). Point `TASKMASTER_WORK_DIR` at a per-engagement folder to keep each engagement's runtime artifacts isolated.
 
 ## 🔍 Troubleshooting
 
@@ -335,6 +339,6 @@ uv sync
 If you encounter issues:
 
 1. Check this guide's troubleshooting section
-2. Review logs in `audit/audit_log.jsonl`
+2. Review logs in `runtime/audit/audit_log.jsonl`
 3. Test components individually (server, agent, tools)
 4. Open an issue on GitHub with details

@@ -55,7 +55,19 @@ server.py  ──► tools/           # MCP tool handlers
 Kali Linux container (executors/Dockerfile)
     executors/kali_operator.py  # Agent polls Taskmaster, executes skills
     skills/*.py                 # Security skills mounted at /work/skills
-    /loot → audit/loot/         # Shared volume for artifacts
+    /loot → runtime/loot/    # Shared volume for tool artifacts
+    /reports → runtime/reports/  # Reporting agents only — rendered docx
+```
+
+**Runtime layout under `WORK_DIR` (defaults to cwd, override with `TASKMASTER_WORK_DIR`):**
+
+```
+<WORK_DIR>/
+  runtime/           # single umbrella for runtime artifacts (gitignored)
+    loot/            # tool outputs, captures
+    reports/         # rendered docx deliverables
+    audit/           # session_report.md, audit_log.jsonl
+    state/           # executions.db (sqlite + WAL)
 ```
 
 **Execution flow:** `request_security_action` queues work only. The default next step is `spawn_agent`, unless you have already verified a compatible live worker for the same target and executor type. After provisioning, use `wait_for_completion` as the normal monitor path. Use `query_execution_status` mainly for debugging or recovery.
@@ -72,7 +84,7 @@ Kali Linux container (executors/Dockerfile)
 
 **Browser engines:** The Playwright agent ships three engines selectable per-spawn via `browser_engine` on `spawn_agent`: `playwright` (vanilla Chromium), `patchright` (anti-detection Chromium drop-in, **default**), `camoufox` (fingerprint-hardened Firefox). `BaseBrowserSkill` dispatches at run time on the engine; skills written for vanilla Playwright work unchanged across all three.
 
-**Audit:** Every state transition is logged to `audit/audit_log.jsonl`. Final report at `audit/session_report.md`.
+**Audit:** Every state transition is logged to `runtime/audit/audit_log.jsonl`. Final report at `runtime/audit/session_report.md`.
 
 **MCP Tools (in `tools/`):** `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`.
 

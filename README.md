@@ -20,13 +20,13 @@ graph TD
     Agent1 <-->|"Polls"| TM
     
     subgraph "Host Volumes"
-        Loot["audit/loot"]
+        Loot["runtime/loot"]
         Skills["skills/"]
     end
     
     Agent1 -->|"Saves Artifacts"| Loot
     Agent1 -->|"Loads Logic"| Skills
-    TM -->|"Generates"| Report["audit/session_report.md"]
+    TM -->|"Generates"| Report["runtime/audit/session_report.md"]
 ```
 
 ### Key Components
@@ -34,7 +34,7 @@ graph TD
 1.  **Taskmaster Core**: 
     *   **State Management**: Tracks lifecycles (`QUEUED` -> `CLAIMED` -> `RUNNING` -> `COMPLETED`).
     *   **Target Locking**: Prevents overlapping actions on the same target.
-    *   **Audit Manager**: Automatically generates a Markdown report and JSONL logs in the `audit/` folder.
+    *   **Audit Manager**: Automatically generates a Markdown report and JSONL logs in the `runtime/audit/` folder.
 
 2.  **Kali Agent ("Smart Operator")**:
     *   **Specialization**: Containers are "mission-aware" at runtime.
@@ -71,7 +71,7 @@ Playwright agents default to `interactive_browser=true`, which publishes a local
 
 *   **Concurrency**: Uses `fcntl` file locking for safe state access and target-level execution locks.
 *   **Networking**: Pre-configured for Docker Desktop on macOS/Windows (`host.docker.internal`). Linux users set `TASKMASTER_HOST` to the `docker0` bridge IP. Full host proxy and `proxychains4` integration included.
-*   **Persistent Loot**: All files saved to `/loot` in a container appear in `audit/loot/` on your host.
+*   **Persistent Loot**: All files saved to `/loot` in a container appear in `runtime/loot/` on your host. Rendered docx deliverables land in `runtime/reports/`.
 
 ## 🚀 Getting Started
 
@@ -104,7 +104,7 @@ Example configurations provided for:
 ### The Agentic Workflow
 1.  **Plan**: Request an action via `request_security_action`.
 2.  **Spawn**: Launch a specialized agent via `spawn_agent`.
-3.  **Review**: Watch the `audit/session_report.md` for live updates and structured findings.
+3.  **Review**: Watch `runtime/audit/session_report.md` for live updates and structured findings.
 
 ### Interactive Playwright Sessions
 
@@ -160,7 +160,7 @@ Each skill wraps exactly one CLI tool and produces a standardized JSON envelope 
 | Skill Class | Backend | Description |
 |-------------|---------|-------------|
 | `reporting.BaseReportSkill` | docxtpl | Abstract base for document-rendering skills. Subclasses implement `render(**kwargs) -> dict`. |
-| `reporting.FindingDocxReport` | docxtpl | Renders one branded docx per finding from a structured dict, list of findings, or YAML/JSON file. Uses `templates/finding_template.docx`; writes to `/loot/reports/` by default. |
+| `reporting.FindingDocxReport` | docxtpl | Renders a **single** branded docx from a finding dict, list of findings, or YAML/JSON file. Multi-finding renders produce one combined document with a page break between findings. Uses `templates/finding_template.docx`; writes to `/reports/` (host `runtime/reports/`) by default. Filename derives from the common dotted prefix of the finding ids (e.g. `BHI-OFFSEC-25.05`) or the target slug. |
 
 See `skills/TEMPLATE.md` for creating new skills (CLI, browser, and reporting variants) and `templates/README.md` for converting an example docx into a docxtpl template the reporting executor can render.
 
@@ -182,7 +182,7 @@ uv run python server.py --http
 
 ## 🔑 Directory Structure
 
-*   `audit/`: Contains the `session_report.md` and persistent `loot/` (including `loot/reports/` for rendered docx deliverables).
+*   `taskmaster/` (under `WORK_DIR`, gitignored): runtime artifacts — `loot/` (tool outputs), `reports/` (rendered docx deliverables), `audit/` (`session_report.md`, `audit_log.jsonl`), `state/` (sqlite DB).
 *   `dashboard/`: Web UI — API handlers, Jinja2 templates, static assets.
 *   `skills/`: Reusable Python modules for specialized tasks. `base.py` for CLI skills, `browser.py` for Playwright-based skills, `reporting.py` for document-rendering skills.
 *   `executors/`: Operator logic and Dockerfiles for all three executor types:

@@ -92,10 +92,17 @@ def handle_spawn_agent(arguments):
         operator_cmd = "kali-operator"
 
     # Paths derived from config
-    loot_dir = os.path.abspath(os.path.join(config.WORK_DIR, "audit", "loot"))
+    loot_dir = os.path.abspath(config.LOOT_DIR)
+    reports_dir = os.path.abspath(config.REPORTS_DIR)
     skills_dir = os.path.abspath(os.path.join(config.PROJECT_DIR, "skills"))
     templates_dir = os.path.abspath(os.path.join(config.PROJECT_DIR, "templates"))
     seclists_path = env_vars.get("SECLISTS_PATH") or os.environ.get("SECLISTS_PATH")
+
+    # Ensure host-side directories exist before binding — Docker would
+    # otherwise create them as root-owned, breaking later host access.
+    os.makedirs(loot_dir, exist_ok=True)
+    if agent_type == "reporting":
+        os.makedirs(reports_dir, exist_ok=True)
 
     cmd = [
         "docker",
@@ -110,7 +117,7 @@ def handle_spawn_agent(arguments):
         "--label",
         f"taskmaster.executor_id={agent_id}",
         "-v",
-        f"{loot_dir}:/loot",  # Mount host audit/loot to container /loot
+        f"{loot_dir}:/loot",  # Mount host runtime/loot to container /loot
         "-v",
         f"{skills_dir}:/work/skills",  # Mount host skills to /work/skills
     ]
@@ -120,6 +127,13 @@ def handle_spawn_agent(arguments):
     # is missing so we don't blank out the bundled fallback.
     if agent_type == "reporting" and os.path.isdir(templates_dir):
         cmd.extend(["-v", f"{templates_dir}:/app/templates"])
+
+    # Reporting agents also get a dedicated /reports mount so the rendered
+    # docx lands in <WORK_DIR>/runtime/reports/ alongside the engagement's
+    # Findings.md, not buried under loot/. Loot stays for tool artifacts
+    # captured during recon.
+    if agent_type == "reporting":
+        cmd.extend(["-v", f"{reports_dir}:/reports"])
 
     if seclists_path:
         cmd.extend(["-v", f"{os.path.abspath(seclists_path)}:/usr/share/seclists"])

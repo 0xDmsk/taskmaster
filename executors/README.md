@@ -27,7 +27,7 @@ A **lightweight `python:3.12-slim` container** with Playwright + Chromium. No Ka
 A **slim `python:3.12` container** with `docxtpl`, `python-docx`, `jinja2`, and `pyyaml`. No security tooling — its only job is to turn structured findings into branded deliverables.
 
 *   **Taskmaster Integration**: Ships with `report-operator`, which polls Taskmaster and exclusively claims tasks with `action_type: "report_skill"`. Everything else is left for the Kali / Playwright operators.
-*   **One-Pathway Execution**: `action_type: "report_skill"` imports a `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`) and calls `run()`. The skill renders templates from `/app/templates` and writes documents to `/loot/reports/` by default.
+*   **One-Pathway Execution**: `action_type: "report_skill"` imports a `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`) and calls `run()`. The skill renders templates from `/app/templates` and writes documents to `/reports/` (host `runtime/reports/`) by default. Multi-finding renders produce a single combined docx with one finding per page.
 *   **Template provenance**: Templates are produced from a hand-formatted example docx by `scripts/build_finding_template.py`. The builder preserves the source's table layout, fonts, and headers/footers; only the placeholder text in specific cells/paragraphs is rewritten with Jinja tags. See `templates/README.md` for the layout contract and how to adapt the builder for a new template variant.
 *   **Output safety**: docxtpl renders run through a Jinja env with `autoescape=True`, so finding content containing `<`, `>`, or `&` (typical XSS PoCs) survives intact instead of breaking the document XML.
 
@@ -99,7 +99,7 @@ Or via the `spawn_agent` MCP tool with `agent_type: "reporting"`:
 }
 ```
 
-The agent will claim any queued `report_skill` execution against the configured target and write the rendered docx files into `audit/loot/reports/` on the host.
+The agent will claim any queued `report_skill` execution against the configured target and write the rendered docx into `runtime/reports/` on the host.
 
 
 Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:
@@ -131,7 +131,7 @@ docker run -d \
   -e PLAYWRIGHT_INTERACTIVE=1 \
   -e PLAYWRIGHT_INTERACTIVE_HOLD_MS=180000 \
   -e PLAYWRIGHT_SESSION_URL=http://127.0.0.1:6085/vnc.html \
-  -v /path/to/audit/loot:/loot \
+  -v /path/to/runtime/loot:/loot \
   -v /path/to/skills:/work/skills \
   playwright-operator
 ```

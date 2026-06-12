@@ -64,16 +64,19 @@ The workflow is now fully autonomous:
 1. AI calls `request_security_action`.
 2. AI calls `spawn_agent`.
 3. AI calls `wait_for_completion` (the call will block until results are ready).
-4. AI analyzes the findings from `audit/session_report.md`.
+4. AI analyzes the findings from `runtime/audit/session_report.md`.
 
 ### 4. Review Results
 
 ```bash
 # View the live assessment report
-cat audit/session_report.md
+cat runtime/audit/session_report.md
 
 # See artifacts (scans, logs)
-ls -la audit/loot/
+ls -la runtime/loot/
+
+# See rendered docx deliverables
+ls -la runtime/reports/
 ```
 
 ## 📚 Learn More

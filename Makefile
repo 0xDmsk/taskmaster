@@ -77,7 +77,7 @@ spawn:
 dev: install
 	@echo "🛠️  Setting up development environment..."
 	@cp -n .env.example .env 2>/dev/null || true
-	@mkdir -p audit/loot state
+	@mkdir -p runtime/loot runtime/reports runtime/audit runtime/state
 	@echo "✅ Development environment ready"
 	@echo ""
 	@echo "Next steps:"
@@ -102,5 +102,6 @@ status:
 	@docker images kali-smart-operator:latest --format "  ✅ {{.Repository}}:{{.Tag}} ({{.Size}})" 2>/dev/null || echo "  ⚠️  Not built (run: make build)"
 	@echo ""
 	@echo "Runtime State:"
-	@test -f state/executions.json && echo "  📝 Executions: $$(cat state/executions.json | wc -l)" || echo "  📝 Executions: 0 (fresh state)"
-	@test -d audit/loot && echo "  📦 Loot items: $$(find audit/loot -type f ! -name .gitkeep | wc -l)" || echo "  📦 Loot items: 0"
+	@test -f runtime/state/executions.db && echo "  📝 State DB present" || echo "  📝 State DB: 0 (fresh state)"
+	@test -d runtime/loot && echo "  📦 Loot items: $$(find runtime/loot -type f ! -name .gitkeep | wc -l)" || echo "  📦 Loot items: 0"
+	@test -d runtime/reports && echo "  📄 Report items: $$(find runtime/reports -type f ! -name .gitkeep | wc -l)" || echo "  📄 Report items: 0"
