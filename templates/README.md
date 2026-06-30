@@ -39,7 +39,7 @@ The template body is wrapped in a `{%p for finding in findings %}` loop, so a si
 | `affected` | str | `"https://example.test/search?q="` |
 | `description` | str | Single paragraph describing what was found |
 | `impact` | str | Single paragraph on the business / technical impact |
-| `proof_of_concept` | str | Single paragraph with reproduction steps or a payload |
+| `proof_of_concept` | str | Reproduction steps. Markdown fenced code blocks and inline backticks are supported. |
 | `remediation` | str | Single paragraph with concrete remediation steps |
 
 Optional keys:
@@ -61,7 +61,7 @@ The rendered docx is the **client-facing deliverable**. Write the finding fields
 - **Each field has one job:**
   - `description` — *what* was found. State the affected component, the observed behavior, and the class of issue in one or two sentences.
   - `impact` — *why it matters*, in business or technical terms a non-pentester can grasp. Be specific ("any authenticated user lured to a crafted URL surrenders their session cookie") instead of vague ("severe security impact").
-  - `proof_of_concept` — *how to reproduce*. Self-contained — a reader without prior context should be able to follow it. Cite a concrete request, payload, or command sequence.
+  - `proof_of_concept` — *how to reproduce*. Self-contained — a reader without prior context should be able to follow it. Cite a concrete request, payload, or command sequence. Use fenced code blocks for raw requests/payloads and single backticks for inline parameters, headers, paths, and tokens.
   - `remediation` — *what to do*. Actionable: "apply output encoding on the `q` parameter and serve a CSP that disallows inline scripts" beats "implement XSS defenses".
 - **Severity is final, not a working estimate.** Strip qualifiers like "(pending triage)" before rendering — the deliverable expresses the post-triage judgment.
 
@@ -159,7 +159,7 @@ sample = {
     "affected": "n/a",
     "description": "Test render.",
     "impact": "None.",
-    "proof_of_concept": "GET /demo?q=<script>alert(1)</script>",
+    "proof_of_concept": "Send:\n```http\nGET /demo?q=<script>alert(1)</script> HTTP/1.1\nHost: example.test\n```\nThe payload should be reflected literally.",
     "remediation": "n/a",
     "references": ["CWE-79"],
 }
@@ -187,12 +187,26 @@ If the template should be the default for a new skill or replace `finding_templa
 - `executors/Dockerfile.reporting` — the `COPY templates /app/templates` line bakes templates into the image as a fallback. In normal dev flow you don't need to rebuild: `spawn_agent` bind-mounts the host `templates/` directory onto `/app/templates` for reporting agents, so template edits take effect on the next spawn. Rebuild (`make build-reporting`) only when you want the new templates baked into the shipped image, or when running the container without the bind mount (e.g. in CI).
 - The builder script's `DEFAULT_SOURCE` / `DEFAULT_OUTPUT` if you want it to be the no-args target.
 
-## Beyond plain text: rich content
+## Markdown code formatting
 
-The current renderer treats every placeholder as plain text — single paragraph, no inline formatting per substitution. When you need more:
+`FindingDocxReport` supports a deliberately small Markdown subset in rendered fields:
 
-- **Multi-paragraph content**: switch the placeholder to a docxtpl `{%p for ... %}` loop, or pass a `docxtpl.RichText` object that contains line breaks.
+- Fenced code blocks become padded, shaded one-cell Word tables. Include a language tag such as `http`, `json`, `python`, `bash`, or `text`; known languages get syntax-colored Word runs and unknown languages fall back to plain monospace:
+
+  ````markdown
+  ```http
+  GET /demo?q=<script>alert(1)</script> HTTP/1.1
+  Host: example.test
+  ```
+  ````
+
+- Inline backticks become monospace Word runs, e.g. `loginContextToken`.
+
+The implementation renders the template with docxtpl first, then rewrites `word/document.xml` in the saved `.docx`. This keeps normal XML escaping intact while making generated requests, payloads, parameters, paths, and tokens readable in Word and Google Docs. The renderer uses Pygments for token-level syntax colors when the fenced language is known. It does not rely on Google Docs private-use marker glyphs; those are text artifacts, not portable DOCX formatting.
+
+When you need richer content than this:
+
+- **Lists / tables / images**: use docxtpl's `subdoc()` to compose a fragment with python-docx and stitch it into the template at a `{{ var }}` slot.
 - **Inline bold / italic / color**: build a `RichText` object in the skill and pass it as the context value. The XML it injects is trusted by docxtpl, so autoescape is bypassed for that field — only do this with content you generate yourself.
-- **Subdocuments (lists, tables, images)**: use docxtpl's `subdoc()` to compose a fragment with python-docx and stitch it into the template at a `{{ var }}` slot.
 
 See the [docxtpl documentation](https://docxtpl.readthedocs.io/en/latest/) for the full feature set. The principle to hold: the template owns the layout; the skill owns the content; the builder script is the bridge between an example docx and the docxtpl form.
