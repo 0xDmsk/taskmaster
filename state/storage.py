@@ -2,7 +2,7 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import config
 
@@ -25,6 +25,126 @@ CREATE TABLE IF NOT EXISTS executions (
 );
 CREATE INDEX IF NOT EXISTS idx_target_status ON executions (target, status);
 CREATE INDEX IF NOT EXISTS idx_status ON executions (status);
+
+CREATE TABLE IF NOT EXISTS engagements (
+    engagement_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT,
+    client_name TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    summary TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_engagements_slug
+    ON engagements (slug)
+    WHERE slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_engagements_status ON engagements (status);
+
+CREATE TABLE IF NOT EXISTS report_assets (
+    asset_id TEXT PRIMARY KEY,
+    engagement_id TEXT,
+    kind TEXT NOT NULL DEFAULT 'host',
+    value TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (engagement_id) REFERENCES engagements (engagement_id)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_report_assets_engagement
+    ON report_assets (engagement_id);
+CREATE INDEX IF NOT EXISTS idx_report_assets_value ON report_assets (value);
+
+CREATE TABLE IF NOT EXISTS findings (
+    finding_id TEXT PRIMARY KEY,
+    engagement_id TEXT,
+    title TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'Info',
+    category TEXT NOT NULL DEFAULT 'General',
+    status TEXT NOT NULL DEFAULT 'draft',
+    affected TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    impact TEXT NOT NULL DEFAULT '',
+    proof_of_concept TEXT NOT NULL DEFAULT '',
+    remediation TEXT NOT NULL DEFAULT '',
+    cvss_score TEXT,
+    cvss_vector TEXT,
+    source_execution_id TEXT,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (engagement_id) REFERENCES engagements (engagement_id)
+        ON DELETE SET NULL,
+    FOREIGN KEY (source_execution_id) REFERENCES executions (execution_id)
+        ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_findings_engagement ON findings (engagement_id);
+CREATE INDEX IF NOT EXISTS idx_findings_status ON findings (status);
+CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings (severity);
+CREATE INDEX IF NOT EXISTS idx_findings_source_execution
+    ON findings (source_execution_id);
+
+CREATE TABLE IF NOT EXISTS finding_evidence (
+    evidence_id TEXT PRIMARY KEY,
+    finding_id TEXT NOT NULL,
+    source_execution_id TEXT,
+    kind TEXT NOT NULL DEFAULT 'note',
+    title TEXT,
+    body TEXT,
+    artifact_path TEXT,
+    url TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    FOREIGN KEY (finding_id) REFERENCES findings (finding_id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (source_execution_id) REFERENCES executions (execution_id)
+        ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_finding_evidence_finding
+    ON finding_evidence (finding_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS finding_references (
+    reference_id TEXT PRIMARY KEY,
+    finding_id TEXT NOT NULL,
+    label TEXT,
+    url TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (finding_id) REFERENCES findings (finding_id)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_finding_references_finding
+    ON finding_references (finding_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS report_templates (
+    template_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    engine TEXT NOT NULL DEFAULT 'docxtpl',
+    path TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+    report_id TEXT PRIMARY KEY,
+    engagement_id TEXT,
+    template_id TEXT,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    output_path TEXT,
+    generated_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (engagement_id) REFERENCES engagements (engagement_id)
+        ON DELETE SET NULL,
+    FOREIGN KEY (template_id) REFERENCES report_templates (template_id)
+        ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reports_engagement ON reports (engagement_id);
 """
 
 _REQUIRED_COLUMNS = {
@@ -45,6 +165,7 @@ def _ensure_db():
     conn = sqlite3.connect(db)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA)
     _add_missing_columns(conn)
     conn.commit()
@@ -78,6 +199,7 @@ def _migrate_from_json(json_file, db):
 
     conn = sqlite3.connect(db)
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     cursor = conn.cursor()
 
     # Only migrate if DB is empty
@@ -121,6 +243,7 @@ def _connect():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
         conn.commit()
@@ -195,9 +318,7 @@ def update_execution(execution_id, updates):
         set_clauses = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [execution_id]
 
-        conn.execute(
-            f"UPDATE executions SET {set_clauses} WHERE execution_id = ?", values
-        )
+        conn.execute(f"UPDATE executions SET {set_clauses} WHERE execution_id = ?", values)
 
         row = conn.execute(
             "SELECT * FROM executions WHERE execution_id = ?", (execution_id,)
@@ -231,9 +352,7 @@ def is_target_busy_and_update(target, execution_id, updates):
         set_clauses = ", ".join(f"{k} = ?" for k in updates)
         values = list(updates.values()) + [execution_id]
 
-        cursor = conn.execute(
-            f"UPDATE executions SET {set_clauses} WHERE execution_id = ?", values
-        )
+        cursor = conn.execute(f"UPDATE executions SET {set_clauses} WHERE execution_id = ?", values)
 
         if cursor.rowcount == 0:
             return False, None
@@ -246,7 +365,7 @@ def is_target_busy_and_update(target, execution_id, updates):
 
 def find_stale_executions(timeout_minutes=30):
     """Find executions stuck in RUNNING or CLAIMED longer than timeout_minutes."""
-    cutoff = (datetime.utcnow() - timedelta(minutes=timeout_minutes)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)).isoformat()
     with _connect() as conn:
         rows = conn.execute(
             """SELECT * FROM executions

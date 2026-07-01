@@ -43,7 +43,7 @@ nmap -sS -sV -O target
 
 ## 🧭 Execution Path Selection
 
-Before queuing an execution, explicitly decide between these three options:
+Before queuing an execution, explicitly decide between these options:
 
 1.  **Use an existing skill**
     *   Choose this when the task clearly maps to one installed tool and the tool adds real value over plain Python.
@@ -63,10 +63,13 @@ Before queuing an execution, explicitly decide between these three options:
 
 4.  **Render a report deliverable**
     *   Choose this once the findings underlying a target or engagement are settled and you need a Word/Google-Docs-friendly artifact.
-    *   Use `action_type: "report_skill"` with the appropriate `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`). Pass either a single `finding` dict, a list of `findings`, or a `findings_path` pointing at a YAML/JSON file derived from the engagement's `Findings.md`.
-    *   Spawn the worker with `agent_type: "reporting"`. The reporting executor renders a **single combined docx** for all findings using `templates/finding_template.docx`, writing to `/reports/` (host: `runtime/reports/`) by default. Filename derives from the common dotted id prefix (e.g. `BHI-OFFSEC-25.05-findings-2026-06-10.docx`) or the target slug when ids don't share a prefix.
-    *   Do not invoke a reporting skill mid-engagement to render speculative findings — the template assumes severities and CVSS values are already settled.
-    *   **Translate, do not transcribe.** `Findings.md` and `recon-data.md` are internal working files that the client never sees. When you build the finding dict you pass to the renderer:
+    *   Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
+    *   Store the curated findings first. Use `create_reporting_engagement`, `create_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, and `add_reporting_finding_reference` to maintain Taskmaster's reporting database.
+    *   Queue rendering with `request_reporting_docx`, using either explicit `finding_ids` or an `engagement_id` plus optional `status`. Then spawn the worker with `agent_type: "reporting"` and call `wait_for_completion`.
+    *   The reporting executor renders a **single combined docx** for all requested findings using `templates/finding_template.docx`, writing to `/reports/` (host: `runtime/reports/`) by default. Filename derives from the common dotted id prefix (e.g. `BHI-OFFSEC-25.05-findings-2026-06-10.docx`) or the target slug when ids don't share a prefix.
+    *   Do not render speculative findings mid-engagement — `request_reporting_docx` validates that required client-facing fields are populated before it queues work.
+    *   Direct `action_type: "report_skill"` calls with a hand-built `finding`, `findings`, or `findings_path` are lower-level fallbacks for tests, template smoke checks, and imports. Normal engagements should render from stored reporting records.
+    *   **Translate, do not transcribe.** `Findings.md` and `recon-data.md` are internal working files that the client never sees. When you create or update report findings:
         * Never carry over `F-NNN` triage IDs, `§N.M` recon section markers, "(pending triage)" qualifiers, or phrases like "as noted in the assessment log". Use the deliverable's own identifier (`finding.id`) instead.
         * Ground every claim in something the client can verify themselves — a URL, parameter, response header, or an artifact saved to `/loot`.
         * Keep each field tight: `description` = what (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions ("apply output encoding on `q` and serve a CSP that disallows inline scripts"), not platitudes ("implement XSS defenses").
@@ -120,7 +123,7 @@ Use this checklist:
 *   **Need the same external tool workflow repeatedly across targets** → create a new `skill`
 *   **Need to combine prior findings, post-process JSON, or reshape data** → `python`
 *   **Need a real browser session to see what a user sees** → spawn `agent_type: "playwright"`
-*   **Need a Word/Google-Docs deliverable from settled findings** → `report_skill` on `agent_type: "reporting"`
+*   **Need a Word/Google-Docs deliverable from settled findings** → store findings with reporting tools, then `request_reporting_docx` and spawn `agent_type: "reporting"`
 *   **Target is behind Akamai/Cloudflare/Datadome and JS isn't needed** → `python` action with `curl_cffi`
 *   **JS-rendered target throws ERR_HTTP2_PROTOCOL_ERROR / silent 403 / challenge page** → `agent_type: "playwright"` with `browser_engine: "patchright"`, escalate to `"camoufox"` if patchright still fails
 
@@ -160,7 +163,7 @@ Extend `BaseReportSkill` from `skills/reporting.py`. Subclasses implement `rende
 
 | Skill Class | Backend | Use For |
 |-------------|---------|---------|
-| `reporting.FindingDocxReport` | docxtpl | Render a single branded docx containing one or more findings (page break between findings) from a structured dict / list / YAML / JSON. Output goes to `/reports/` (host `runtime/reports/`) by default. |
+| `reporting.FindingDocxReport` | docxtpl | Render a single branded docx containing one or more findings (page break between findings). Normal engagements should reach it through `request_reporting_docx`, which pulls from stored reporting findings. Direct dict / list / YAML / JSON input is a lower-level fallback. Output goes to `/reports/` (host `runtime/reports/`) by default. |
 
 ### Invoking a Kali Skill
 ```json
@@ -182,7 +185,48 @@ Extend `BaseReportSkill` from `skills/reporting.py`. Subclasses implement `rende
 }
 ```
 
-### Invoking a Reporting Skill
+### Preferred Reporting Flow
+```json
+{
+  "tool": "create_reporting_engagement",
+  "arguments": {
+    "name": "ExampleCo Web Assessment",
+    "client_name": "ExampleCo"
+  }
+}
+```
+
+```json
+{
+  "tool": "create_reporting_finding",
+  "arguments": {
+    "engagement_id": "eng_...",
+    "title": "Missing authorization on export endpoint",
+    "severity": "High",
+    "category": "API",
+    "status": "confirmed",
+    "affected": "GET /api/export",
+    "description": "The export endpoint returned another user's data.",
+    "impact": "An authenticated user could retrieve records they do not own.",
+    "proof_of_concept": "Send GET /api/export?id=<other-user-id> while authenticated as a different user.",
+    "remediation": "Authorize each export request against the authenticated user's ownership.",
+    "source_execution_id": "..."
+  }
+}
+```
+
+```json
+{
+  "tool": "request_reporting_docx",
+  "arguments": {
+    "engagement_id": "eng_...",
+    "status": "confirmed"
+  }
+}
+```
+Pair the queued render with `spawn_agent(agent_type="reporting", target="exampleco-web-assessment")`, then `wait_for_completion` on the returned execution id.
+
+### Direct Reporting Skill Invocation
 ```json
 {
   "action_type": "report_skill",
@@ -194,7 +238,7 @@ Extend `BaseReportSkill` from `skills/reporting.py`. Subclasses implement `rende
   }
 }
 ```
-Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The renderer writes one docx per finding into `output_dir` and lists them in the envelope's `artifacts` array.
+Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The renderer writes a combined docx into `output_dir` and lists it in the envelope's `artifacts` array. Prefer the reporting database flow above unless you are testing, smoke-checking a template, or importing external findings.
 
 ### Running a Raw Playwright Script
 

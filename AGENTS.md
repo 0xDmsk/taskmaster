@@ -33,9 +33,28 @@ Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, in
 - Use `agent_type: "playwright"` for `playwright` and `playwright_skill` actions.
 - Use `agent_type: "reporting"` for `report_skill` actions — producing the final docx deliverables from settled findings, late in the engagement.
 
+### Reporting database workflow
+
+Taskmaster separates execution results from client-facing report findings:
+
+- Execution findings are raw worker results attached to executions. The dashboard's **Findings** tab shows these legacy execution-derived results.
+- Report findings are curated records stored in Taskmaster's reporting tables. They are the source of truth for client deliverables and are managed through MCP tools, not the dashboard UI.
+
+Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
+
+Preferred flow for final reporting:
+
+1. Create an engagement with `create_reporting_engagement`.
+2. Add a settled client-facing finding with `create_reporting_finding`. Include `source_execution_id` when the report finding is based on a Taskmaster execution.
+3. Use `update_reporting_finding` for scalar edits. Use `add_reporting_finding_evidence` and `add_reporting_finding_reference` for proof material so the evidence trail is append-only by default.
+4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; each response includes `report_shape` for the docx renderer.
+5. Queue the document with `request_reporting_docx`, then spawn a `reporting` agent and call `wait_for_completion`.
+
+`request_reporting_docx` rejects findings that are missing report-required fields (`affected`, `description`, `impact`, `proof_of_concept`, `remediation`, etc.). Fill the database record instead of bypassing validation with a direct `report_skill` call.
+
 ### Writing report content
 
-When you build the `finding` dict you pass to a reporting skill, write for the **client**, not the internal team:
+When you create or update a report finding, write for the **client**, not the internal team:
 
 - Plain, succinct language; a few short paragraphs per field at most.
 - **Never reference** `Findings.md`, `recon-data.md`, `F-NNN` IDs, or `§N.M` recon section markers — those are internal working files that are not shared with the client. Ground claims in URLs, parameters, response headers, or `/loot` artifacts the client can verify.

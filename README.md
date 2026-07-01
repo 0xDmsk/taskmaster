@@ -52,6 +52,7 @@ graph TD
     *   **One Pathway**: `report_skill` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport`).
     *   **Selective claiming**: Only picks up tasks with `action_type: "report_skill"`; everything else is left for the Kali / Playwright operators.
     *   **Template-driven**: Renders a docxtpl template (`templates/finding_template.docx`) produced from a hand-formatted example via `scripts/build_finding_template.py`. Source-document layout (fonts, table widths, headers/footers) is preserved, so the output opens cleanly in Word and Google Docs.
+    *   **Database-backed**: Report findings are stored in Taskmaster's SQLite state as first-class reporting records. Execution results remain an event log; report findings are the curated client-facing source of truth.
 
 ### Planning Guidance
 
@@ -60,7 +61,7 @@ When choosing how to execute a task:
 - Use `action_type: "skill"` when an existing external tool materially improves the result.
 - Create a new skill only for reusable tool-backed workflows, not for one-off parsing or fetch tasks.
 - Use Playwright only when rendered DOM or browser interaction is required.
-- Use `action_type: "report_skill"` (with `agent_type: "reporting"`) for producing the final assessment deliverables once findings are settled.
+- Use Taskmaster's reporting tools to store settled report findings, then `request_reporting_docx` to queue the final `report_skill` render.
 - If a ProjectDiscovery-backed skill is the right fit, it may bootstrap its binary through `pdtm` if the tool is not already present.
 
 When a browser is required, spawn the worker with `agent_type: "playwright"` so the task is claimed by the Playwright executor instead of a Kali operator.
@@ -132,6 +133,28 @@ Example:
 
 When a Playwright task is running, open the returned noVNC URL in your host browser, for example `http://127.0.0.1:6085/vnc.html`.
 
+## Reporting Database Workflow
+
+Taskmaster now separates two concepts that used to be easy to confuse:
+
+- **Execution findings** are raw or semi-structured results returned by Kali, Playwright, or reporting workers. They stay attached to executions and appear in the dashboard's **Findings** tab.
+- **Report findings** are curated, client-facing findings stored in the reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). They are managed through MCP tools and are not currently mixed into the dashboard findings UI.
+
+This workflow replaces pwndoc as the reporting source of truth. Do not maintain a pwndoc sync layer or carry pwndoc-specific IDs into Taskmaster report findings.
+
+Preferred reporting flow:
+
+1. Create an engagement with `create_reporting_engagement`.
+2. Promote a settled observation with `create_reporting_finding`. Include `engagement_id`, client-facing prose, severity, affected asset, proof of concept, remediation, optional CVSS, optional references, optional evidence, and `source_execution_id` when the finding came from a Taskmaster execution.
+3. Refine scalar fields with `update_reporting_finding`. Add proof material with `add_reporting_finding_evidence` and `add_reporting_finding_reference`; evidence and references are separate so edits do not silently replace the proof trail.
+4. Review stored records with `get_reporting_finding` or `list_reporting_findings`. Each response includes `report_shape`, the dict shape expected by `reporting.FindingDocxReport`.
+5. Queue a document render with `request_reporting_docx`, using either `finding_ids` or an `engagement_id` plus optional `status`.
+6. Spawn a reporting worker with `spawn_agent(agent_type="reporting")`, then monitor the queued render with `wait_for_completion`.
+
+`request_reporting_docx` validates report readiness before it queues work. A finding must have `title`, `severity`, `category`, `affected`, `description`, `impact`, `proof_of_concept`, and `remediation`; incomplete findings return a `not_ready` list instead of producing a weak deliverable.
+
+The lower-level `reporting.FindingDocxReport` skill still accepts direct `finding`, `findings`, or `findings_path` arguments, but the database-backed tools are the preferred path for normal engagements.
+
 ## 🛠 Skills Library (`skills/`)
 
 Each skill wraps exactly one CLI tool and produces a standardized JSON envelope with `findings`, `artifacts`, and `errors`.
@@ -176,7 +199,7 @@ uv run python server.py --http
 - **Executions** — live table with status badges. Click any row to expand full request/result detail (justification, tool, command, findings, artifacts, errors).
 - **Targets** — per-target cards with phase progress bars. Expand to see executions grouped by security phase.
 - **Agents** — agent history with container info and task stats. Expand for full task history table.
-- **Findings** — severity badges, CVSS scores, risk descriptions, remediation guidance, and references when available.
+- **Findings** — execution-derived findings and results only. Canonical report findings live in the reporting database and are managed through MCP tools until a dedicated report-finding UI exists.
 
 **Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), dark theme.
 
@@ -191,4 +214,4 @@ uv run python server.py --http
     *   `Dockerfile.reporting` + `report_operator.py` — Reporting agent (docxtpl renderer, `report_skill` action type)
 *   `templates/`: docxtpl-tagged document templates consumed by the reporting executor. See `templates/README.md` for how to produce a new template from an example docx.
 *   `scripts/`: Build / spawn helpers. Notable: `scripts/build_finding_template.py` rewrites an example docx into a docxtpl-tagged template under `templates/`.
-*   `tools/`: 13 MCP tool handlers for orchestration (spawning, tracking, waiting, cleanup).
+*   `tools/`: MCP tool handlers for orchestration (spawning, tracking, waiting, cleanup) and database-backed reporting (`create_reporting_finding`, `request_reporting_docx`, etc.).

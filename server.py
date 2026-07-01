@@ -4,7 +4,7 @@ import logging
 import mimetypes
 import os
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import config
@@ -22,6 +22,15 @@ from tools.cleanup_agents import handle_cleanup_agents
 from tools.recover_execution import handle_recover_execution
 from tools.wait_for_completion import handle_wait_for_completion
 from tools.reaper import start_reaper_thread
+from tools.create_reporting_engagement import handle_create_reporting_engagement
+from tools.list_reporting_engagements import handle_list_reporting_engagements
+from tools.create_reporting_finding import handle_create_reporting_finding
+from tools.get_reporting_finding import handle_get_reporting_finding
+from tools.list_reporting_findings import handle_list_reporting_findings
+from tools.request_reporting_docx import handle_request_reporting_docx
+from tools.update_reporting_finding import handle_update_reporting_finding
+from tools.add_reporting_finding_evidence import handle_add_reporting_finding_evidence
+from tools.add_reporting_finding_reference import handle_add_reporting_finding_reference
 
 
 def load_tool_schema(tool_name):
@@ -390,6 +399,285 @@ TOOLS = {
             },
         },
     },
+    "create_reporting_engagement": {
+        "description": (
+            "Create a first-class reporting engagement in Taskmaster. Use this as "
+            "the root container for client-facing findings and reports."
+        ),
+        "handler": handle_create_reporting_engagement,
+        "inputSchema": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "engagement_id": {"type": "string"},
+                "name": {"type": "string"},
+                "slug": {"type": "string"},
+                "client_name": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "archived", "complete"],
+                    "default": "active",
+                },
+                "summary": {"type": "string"},
+            },
+        },
+    },
+    "list_reporting_engagements": {
+        "description": "List Taskmaster reporting engagements.",
+        "handler": handle_list_reporting_engagements,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "archived", "complete"],
+                },
+            },
+        },
+    },
+    "create_reporting_finding": {
+        "description": (
+            "Promote a validated observation into Taskmaster's canonical reporting "
+            "database. This is the source of truth for reports; do not use pwndoc "
+            "fields or IDs."
+        ),
+        "handler": handle_create_reporting_finding,
+        "inputSchema": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+                "finding_id": {"type": "string"},
+                "engagement_id": {"type": "string"},
+                "title": {"type": "string"},
+                "severity": {
+                    "type": "string",
+                    "enum": ["Critical", "High", "Medium", "Low", "Info"],
+                    "default": "Info",
+                },
+                "category": {"type": "string", "default": "General"},
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "needs_review",
+                        "confirmed",
+                        "reported",
+                        "accepted_risk",
+                        "false_positive",
+                    ],
+                    "default": "draft",
+                },
+                "affected": {"type": "string"},
+                "affected_assets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "description": {"type": "string"},
+                "impact": {"type": "string"},
+                "proof_of_concept": {"type": "string"},
+                "remediation": {"type": "string"},
+                "cvss": {
+                    "type": "object",
+                    "properties": {
+                        "score": {"type": "string"},
+                        "vector": {"type": "string"},
+                    },
+                },
+                "cvss_score": {"type": "string"},
+                "cvss_vector": {"type": "string"},
+                "references": {
+                    "type": "array",
+                    "items": {
+                        "anyOf": [
+                            {"type": "string"},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "url": {"type": "string"},
+                                },
+                                "required": ["url"],
+                            },
+                        ]
+                    },
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string"},
+                            "title": {"type": "string"},
+                            "body": {"type": "string"},
+                            "artifact_path": {"type": "string"},
+                            "url": {"type": "string"},
+                            "source_execution_id": {"type": "string"},
+                        },
+                    },
+                },
+                "source_execution_id": {"type": "string"},
+                "created_by": {"type": "string"},
+            },
+        },
+    },
+    "get_reporting_finding": {
+        "description": (
+            "Fetch one canonical Taskmaster reporting finding, including evidence, "
+            "references, and the dict shape expected by the docx renderer."
+        ),
+        "handler": handle_get_reporting_finding,
+        "inputSchema": {
+            "type": "object",
+            "required": ["finding_id"],
+            "properties": {"finding_id": {"type": "string"}},
+        },
+    },
+    "update_reporting_finding": {
+        "description": (
+            "Update scalar fields on a canonical Taskmaster reporting finding. "
+            "Use add_reporting_finding_evidence and add_reporting_finding_reference "
+            "for proof material so edits do not silently replace the evidence trail."
+        ),
+        "handler": handle_update_reporting_finding,
+        "inputSchema": {
+            "type": "object",
+            "required": ["finding_id"],
+            "properties": {
+                "finding_id": {"type": "string"},
+                "engagement_id": {"type": "string"},
+                "title": {"type": "string"},
+                "severity": {
+                    "type": "string",
+                    "enum": ["Critical", "High", "Medium", "Low", "Info"],
+                },
+                "category": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "needs_review",
+                        "confirmed",
+                        "reported",
+                        "accepted_risk",
+                        "false_positive",
+                    ],
+                },
+                "affected": {"type": "string"},
+                "description": {"type": "string"},
+                "impact": {"type": "string"},
+                "proof_of_concept": {"type": "string"},
+                "remediation": {"type": "string"},
+                "cvss_score": {"type": "string"},
+                "cvss_vector": {"type": "string"},
+                "source_execution_id": {"type": "string"},
+                "updated_by": {"type": "string"},
+            },
+        },
+    },
+    "add_reporting_finding_evidence": {
+        "description": "Attach evidence to a canonical Taskmaster reporting finding.",
+        "handler": handle_add_reporting_finding_evidence,
+        "inputSchema": {
+            "type": "object",
+            "required": ["finding_id"],
+            "properties": {
+                "finding_id": {"type": "string"},
+                "kind": {"type": "string", "default": "note"},
+                "title": {"type": "string"},
+                "body": {"type": "string"},
+                "artifact_path": {"type": "string"},
+                "url": {"type": "string"},
+                "source_execution_id": {"type": "string"},
+                "created_by": {"type": "string"},
+                "sort_order": {"type": "integer"},
+            },
+        },
+    },
+    "add_reporting_finding_reference": {
+        "description": "Attach an external reference URL to a canonical Taskmaster finding.",
+        "handler": handle_add_reporting_finding_reference,
+        "inputSchema": {
+            "type": "object",
+            "required": ["finding_id", "url"],
+            "properties": {
+                "finding_id": {"type": "string"},
+                "label": {"type": "string"},
+                "url": {"type": "string"},
+                "sort_order": {"type": "integer"},
+            },
+        },
+    },
+    "list_reporting_findings": {
+        "description": (
+            "List canonical Taskmaster reporting findings. Returns stored findings "
+            "and report-shaped dicts ready for the existing docx renderer."
+        ),
+        "handler": handle_list_reporting_findings,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "engagement_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "needs_review",
+                        "confirmed",
+                        "reported",
+                        "accepted_risk",
+                        "false_positive",
+                    ],
+                },
+                "include_evidence": {"type": "boolean", "default": True},
+            },
+        },
+    },
+    "request_reporting_docx": {
+        "description": (
+            "Queue a reporting executor task that renders stored Taskmaster "
+            "findings through reporting.FindingDocxReport. This replaces manual "
+            "JSON copying from the reporting database into report_skill arguments."
+        ),
+        "handler": handle_request_reporting_docx,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "engagement_id": {
+                    "type": "string",
+                    "description": "Render all findings for this engagement.",
+                },
+                "finding_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Render these specific findings, in this order.",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "draft",
+                        "needs_review",
+                        "confirmed",
+                        "reported",
+                        "accepted_risk",
+                        "false_positive",
+                    ],
+                    "description": "Optional status filter when engagement_id is used.",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Override the queued execution target label.",
+                },
+                "template_path": {
+                    "type": "string",
+                    "description": "Optional template override passed to the report skill.",
+                },
+                "output_dir": {
+                    "type": "string",
+                    "description": "Optional output directory passed to the report skill.",
+                },
+            },
+        },
+    },
 }
 
 
@@ -465,9 +753,7 @@ def dispatch(message):
                 return {
                     "jsonrpc": "2.0",
                     "id": msg_id,
-                    "result": {
-                        "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
-                    },
+                    "result": {"content": [{"type": "text", "text": json.dumps(result, indent=2)}]},
                 }
             except Exception as e:
                 logging.error(f"Tool execution error: {e}", exc_info=True)

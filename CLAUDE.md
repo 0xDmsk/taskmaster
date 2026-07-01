@@ -84,9 +84,11 @@ Kali Linux container (executors/Dockerfile)
 
 **Browser engines:** The Playwright agent ships three engines selectable per-spawn via `browser_engine` on `spawn_agent`: `playwright` (vanilla Chromium), `patchright` (anti-detection Chromium drop-in, **default**), `camoufox` (fingerprint-hardened Firefox). `BaseBrowserSkill` dispatches at run time on the engine; skills written for vanilla Playwright work unchanged across all three.
 
+**Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Findings tab shows execution-derived results only. Manage report findings through MCP tools and render from stored findings with `request_reporting_docx`. Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
+
 **Audit:** Every state transition is logged to `runtime/audit/audit_log.jsonl`. Final report at `runtime/audit/session_report.md`.
 
-**MCP Tools (in `tools/`):** `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`.
+**MCP Tools (in `tools/`):** Core orchestration: `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`. Reporting: `create_reporting_engagement`, `list_reporting_engagements`, `create_reporting_finding`, `get_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, `add_reporting_finding_reference`, `list_reporting_findings`, `request_reporting_docx`.
 
 ## Environment
 
@@ -135,9 +137,21 @@ Every finalization call should include `interpretation`. Without it the dashboar
 
 **Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
 
+### Reporting database workflow
+
+Use the database-backed reporting tools for normal engagements:
+
+1. Create an engagement with `create_reporting_engagement`.
+2. Add settled report findings with `create_reporting_finding`; include `source_execution_id` when the finding is based on a Taskmaster execution.
+3. Use `update_reporting_finding` for scalar edits. Use `add_reporting_finding_evidence` and `add_reporting_finding_reference` for proof material so edits do not silently replace the evidence trail.
+4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; responses include `report_shape`.
+5. Queue rendering with `request_reporting_docx`, then spawn `agent_type: "reporting"` and call `wait_for_completion`.
+
+`request_reporting_docx` validates report-readiness and returns `not_ready` when required client-facing fields are missing. Fill the stored finding instead of bypassing that validation with a direct `report_skill` payload.
+
 ### Writing report content (`report_skill` deliverables)
 
-When invoking `reporting.FindingDocxReport` (or any `BaseReportSkill`), the dict you pass becomes the **client-facing deliverable**. Translate, do not transcribe:
+When creating or updating report findings, the stored fields become the **client-facing deliverable**. Translate, do not transcribe:
 
 - Never carry over `F-NNN` triage IDs, `§N.M` recon section markers, or "(pending triage)" qualifiers from `Findings.md` / `recon-data.md`. Those files are internal working artifacts and are not shared with the client; referencing them in the deliverable creates confusion.
 - Each field has one job: `description` = what was found (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions.

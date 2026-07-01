@@ -12,6 +12,14 @@ Net effect: the output opens cleanly in Word **and Google Docs** because there i
 
 ## How the renderer is used
 
+The preferred Taskmaster workflow is database-backed:
+
+1. Store curated findings with `create_reporting_finding`, plus `add_reporting_finding_evidence` / `add_reporting_finding_reference` as needed.
+2. Review them with `get_reporting_finding` or `list_reporting_findings`; those responses include the normalized `report_shape`.
+3. Queue rendering with `request_reporting_docx`, then spawn a reporting worker and wait for completion.
+
+`request_reporting_docx` converts stored findings into the exact shape below and rejects incomplete findings before queuing a report render. Direct invocation of `reporting.FindingDocxReport` remains useful for tests, template smoke checks, and one-off imports, but normal engagements should use the reporting database as the source of truth.
+
 The reporting executor (`executors/report_operator.py`) invokes `reporting.FindingDocxReport` like any other skill. Templates are mounted in the container at `/app/templates/`, and rendered output is written to `/reports/` (host `<WORK_DIR>/runtime/reports/`). Falls back to `/loot/reports/` when the dedicated `/reports` mount is absent.
 
 ```python

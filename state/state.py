@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict
 
 from state.storage import (
@@ -7,7 +7,6 @@ from state.storage import (
     append_execution,
     load_executions,
     is_target_busy_and_update,
-    find_stale_executions,
 )
 from policies.state_policy import is_lifecycle_allowed
 
@@ -27,7 +26,7 @@ def create_execution(
         "target": target,
         "security_phase": security_phase,
         "status": "QUEUED",
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": created_by,
         "updated_at": None,
         "updated_by": None,
@@ -85,7 +84,7 @@ def transition_execution(
 
     updates = {
         "status": requested_status,
-        "updated_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": executor_id,
     }
 
@@ -103,9 +102,7 @@ def transition_execution(
     if requested_status == "RUNNING":
         busy, updated = is_target_busy_and_update(target, execution_id, updates)
         if busy:
-            raise ValueError(
-                f"Target {target} is currently busy with another execution."
-            )
+            raise ValueError(f"Target {target} is currently busy with another execution.")
         return updated
 
     return update_execution(execution_id, updates)
