@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'edit' %}Edit Report Finding{% else %}New Report Finding{% endif %}{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <h2 class="page-title">{% if mode == 'edit' %}Edit Report Finding{% else %}New Report Finding{% endif %}</h2>
+    <a class="action-btn" href="/reporting/findings">Back to Report Findings</a>
+</div>
+
+{% if message %}<div class="flash success">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+{% set action = '/reporting/findings/' ~ finding.finding_id if mode == 'edit' else '/reporting/findings' %}
+{% set current_severity = finding.severity if finding else 'Info' %}
+{% set current_status = finding.status if finding else 'draft' %}
+{% set current_category = finding.category if finding else 'General' %}
+{% set current_engagement_id = finding.engagement_id if finding else '' %}
+
+<form class="report-form" method="post" action="{{ action }}">
+    <div class="form-grid">
+        <label class="span-2">
+            <span>Title</span>
+            <input type="text" name="title" required value="{{ finding.title if finding else '' }}">
+        </label>
+        <label>
+            <span>Engagement</span>
+            <select name="engagement_id">
+                <option value="">Unassigned</option>
+                {% for engagement in options.engagements %}
+                <option value="{{ engagement.engagement_id }}" {% if current_engagement_id == engagement.engagement_id %}selected{% endif %}>{{ engagement.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Status</span>
+            <select name="status">
+                {% for status in options.statuses %}
+                <option value="{{ status }}" {% if current_status == status %}selected{% endif %}>{{ status }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Severity</span>
+            <select name="severity">
+                {% for severity in options.severities %}
+                <option value="{{ severity }}" {% if current_severity == severity %}selected{% endif %}>{{ severity }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Category</span>
+            <select name="category">
+                {% for category in options.categories %}
+                <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>{{ category }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>CVSS Score</span>
+            <input type="text" name="cvss_score" value="{{ finding.cvss_score if finding and finding.cvss_score else '' }}">
+        </label>
+        <label>
+            <span>Source Execution</span>
+            <input type="text" name="source_execution_id" value="{{ finding.source_execution_id if finding and finding.source_execution_id else '' }}">
+        </label>
+        <label class="span-2">
+            <span>CVSS Vector</span>
+            <input type="text" name="cvss_vector" value="{{ finding.cvss_vector if finding and finding.cvss_vector else '' }}">
+        </label>
+        <label class="span-2">
+            <span>Affected</span>
+            <textarea name="affected">{{ finding.affected if finding else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Description</span>
+            <textarea name="description">{{ finding.description if finding else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Impact</span>
+            <textarea name="impact">{{ finding.impact if finding else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Proof of Concept</span>
+            <textarea name="proof_of_concept">{{ finding.proof_of_concept if finding else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Remediation</span>
+            <textarea name="remediation">{{ finding.remediation if finding else '' }}</textarea>
+        </label>
+    </div>
+    <div class="form-actions">
+        <button class="action-btn primary" type="submit">{% if mode == 'edit' %}Save Finding{% else %}Create Finding{% endif %}</button>
+    </div>
+</form>
+
+{% if mode == 'edit' and finding %}
+<div class="report-edit-grid">
+    <section class="report-panel">
+        <h3>Evidence</h3>
+        {% if finding.evidence %}
+        <ul class="report-inline-list">
+            {% for item in finding.evidence %}
+            <li>
+                {{ item.title or item.kind }}
+                {% if item.artifact_path %}<span class="mono">{{ item.artifact_path }}</span>{% endif %}
+                {% if item.url %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.url }}</a>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No evidence attached.</p>
+        {% endif %}
+        <form class="stacked-form" method="post" action="/reporting/findings/{{ finding.finding_id }}/evidence">
+            <label>
+                <span>Kind</span>
+                <select name="kind">
+                    <option value="note">note</option>
+                    <option value="request">request</option>
+                    <option value="response">response</option>
+                    <option value="screenshot">screenshot</option>
+                    <option value="artifact">artifact</option>
+                </select>
+            </label>
+            <label>
+                <span>Title</span>
+                <input type="text" name="title">
+            </label>
+            <label>
+                <span>Artifact Path</span>
+                <input type="text" name="artifact_path" placeholder="/loot/...">
+            </label>
+            <label>
+                <span>URL</span>
+                <input type="url" name="url">
+            </label>
+            <label>
+                <span>Body</span>
+                <textarea name="body"></textarea>
+            </label>
+            <button class="action-btn" type="submit">Add Evidence</button>
+        </form>
+    </section>
+
+    <section class="report-panel">
+        <h3>References</h3>
+        {% if finding.references %}
+        <ul class="report-inline-list">
+            {% for ref in finding.references %}
+            <li><a href="{{ ref.url }}" target="_blank" rel="noopener">{{ ref.label or ref.url }}</a></li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No references attached.</p>
+        {% endif %}
+        <form class="stacked-form" method="post" action="/reporting/findings/{{ finding.finding_id }}/references">
+            <label>
+                <span>Label</span>
+                <input type="text" name="label">
+            </label>
+            <label>
+                <span>URL</span>
+                <input type="url" name="url" required>
+            </label>
+            <button class="action-btn" type="submit">Add Reference</button>
+        </form>
+
+        <form class="stacked-form render-inline" method="post" action="/reporting/reports/docx">
+            <input type="hidden" name="finding_id" value="{{ finding.finding_id }}">
+            <button class="action-btn primary" type="submit">Queue DOCX for This Finding</button>
+        </form>
+    </section>
+</div>
+{% endif %}
+{% endblock %}

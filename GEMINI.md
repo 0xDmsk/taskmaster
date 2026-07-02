@@ -52,7 +52,7 @@ Before queuing an execution, explicitly decide between these options:
     *   For ProjectDiscovery-backed skills, assume the agent may need to install the binary with `pdtm` before first use if it is missing.
 
 2.  **Use `action_type: "python"`**
-    *   Choose this for lightweight passive HTTP requests, HTML parsing, JSON parsing, response-header inspection, small transformations, and glue logic between previous findings.
+    *   Choose this for lightweight passive HTTP requests, HTML parsing, JSON parsing, response-header inspection, small transformations, and glue logic between previous observations.
     *   Prefer Python when the task can be solved with the standard library or a small amount of straightforward code.
     *   Default to Python for simple passive web recon against one or a few URLs unless a dedicated tool is specifically needed.
 
@@ -62,11 +62,12 @@ Before queuing an execution, explicitly decide between these options:
     *   If the task is novel but short-lived, solve it with `python` first instead of expanding the skill library prematurely.
 
 4.  **Render a report deliverable**
-    *   Choose this once the findings underlying a target or engagement are settled and you need a Word/Google-Docs-friendly artifact.
+    *   Choose this once the report findings underlying a target or engagement are settled and you need a Word/Google-Docs-friendly artifact.
     *   Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
-    *   Store the curated findings first. Use `create_reporting_engagement`, `create_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, and `add_reporting_finding_reference` to maintain Taskmaster's reporting database.
-    *   Queue rendering with `request_reporting_docx`, using either explicit `finding_ids` or an `engagement_id` plus optional `status`. Then spawn the worker with `agent_type: "reporting"` and call `wait_for_completion`.
+    *   Store the curated findings first. Use `create_reporting_engagement`, `create_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, and `add_reporting_finding_reference` to maintain Taskmaster's reporting database, or use the dashboard's `/reporting/findings` UI for the same database-backed records.
+    *   Queue rendering with `request_reporting_docx`, using either explicit `finding_ids` or an `engagement_id` plus optional `status`, or use the dashboard's **Queue DOCX** action. Then spawn the worker with `agent_type: "reporting"` and call `wait_for_completion`.
     *   The reporting executor renders a **single combined docx** for all requested findings using `templates/finding_template.docx`, writing to `/reports/` (host: `runtime/reports/`) by default. Filename derives from the common dotted id prefix (e.g. `BHI-OFFSEC-25.05-findings-2026-06-10.docx`) or the target slug when ids don't share a prefix.
+    *   Current DOCX output renders finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code; Markdown pipe tables remain literal text, and stored evidence records are not yet rendered into a dedicated evidence section.
     *   Do not render speculative findings mid-engagement — `request_reporting_docx` validates that required client-facing fields are populated before it queues work.
     *   Direct `action_type: "report_skill"` calls with a hand-built `finding`, `findings`, or `findings_path` are lower-level fallbacks for tests, template smoke checks, and imports. Normal engagements should render from stored reporting records.
     *   **Translate, do not transcribe.** `Findings.md` and `recon-data.md` are internal working files that the client never sees. When you create or update report findings:
@@ -121,7 +122,7 @@ Use this checklist:
 *   **Need browser rendering, JS execution, SPA interaction** → `playwright` or `playwright_skill`
 *   **Need a well-known external tool with structured output** → existing `skill`
 *   **Need the same external tool workflow repeatedly across targets** → create a new `skill`
-*   **Need to combine prior findings, post-process JSON, or reshape data** → `python`
+*   **Need to combine prior observations, post-process JSON, or reshape data** → `python`
 *   **Need a real browser session to see what a user sees** → spawn `agent_type: "playwright"`
 *   **Need a Word/Google-Docs deliverable from settled findings** → store findings with reporting tools, then `request_reporting_docx` and spawn `agent_type: "reporting"`
 *   **Target is behind Akamai/Cloudflare/Datadome and JS isn't needed** → `python` action with `curl_cffi`
@@ -280,8 +281,8 @@ Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The
 4.  **Monitor**: Call `wait_for_completion` with the `execution_id`. The tool blocks server-side until the execution reaches `COMPLETED` or `FAILED` (default timeout: 10 min). If it times out, call it again or investigate.
     *   **Do not poll by default**: Do not call `query_execution_status` as the normal next step after queuing work. Use it only for debugging, recovery, or an explicit spot-check.
     *   **Note**: Do NOT attempt to read `/loot` or container logs until Taskmaster confirms completion.
-5.  **Pivot**: Read the JSON envelope from the execution result — `findings` contains structured data, `artifacts` lists saved files.
-6.  **Record analysis**: Call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument — a short markdown summary of what the raw output means: notable findings, ports/services, suspected misconfigurations, and the next investigative step you'd take. The dashboard surfaces this above the raw findings; without it, only the executor's stdout is visible. The interpretation should match what you would tell the user in the CLI when reviewing the result.
+5.  **Pivot**: Read the JSON envelope from the execution result — the legacy `findings` key contains structured execution observations, and `artifacts` lists saved files.
+6.  **Record analysis**: Call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument — a short markdown summary of what the raw output means: notable observations, ports/services, suspected misconfigurations, and the next investigative step you'd take. The dashboard surfaces this above the raw observations; without it, only the executor's stdout is visible. The interpretation should match what you would tell the user in the CLI when reviewing the result.
 7.  **Record notes**: Append novel captures to `recon-data.md` and promote anything worth triage to `Findings.md` in the current working directory (see Note-Taking Discipline below).
 8.  **Cleanup**: Once a target assessment or security phase is finalized, use `cleanup_agents` MCP tool or `docker stop` + `docker rm` to decommission the worker fleet.
 
@@ -297,7 +298,7 @@ If a task is complex and no existing skill fits:
 - **Container Path**: `/loot/`
 - **Reports** mount only on reporting agents — host `runtime/reports/` → container `/reports/`.
 - Skills automatically save artifacts to `/loot` and track them in the envelope's `artifacts` list.
-- All findings are returned as structured JSON in the envelope's `findings` field — no manual parsing needed.
+- Execution observations are returned as structured JSON in the legacy envelope `findings` field — no manual parsing needed.
 
 ## 🛡 Concurrency & Phase Rules
 - **One Target, One Task**: Do not attempt to start an execution if a target is already `RUNNING`.

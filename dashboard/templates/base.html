@@ -25,8 +25,11 @@
                 <a href="/agents" class="{% if page == 'agents' %}active{% endif %}">
                     <span class="icon">&#9881;</span> Agents
                 </a>
-                <a href="/findings" class="{% if page == 'findings' %}active{% endif %}">
-                    <span class="icon">&#9733;</span> Findings
+                <a href="/observations" class="{% if page == 'observations' %}active{% endif %}">
+                    <span class="icon">&#9733;</span> Observations
+                </a>
+                <a href="/reporting/findings" class="{% if page == 'report_findings' %}active{% endif %}">
+                    <span class="icon">&#9635;</span> Report Findings
                 </a>
             </nav>
         </aside>
@@ -42,7 +45,8 @@
         /* --- Pause polling when any detail is expanded --- */
         function hasOpenDetail() {
             return document.querySelector('.detail-row.expanded') ||
-                   document.querySelector('.finding-card[open]') ||
+                   document.querySelector('.observation-card[open]') ||
+                   document.querySelector('.report-finding-card[open]') ||
                    document.querySelector('.target-detail-container') ||
                    document.querySelector('.agent-card .detail-panel');
         }

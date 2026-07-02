@@ -78,13 +78,13 @@ Kali Linux container (executors/Dockerfile)
 
 **Security Phases:** Policy enforces ordering: `reconnaissance → enumeration → exploitation → post_exploitation → reporting`. See `policies/state_policy.py`.
 
-**Skills:** Each skill extends `skills/base.py:BaseSkill` with one tool per class. Subclasses implement `build_command(**kwargs) -> str` and `parse_output(stdout, stderr, exit_code) -> dict`. The concrete `run()` orchestrator produces a JSON envelope with `skill`, `target`, `status`, `findings`, `artifacts`, `errors`. See `skills/TEMPLATE.md` for creating new skills.
+**Skills:** Each skill extends `skills/base.py:BaseSkill` with one tool per class. Subclasses implement `build_command(**kwargs) -> str` and `parse_output(stdout, stderr, exit_code) -> dict`. The concrete `run()` orchestrator produces a JSON envelope with `skill`, `target`, `status`, `findings`, `artifacts`, `errors`. The `findings` key is legacy wire format; in user-facing language these are execution observations. See `skills/TEMPLATE.md` for creating new skills.
 
 **Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). The Playwright operator (`executors/playwright_operator.py`) supports `"playwright_skill"` (imports a `BaseBrowserSkill` subclass) and `"playwright"` (raw script run via the container's Python interpreter using `playwright.sync_api`/`async_api` — **Python only, not JavaScript**). The Reporting operator (`executors/report_operator.py`) supports `"report_skill"` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport` — to render branded deliverables via docxtpl). All five pathways produce JSON envelope output.
 
 **Browser engines:** The Playwright agent ships three engines selectable per-spawn via `browser_engine` on `spawn_agent`: `playwright` (vanilla Chromium), `patchright` (anti-detection Chromium drop-in, **default**), `camoufox` (fingerprint-hardened Firefox). `BaseBrowserSkill` dispatches at run time on the engine; skills written for vanilla Playwright work unchanged across all three.
 
-**Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Findings tab shows execution-derived results only. Manage report findings through MCP tools and render from stored findings with `request_reporting_docx`. Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
+**Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Observations tab shows execution-derived results only. Manage report findings through MCP tools or the dashboard's **Report Findings** page, then render from stored findings with `request_reporting_docx` or the dashboard's queue action. Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
 
 **Audit:** Every state transition is logged to `runtime/audit/audit_log.jsonl`. Final report at `runtime/audit/session_report.md`.
 
@@ -102,7 +102,7 @@ Standard workflow:
 1. **Queue** — call `request_security_action`.
 2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
 3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
-4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable findings, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. Match the level of detail you would surface to a human reviewer in the CLI.
+4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable observations, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. Match the level of detail you would surface to a human reviewer in the CLI.
 5. **Record notes** — append novel captures to `recon-data.md` and promote anything worth triage to `Findings.md` in the current working directory (see Note-Taking Discipline below).
 6. **Cleanup** — once a target assessment or phase is finalized, use `cleanup_agents` to decommission the worker fleet.
 
@@ -133,7 +133,7 @@ Create both files on first observation; do not wait for the user to ask. Append 
 
 ### Interpretation field — required for good UX
 
-Every finalization call should include `interpretation`. Without it the dashboard's findings panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs.
+Every finalization call should include `interpretation`. Without it the dashboard's observations panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs.
 
 **Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
 
@@ -147,7 +147,11 @@ Use the database-backed reporting tools for normal engagements:
 4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; responses include `report_shape`.
 5. Queue rendering with `request_reporting_docx`, then spawn `agent_type: "reporting"` and call `wait_for_completion`.
 
+Dashboard equivalent: use `/reporting/findings` to create engagements, create or edit report findings, append evidence and references, filter stored records, and queue DOCX renders. The queue action still creates a normal Taskmaster execution; a `reporting` worker must claim it.
+
 `request_reporting_docx` validates report-readiness and returns `not_ready` when required client-facing fields are missing. Fill the stored finding instead of bypassing that validation with a direct `report_skill` payload.
+
+Current DOCX output renders the finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code. Markdown pipe tables are not converted into Word tables yet, and stored evidence records are not rendered into a separate evidence section.
 
 ### Writing report content (`report_skill` deliverables)
 

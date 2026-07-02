@@ -15,7 +15,7 @@ The rest of this file documents the CLI-tool case (`BaseSkill`). The browser and
 ## Design Rules
 
 1. **One tool per skill class** — each skill wraps exactly one CLI tool
-2. **Two abstract methods** — `build_command()` constructs the CLI command, `parse_output()` parses results into structured findings
+2. **Two abstract methods** — `build_command()` constructs the CLI command, `parse_output()` parses results into structured observations
 3. **JSON envelope** — `run()` is concrete and assembles a standard envelope automatically
 4. **Earn the abstraction** — create a skill only when the workflow is reusable and tool-backed; do not create skills for one-off fetch/parse tasks that plain Python can handle
 5. **Declare installation behavior** — if the skill depends on a ProjectDiscovery tool that may be installed on demand, set `auto_install_with_pdtm = True`
@@ -47,7 +47,7 @@ class YourToolAction(BaseSkill):
         return f"toolname --option {host}"
 
     def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
-        """Parse raw command output into a structured findings dict."""
+        """Parse raw command output into a structured observations dict."""
         # Use self.save_artifact() / self.save_json() to persist files
         # Use self._errors.append() to record non-fatal errors
         # Use self._artifacts.append() for files created by the tool itself
@@ -57,6 +57,10 @@ class YourToolAction(BaseSkill):
 ```
 
 ## JSON Envelope (returned by `run()`)
+
+`findings` is the legacy envelope key for structured execution observations.
+Do not use it as evidence that every parsed worker result is a client-facing
+report finding.
 
 ```json
 {
@@ -88,7 +92,7 @@ Create a new skill when:
 - Structured parsing is valuable enough to justify a maintained abstraction
 
 Do not create a new skill when:
-- A few lines of Python can fetch a page, parse JSON, inspect headers, or transform previous findings
+- A few lines of Python can fetch a page, parse JSON, inspect headers, or transform previous observations
 - The logic is one-off and unlikely to be reused
 - The task is mostly orchestration or glue between existing outputs
 

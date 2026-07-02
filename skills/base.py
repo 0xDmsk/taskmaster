@@ -16,10 +16,10 @@ class BaseSkill(ABC):
 
     Subclasses must implement:
         build_command(**kwargs) -> str   — construct the CLI command
-        parse_output(stdout, stderr, exit_code) -> dict — parse raw output into findings
+        parse_output(stdout, stderr, exit_code) -> dict — parse raw output into observations
 
     Optional:
-        schema: dict | None — JSON Schema for the findings field
+        schema: dict | None — JSON Schema for the legacy findings field
     """
 
     tool: str = ""
@@ -40,7 +40,7 @@ class BaseSkill(ABC):
 
     @abstractmethod
     def parse_output(self, stdout: str, stderr: str, exit_code: int) -> dict:
-        """Parse raw command output into structured findings dict."""
+        """Parse raw command output into structured observations."""
 
     def run(self, **kwargs) -> dict:
         """

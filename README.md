@@ -52,7 +52,7 @@ graph TD
     *   **One Pathway**: `report_skill` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport`).
     *   **Selective claiming**: Only picks up tasks with `action_type: "report_skill"`; everything else is left for the Kali / Playwright operators.
     *   **Template-driven**: Renders a docxtpl template (`templates/finding_template.docx`) produced from a hand-formatted example via `scripts/build_finding_template.py`. Source-document layout (fonts, table widths, headers/footers) is preserved, so the output opens cleanly in Word and Google Docs.
-    *   **Database-backed**: Report findings are stored in Taskmaster's SQLite state as first-class reporting records. Execution results remain an event log; report findings are the curated client-facing source of truth.
+    *   **Database-backed**: Report findings are stored in Taskmaster's SQLite state as first-class reporting records. Execution results remain an event log; report findings are the curated client-facing source of truth. Manage them through the reporting MCP tools or the dashboard's **Report Findings** page.
 
 ### Planning Guidance
 
@@ -61,7 +61,7 @@ When choosing how to execute a task:
 - Use `action_type: "skill"` when an existing external tool materially improves the result.
 - Create a new skill only for reusable tool-backed workflows, not for one-off parsing or fetch tasks.
 - Use Playwright only when rendered DOM or browser interaction is required.
-- Use Taskmaster's reporting tools to store settled report findings, then `request_reporting_docx` to queue the final `report_skill` render.
+- Use Taskmaster's reporting tools or the **Report Findings** dashboard page to store settled report findings, then `request_reporting_docx` or the dashboard's **Queue DOCX** action to queue the final `report_skill` render.
 - If a ProjectDiscovery-backed skill is the right fit, it may bootstrap its binary through `pdtm` if the tool is not already present.
 
 When a browser is required, spawn the worker with `agent_type: "playwright"` so the task is claimed by the Playwright executor instead of a Kali operator.
@@ -105,7 +105,7 @@ Example configurations provided for:
 ### The Agentic Workflow
 1.  **Plan**: Request an action via `request_security_action`.
 2.  **Spawn**: Launch a specialized agent via `spawn_agent`.
-3.  **Review**: Watch `runtime/audit/session_report.md` for live updates and structured findings.
+3.  **Review**: Watch `runtime/audit/session_report.md` for live updates and structured observations.
 
 ### Interactive Playwright Sessions
 
@@ -113,7 +113,7 @@ Playwright agents expose a local noVNC browser view by default. This is useful w
 
 `spawn_agent` supports these Playwright-specific fields:
 - `interactive_browser`: defaults to `true` for `agent_type: "playwright"`. Set `false` only for fully unattended browser runs.
-- `interactive_hold_ms`: how long a browser skill should keep the live session open before collecting final findings.
+- `interactive_hold_ms`: how long a browser skill should keep the live session open before collecting final observations.
 - `novnc_port`: optional fixed localhost port for the noVNC session. If omitted, Taskmaster selects a free port automatically.
 - `browser_engine`: `"playwright" | "patchright" | "camoufox"`. Defaults to `"patchright"`. Use `"camoufox"` when a target sits behind aggressive bot defenses that Patchright still trips (Akamai Bot Manager, PerimeterX). Use `"playwright"` only when you specifically need a non-patched baseline. See the "Bot-Protected Targets" section in `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` for the full three-tier ladder, including `curl_cffi` for JS-free recon on a Kali agent.
 
@@ -137,8 +137,8 @@ When a Playwright task is running, open the returned noVNC URL in your host brow
 
 Taskmaster now separates two concepts that used to be easy to confuse:
 
-- **Execution findings** are raw or semi-structured results returned by Kali, Playwright, or reporting workers. They stay attached to executions and appear in the dashboard's **Findings** tab.
-- **Report findings** are curated, client-facing findings stored in the reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). They are managed through MCP tools and are not currently mixed into the dashboard findings UI.
+- **Execution observations** are raw or semi-structured results returned by Kali, Playwright, or reporting workers. They stay attached to executions and appear in the dashboard's **Observations** tab.
+- **Report findings** are curated, client-facing findings stored in the reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). They are managed through MCP tools or the dashboard's **Report Findings** page, and are not mixed into the execution observations UI.
 
 This workflow replaces pwndoc as the reporting source of truth. Do not maintain a pwndoc sync layer or carry pwndoc-specific IDs into Taskmaster report findings.
 
@@ -151,13 +151,17 @@ Preferred reporting flow:
 5. Queue a document render with `request_reporting_docx`, using either `finding_ids` or an `engagement_id` plus optional `status`.
 6. Spawn a reporting worker with `spawn_agent(agent_type="reporting")`, then monitor the queued render with `wait_for_completion`.
 
+The dashboard supports the same reporting database flow at `/reporting/findings`: create engagements, create or edit report findings, append evidence and references, filter the finding list, and queue DOCX renders. Queuing from the dashboard still creates a normal Taskmaster execution; a compatible `reporting` worker must claim it before a document is produced.
+
 `request_reporting_docx` validates report readiness before it queues work. A finding must have `title`, `severity`, `category`, `affected`, `description`, `impact`, `proof_of_concept`, and `remediation`; incomplete findings return a `not_ready` list instead of producing a weak deliverable.
+
+Current DOCX rendering uses the finding body fields plus references. Fenced Markdown code blocks and inline backticks are rendered as Word code formatting. Markdown pipe tables remain literal text, and attached evidence records are stored for traceability but are not yet rendered into a dedicated report evidence section.
 
 The lower-level `reporting.FindingDocxReport` skill still accepts direct `finding`, `findings`, or `findings_path` arguments, but the database-backed tools are the preferred path for normal engagements.
 
 ## 🛠 Skills Library (`skills/`)
 
-Each skill wraps exactly one CLI tool and produces a standardized JSON envelope with `findings`, `artifacts`, and `errors`.
+Each skill wraps exactly one CLI tool and produces a standardized JSON envelope with `findings`, `artifacts`, and `errors`. The `findings` key is a legacy envelope field; in user-facing dashboard language, those values are execution observations.
 
 | Skill | Tool | Description |
 |-------|------|-------------|
@@ -196,10 +200,11 @@ uv run python server.py --http
 ```
 
 **Tabs:**
-- **Executions** — live table with status badges. Click any row to expand full request/result detail (justification, tool, command, findings, artifacts, errors).
+- **Executions** — live table with status badges. Click any row to expand full request/result detail (justification, tool, command, observation data, artifacts, errors).
 - **Targets** — per-target cards with phase progress bars. Expand to see executions grouped by security phase.
 - **Agents** — agent history with container info and task stats. Expand for full task history table.
-- **Findings** — execution-derived findings and results only. Canonical report findings live in the reporting database and are managed through MCP tools until a dedicated report-finding UI exists.
+- **Observations** — execution-derived observations and results only.
+- **Report Findings** — client-facing reporting records from the reporting database. Create/edit findings, append evidence and references, filter by engagement/status/severity, and queue DOCX renders.
 
 **Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), dark theme.
 

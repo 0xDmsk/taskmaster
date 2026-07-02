@@ -5,7 +5,7 @@ import mimetypes
 import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import config
 from tools.request_security_action import handle_request
@@ -102,7 +102,7 @@ TOOLS = {
                     "description": (
                         "How long browser skills should keep an interactive "
                         "Playwright session open for manual input before collecting "
-                        "final findings."
+                        "final observations."
                     ),
                 },
                 "novnc_port": {
@@ -209,7 +209,7 @@ TOOLS = {
                     "description": (
                         "Natural-language analysis of the result the calling LLM produced "
                         "after reviewing the raw output. Markdown is supported. "
-                        "Surfaced in the dashboard above the raw findings. "
+                        "Surfaced in the dashboard above the raw observations. "
                         "Voice: pentester drafting working notes — plain and concrete, "
                         "cite the URL/header/parameter/payload that proves the claim instead "
                         "of abstract risk language. No scaremongering, no marketing tone. "
@@ -263,14 +263,14 @@ TOOLS = {
                 "executor_id": {"type": "string"},
                 "result": {
                     "type": "string",
-                    "description": "Execution output / findings",
+                    "description": "Execution output / observations",
                 },
                 "interpretation": {
                     "type": "string",
                     "description": (
                         "Natural-language analysis of the result the calling LLM produced "
                         "after reviewing the raw output. Markdown is supported. "
-                        "Surfaced in the dashboard above the raw findings. "
+                        "Surfaced in the dashboard above the raw observations. "
                         "Voice: pentester drafting working notes — plain and concrete, "
                         "cite the URL/header/parameter/payload that proves the claim instead "
                         "of abstract risk language. No scaremongering, no marketing tone. "
@@ -944,10 +944,24 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(200, data)
             return
 
-        if path == "/api/findings":
-            data = api.get_findings()
+        if path in ("/api/observations", "/api/findings"):
+            data = api.get_observations()
             if is_htmx:
-                html = render("partials/findings_detail.html", findings=data)
+                html = render("partials/observations_detail.html", observations=data)
+                self._send_html(200, html)
+            else:
+                self._send_json(200, data)
+            return
+
+        if path == "/api/reporting/findings":
+            data = api.get_report_findings(
+                engagement_id=params.get("engagement_id"),
+                status=params.get("status"),
+                severity=params.get("severity"),
+                query=params.get("q"),
+            )
+            if is_htmx:
+                html = render("partials/report_findings_list.html", findings=data)
                 self._send_html(200, html)
             else:
                 self._send_json(200, data)
@@ -985,12 +999,77 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/findings":
-            findings = api.get_findings()
+            self.send_response(302)
+            self.send_header("Location", "/observations")
+            self.end_headers()
+            return
+
+        if path == "/observations":
+            observations = api.get_observations()
             html = render(
-                "findings.html",
-                page="findings",
+                "observations.html",
+                page="observations",
+                stats=stats,
+                observations=observations,
+            )
+            self._send_html(200, html)
+            return
+
+        if path == "/reporting/findings":
+            filters = {
+                "engagement_id": params.get("engagement_id"),
+                "status": params.get("status"),
+                "severity": params.get("severity"),
+                "q": params.get("q"),
+            }
+            findings = api.get_report_findings(
+                engagement_id=filters["engagement_id"],
+                status=filters["status"],
+                severity=filters["severity"],
+                query=filters["q"],
+            )
+            html = render(
+                "report_findings.html",
+                page="report_findings",
                 stats=stats,
                 findings=findings,
+                options=api.get_report_finding_options(),
+                filters=filters,
+                message=params.get("message"),
+                error=params.get("error"),
+            )
+            self._send_html(200, html)
+            return
+
+        if path == "/reporting/findings/new":
+            html = render(
+                "report_finding_form.html",
+                page="report_findings",
+                stats=stats,
+                mode="new",
+                finding=None,
+                options=api.get_report_finding_options(),
+                message=params.get("message"),
+                error=params.get("error"),
+            )
+            self._send_html(200, html)
+            return
+
+        if path.endswith("/edit") and path.startswith("/reporting/findings/"):
+            finding_id = path.split("/reporting/findings/", 1)[1].replace("/edit", "")
+            finding = api.get_report_finding_detail(finding_id)
+            if not finding:
+                self._send_html(404, "<h1>Finding not found</h1>")
+                return
+            html = render(
+                "report_finding_form.html",
+                page="report_findings",
+                stats=stats,
+                mode="edit",
+                finding=finding,
+                options=api.get_report_finding_options(),
+                message=params.get("message"),
+                error=params.get("error"),
             )
             self._send_html(200, html)
             return
@@ -1038,8 +1117,15 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_POST(self):
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
+
+        if path.startswith("/reporting/"):
+            form = self._parse_form(body)
+            self._handle_reporting_post(path, form)
+            return
 
         try:
             message = json.loads(body)
@@ -1056,6 +1142,177 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             self.end_headers()
         else:
             self._send_json(200, response)
+
+    def _parse_form(self, body):
+        parsed = parse_qs(body.decode("utf-8"), keep_blank_values=True)
+        form = {}
+        for key, values in parsed.items():
+            form[key] = values if len(values) > 1 else values[0]
+        return form
+
+    def _redirect(self, location):
+        self.send_response(303)
+        self.send_header("Location", location)
+        self.end_headers()
+
+    def _redirect_with_message(self, location, *, message=None, error=None):
+        if not location.startswith("/"):
+            location = "/reporting/findings"
+        params = {}
+        if message:
+            params["message"] = message
+        if error:
+            params["error"] = error
+        if params:
+            separator = "&" if "?" in location else "?"
+            location = f"{location}{separator}{urlencode(params)}"
+        self._redirect(location)
+
+    @staticmethod
+    def _blank_to_none(value):
+        if isinstance(value, list):
+            value = value[0] if value else ""
+        return value if value != "" else None
+
+    def _finding_payload_from_form(self, form):
+        return {
+            "engagement_id": self._blank_to_none(form.get("engagement_id")),
+            "title": form.get("title", ""),
+            "severity": form.get("severity", "Info"),
+            "category": form.get("category", "General"),
+            "status": form.get("status", "draft"),
+            "affected": form.get("affected", ""),
+            "description": form.get("description", ""),
+            "impact": form.get("impact", ""),
+            "proof_of_concept": form.get("proof_of_concept", ""),
+            "remediation": form.get("remediation", ""),
+            "cvss_score": self._blank_to_none(form.get("cvss_score")),
+            "cvss_vector": self._blank_to_none(form.get("cvss_vector")),
+            "source_execution_id": self._blank_to_none(form.get("source_execution_id")),
+        }
+
+    def _handle_reporting_post(self, path, form):
+        if path == "/reporting/engagements":
+            result = handle_create_reporting_engagement(
+                {
+                    "name": form.get("name", ""),
+                    "client_name": self._blank_to_none(form.get("client_name")),
+                    "summary": self._blank_to_none(form.get("summary")),
+                }
+            )
+            if "error" in result:
+                self._redirect_with_message(
+                    self.headers.get("Referer", "/reporting/findings"),
+                    error=result["error"],
+                )
+            else:
+                self._redirect_with_message(
+                    self.headers.get("Referer", "/reporting/findings"),
+                    message="Engagement created",
+                )
+            return
+
+        if path == "/reporting/findings":
+            payload = self._finding_payload_from_form(form)
+            payload["created_by"] = "dashboard"
+            result = handle_create_reporting_finding(payload)
+            if "error" in result:
+                self._redirect_with_message("/reporting/findings/new", error=result["error"])
+            else:
+                finding_id = result["finding"]["finding_id"]
+                self._redirect_with_message(
+                    f"/reporting/findings/{finding_id}/edit",
+                    message="Finding created",
+                )
+            return
+
+        if path == "/reporting/reports/docx":
+            finding_id = self._blank_to_none(form.get("finding_id"))
+            args = {
+                "engagement_id": self._blank_to_none(form.get("engagement_id")),
+                "status": self._blank_to_none(form.get("status")),
+                "target": self._blank_to_none(form.get("target")),
+            }
+            if finding_id:
+                args["finding_ids"] = [finding_id]
+                args.pop("engagement_id", None)
+                args.pop("status", None)
+            result = handle_request_reporting_docx(args)
+            if "error" in result:
+                self._redirect_with_message(
+                    self.headers.get("Referer", "/reporting/findings"),
+                    error=result["error"],
+                )
+            else:
+                self._redirect(f"/executions#exec:{result['execution_id']}")
+            return
+
+        parts = path.strip("/").split("/")
+        if len(parts) >= 3 and parts[0] == "reporting" and parts[1] == "findings":
+            finding_id = parts[2]
+            if len(parts) == 3:
+                payload = self._finding_payload_from_form(form)
+                payload["finding_id"] = finding_id
+                payload["updated_by"] = "dashboard"
+                result = handle_update_reporting_finding(payload)
+                if "error" in result:
+                    self._redirect_with_message(
+                        f"/reporting/findings/{finding_id}/edit",
+                        error=result["error"],
+                    )
+                else:
+                    self._redirect_with_message(
+                        f"/reporting/findings/{finding_id}/edit",
+                        message="Finding updated",
+                    )
+                return
+
+            if len(parts) == 4 and parts[3] == "evidence":
+                result = handle_add_reporting_finding_evidence(
+                    {
+                        "finding_id": finding_id,
+                        "kind": form.get("kind", "note"),
+                        "title": self._blank_to_none(form.get("title")),
+                        "body": self._blank_to_none(form.get("body")),
+                        "artifact_path": self._blank_to_none(form.get("artifact_path")),
+                        "url": self._blank_to_none(form.get("url")),
+                        "source_execution_id": self._blank_to_none(form.get("source_execution_id")),
+                        "created_by": "dashboard",
+                    }
+                )
+                if "error" in result:
+                    self._redirect_with_message(
+                        f"/reporting/findings/{finding_id}/edit",
+                        error=result["error"],
+                    )
+                else:
+                    self._redirect_with_message(
+                        f"/reporting/findings/{finding_id}/edit",
+                        message="Evidence added",
+                    )
+                return
+
+            if len(parts) == 4 and parts[3] == "references":
+                result = handle_add_reporting_finding_reference(
+                    {
+                        "finding_id": finding_id,
+                        "label": self._blank_to_none(form.get("label")),
+                        "url": form.get("url", ""),
+                    }
+                )
+                if "error" in result:
+                    self._redirect_with_message(
+                        f"/reporting/findings/{finding_id}/edit",
+                        error=result["error"],
+                    )
+                else:
+                    self._redirect_with_message(
+                        f"/reporting/findings/{finding_id}/edit",
+                        message="Reference added",
+                    )
+                return
+
+        self._send_html(404, "<h1>404 Not Found</h1>")
 
     def _send_json(self, status, data):
         payload = json.dumps(data).encode()

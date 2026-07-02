@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Observations{% endblock %}
+{% block content %}
+<h2 class="page-title">Execution Observations</h2>
+<div id="observations-list"
+     data-poll-trigger="observations-list"
+     hx-get="/api/observations" hx-trigger="every 10s" hx-swap="innerHTML">
+    {% include "partials/observations_detail.html" %}
+</div>
+{% endblock %}

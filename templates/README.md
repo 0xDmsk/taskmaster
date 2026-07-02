@@ -18,6 +18,8 @@ The preferred Taskmaster workflow is database-backed:
 2. Review them with `get_reporting_finding` or `list_reporting_findings`; those responses include the normalized `report_shape`.
 3. Queue rendering with `request_reporting_docx`, then spawn a reporting worker and wait for completion.
 
+The dashboard exposes the same database records at `/reporting/findings`. Use it to create engagements, create or edit report findings, append evidence and references, filter stored findings, and queue DOCX renders. A queued render is still a normal Taskmaster execution and needs a `reporting` worker.
+
 `request_reporting_docx` converts stored findings into the exact shape below and rejects incomplete findings before queuing a report render. Direct invocation of `reporting.FindingDocxReport` remains useful for tests, template smoke checks, and one-off imports, but normal engagements should use the reporting database as the source of truth.
 
 The reporting executor (`executors/report_operator.py`) invokes `reporting.FindingDocxReport` like any other skill. Templates are mounted in the container at `/app/templates/`, and rendered output is written to `/reports/` (host `<WORK_DIR>/runtime/reports/`). Falls back to `/loot/reports/` when the dedicated `/reports` mount is absent.
@@ -59,6 +61,8 @@ Optional keys:
 | `references` | list[str] | One entry per line; also accepts a single newline-separated string |
 
 Validation lives in `_normalize_finding()` (`skills/reporting.py`). Missing required fields fail loudly with a `ValueError` listing every missing key.
+
+Evidence records are stored in the reporting database for traceability and future rendering, but the current template context does not include them. The generated DOCX renders finding body fields and references only.
 
 ## Writing the content (style contract)
 

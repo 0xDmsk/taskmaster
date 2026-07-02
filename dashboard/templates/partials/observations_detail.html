@@ -1,0 +1,89 @@
+{% if observations %}
+{% set ns = namespace(current_target='') %}
+{% for item in observations %}
+{% if item.target != ns.current_target %}
+    {% set ns.current_target = item.target %}
+    <div class="observation-group">
+        <h3>{{ item.target }}</h3>
+    </div>
+{% endif %}
+<details class="observation-card">
+    <summary>
+        {% if item.severity %}
+        <span class="badge badge-severity-{{ item.severity|lower }}">{{ item.severity }}</span>
+        {% endif %}
+        <span class="badge badge-completed">{{ item.phase }}</span>
+        {{ item.skill }}
+        {% if item.tool %}<span style="color:var(--text-muted);font-size:0.75rem">({{ item.tool }})</span>{% endif %}
+        — {{ item.observations | length if item.observations is mapping == false else 1 }} observation{{ 's' if (item.observations | length if item.observations is mapping == false else 1) != 1 else '' }}
+        {% if item.artifacts %}, {{ item.artifacts | length }} artifact{{ 's' if item.artifacts | length != 1 else '' }}{% endif %}
+        {% if item.cvss %}<span style="margin-left:0.5rem;font-size:0.7rem;color:var(--text-muted)">CVSS {{ item.cvss }}</span>{% endif %}
+    </summary>
+    <div class="observation-detail">
+        <div class="observation-meta">
+            <span>Execution: <span class="mono">{{ item.execution_id[:12] }}</span></span>
+            {% if item.executor_id %}<span>Executor: <span class="mono">{{ item.executor_id }}</span></span>{% endif %}
+        </div>
+        {% if item.justification %}
+        <div style="margin-top:0.4rem;font-size:0.8rem;color:var(--text-secondary);font-style:italic">
+            {{ item.justification }}
+        </div>
+        {% endif %}
+        {% if item.interpretation %}
+        <div class="analysis-section" style="margin-top:0.6rem">
+            <h4 style="font-size:0.75rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem">Analysis</h4>
+            <div class="analysis-body">{{ item.interpretation | analysis }}</div>
+        </div>
+        {% endif %}
+        {% if item.description %}
+        <div style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-primary)">
+            {{ item.description }}
+        </div>
+        {% endif %}
+        {% if item.risk %}
+        <div style="margin-top:0.4rem;font-size:0.8rem">
+            <strong style="color:var(--text-secondary)">Risk:</strong> {{ item.risk }}
+        </div>
+        {% endif %}
+        {% if item.remediation %}
+        <div class="observation-remediation">
+            <strong>Remediation:</strong> {{ item.remediation }}
+        </div>
+        {% endif %}
+        {% if item.references %}
+        <div class="observation-references">
+            <strong style="color:var(--text-secondary)">References:</strong>
+            {% if item.references is iterable and item.references is not string %}
+            {% for ref in item.references %}
+                <a href="{{ ref }}" target="_blank" rel="noopener">{{ ref }}</a>
+            {% endfor %}
+            {% else %}
+                <a href="{{ item.references }}" target="_blank" rel="noopener">{{ item.references }}</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if item.observations or item.artifacts or item.errors %}
+        <details class="agent-output"{% if not item.interpretation %} open{% endif %}>
+            <summary><span class="ao-toggle">See agent output</span></summary>
+            <div class="agent-output-body">
+                {% if item.observations %}
+                <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Observation Data</h4>
+                <div class="pretty-json">{{ item.observations | pretty_json }}</div>
+                {% endif %}
+                {% if item.artifacts %}
+                <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-secondary)">Artifacts</h4>
+                <div class="pretty-json">{{ item.artifacts | pretty_json }}</div>
+                {% endif %}
+                {% if item.errors %}
+                <h4 style="margin-top:0.5rem;font-size:0.8rem;color:var(--status-failed)">Errors</h4>
+                <div class="pretty-json pretty-json--errors">{{ item.errors | pretty_json }}</div>
+                {% endif %}
+            </div>
+        </details>
+        {% endif %}
+    </div>
+</details>
+{% endfor %}
+{% else %}
+<div class="empty-state">No observations yet — completed executions with results will appear here</div>
+{% endif %}

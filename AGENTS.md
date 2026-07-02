@@ -10,7 +10,7 @@ Default workflow:
 1. **Queue** — call `request_security_action`.
 2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
 3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
-4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable findings, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. The interpretation should match what you would tell the user in the CLI when reviewing the result.
+4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable observations, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. The interpretation should match what you would tell the user in the CLI when reviewing the result.
 5. **Record notes** — append novel captures to `recon-data.md` and promote anything worth triage to `Findings.md` (see Note-Taking Discipline below).
 6. **Cleanup** — once a target assessment or phase is finalized, use `cleanup_agents` to decommission the worker fleet.
 
@@ -18,9 +18,9 @@ Use `query_execution_status` mainly for debugging, recovery, or explicit spot-ch
 
 ### Interpretation field — required for good UX
 
-Every finalization call should include `interpretation`. Without it, the dashboard's findings panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. With it, the user sees:
+Every finalization call should include `interpretation`. Without it, the dashboard's observations panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. With it, the user sees:
 
-- An **Analysis** card at the top of each execution and finding card containing your prose summary.
+- An **Analysis** card at the top of each execution and observation card containing your prose summary.
 - The raw agent output collapsed under a `See agent output` toggle.
 
 Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs — same level of detail you would surface to a human reviewer.
@@ -37,8 +37,8 @@ Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, in
 
 Taskmaster separates execution results from client-facing report findings:
 
-- Execution findings are raw worker results attached to executions. The dashboard's **Findings** tab shows these legacy execution-derived results.
-- Report findings are curated records stored in Taskmaster's reporting tables. They are the source of truth for client deliverables and are managed through MCP tools, not the dashboard UI.
+- Execution observations are raw worker results attached to executions. The dashboard's **Observations** tab shows these legacy execution-derived results.
+- Report findings are curated records stored in Taskmaster's reporting tables. They are the source of truth for client deliverables and can be managed through MCP tools or the dashboard's **Report Findings** page.
 
 Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
 
@@ -50,7 +50,11 @@ Preferred flow for final reporting:
 4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; each response includes `report_shape` for the docx renderer.
 5. Queue the document with `request_reporting_docx`, then spawn a `reporting` agent and call `wait_for_completion`.
 
+Dashboard equivalent: use `/reporting/findings` to create engagements, create or edit report findings, append evidence and references, review filters, and queue DOCX renders. The dashboard queue action still creates a normal Taskmaster execution; provision a `reporting` worker and wait for completion.
+
 `request_reporting_docx` rejects findings that are missing report-required fields (`affected`, `description`, `impact`, `proof_of_concept`, `remediation`, etc.). Fill the database record instead of bypassing validation with a direct `report_skill` call.
+
+Current DOCX output renders the finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code. Markdown pipe tables are not converted into Word tables yet, and stored evidence records are not rendered into a separate evidence section.
 
 ### Writing report content
 

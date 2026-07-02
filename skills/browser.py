@@ -61,7 +61,7 @@ class BaseBrowserSkill(ABC):
                                "patchright" pins to chromium; "camoufox" pins
                                to its bundled firefox.
         headless: bool       — True (default)
-        schema: dict | None  — JSON Schema for the findings field
+        schema: dict | None  — JSON Schema for the legacy findings field
     """
 
     tool = "playwright"
@@ -87,7 +87,7 @@ class BaseBrowserSkill(ABC):
             **kwargs: arguments from the task payload
 
         Returns:
-            dict of findings (arbitrary structure, kept under findings key)
+            dict of observations (arbitrary structure, kept under findings key)
         """
 
     def run(self, **kwargs) -> dict:
@@ -103,8 +103,7 @@ class BaseBrowserSkill(ABC):
         ).lower()
         if engine not in _VALID_ENGINES:
             raise ValueError(
-                f"Unknown browser_engine {engine!r}; expected one of "
-                f"{sorted(_VALID_ENGINES)}"
+                f"Unknown browser_engine {engine!r}; expected one of " f"{sorted(_VALID_ENGINES)}"
             )
         self.target = target
         self._artifacts = []
@@ -113,7 +112,7 @@ class BaseBrowserSkill(ABC):
         started_at = datetime.now(timezone.utc).isoformat()
         skill_name = f"{self.__class__.__module__}.{self.__class__.__name__}"
         if skill_name.startswith("skills."):
-            skill_name = skill_name[len("skills."):]
+            skill_name = skill_name[len("skills.") :]
 
         findings = {}
         status = "success"
@@ -275,11 +274,14 @@ class BaseBrowserSkill(ABC):
         try:
             if engine == "patchright":
                 import patchright  # noqa: PLC0415
+
                 return getattr(patchright, "__version__", "")
             if engine == "camoufox":
                 import camoufox  # noqa: PLC0415
+
                 return getattr(camoufox, "__version__", "")
             import playwright  # noqa: PLC0415
+
             return getattr(playwright, "__version__", "")
         except Exception:
             return ""
