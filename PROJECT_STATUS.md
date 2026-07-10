@@ -60,7 +60,13 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] Executions table with clickable row detail expansion (request, result, findings, artifacts, errors)
 - [x] Targets cards with phase progress bars and expandable phase-grouped execution tables
 - [x] Agents view with execution history per agent, merged with container data
-- [x] Findings view with severity badges, CVSS, risk, remediation, and references
+- [x] Observations view with severity badges, CVSS, risk, remediation, and references
+- [x] Engagements hub: per-engagement overview cards + workspace (severity/status rollups, scope panel, inline finding status control, render history)
+- [x] Report Findings view: cross-engagement create/edit, evidence and references, engagement/status/severity/search filters, queue DOCX
+- [x] Rendered DOCX download with path-containment guard (`/reporting/download`)
+- [x] Findings rollup in the stats bar; markdown-rendered finding bodies
+- [x] Executions bound to an engagement via an explicit `engagement_id` (set by `request_security_action` / reporting renders, or reassigned from the execution detail panel)
+- [x] Global engagement scope selector (cookie-persisted) scoping the stats bar + Executions/Observations lists by `engagement_id`
 - [x] Deep-linking across views (click target/agent/execution to navigate and auto-expand)
 - [x] HTMX auto-refresh with pause-on-expand to prevent content loss
 - [x] Dark theme, responsive layout

@@ -170,6 +170,13 @@ def get_asset(asset_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def delete_asset(asset_id: str) -> bool:
+    """Remove a scope asset. Returns True if a row was deleted."""
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM report_assets WHERE asset_id = ?", (asset_id,))
+        return cur.rowcount > 0
+
+
 def list_assets(engagement_id: str | None = None) -> list[dict]:
     with _connect() as conn:
         if engagement_id:

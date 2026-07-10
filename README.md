@@ -151,7 +151,7 @@ Preferred reporting flow:
 5. Queue a document render with `request_reporting_docx`, using either `finding_ids` or an `engagement_id` plus optional `status`.
 6. Spawn a reporting worker with `spawn_agent(agent_type="reporting")`, then monitor the queued render with `wait_for_completion`.
 
-The dashboard supports the same reporting database flow at `/reporting/findings`: create engagements, create or edit report findings, append evidence and references, filter the finding list, and queue DOCX renders. Queuing from the dashboard still creates a normal Taskmaster execution; a compatible `reporting` worker must claim it before a document is produced.
+The dashboard supports the same reporting database flow. The **Engagements** hub (`/reporting/engagements`) is the primary surface: per-engagement severity/status rollups, an editable scope panel, a filtered findings list with inline status transitions, and a render-history panel where finished DOCX deliverables can be downloaded. The flat **Report Findings** view (`/reporting/findings`) remains for cross-engagement create/edit/filter/queue. Queuing a render from either page still creates a normal Taskmaster execution; a compatible `reporting` worker must claim it before a document is produced.
 
 `request_reporting_docx` validates report readiness before it queues work. A finding must have `title`, `severity`, `category`, `affected`, `description`, `impact`, `proof_of_concept`, and `remediation`; incomplete findings return a `not_ready` list instead of producing a weak deliverable.
 
@@ -204,9 +204,12 @@ uv run python server.py --http
 - **Targets** — per-target cards with phase progress bars. Expand to see executions grouped by security phase.
 - **Agents** — agent history with container info and task stats. Expand for full task history table.
 - **Observations** — execution-derived observations and results only.
-- **Report Findings** — client-facing reporting records from the reporting database. Create/edit findings, append evidence and references, filter by engagement/status/severity, and queue DOCX renders.
+- **Engagements** — the engagement-centric reporting hub. The list view shows per-engagement finding, severity, and scope rollups; each engagement's workspace (`/reporting/engagements/<id>`) has severity/status pipeline rollups, a filtered findings list with an inline status control, an editable scope panel (`report_assets`), and a render-history panel with DOCX download links.
+- **Report Findings** — flat cross-engagement view of client-facing reporting records. Create/edit findings, append evidence and references, filter by engagement/status/severity, and queue DOCX renders.
 
-**Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), dark theme.
+**Engagement scope selector:** a dashboard-wide selector (top of the main pane, remembered across pages via a cookie) filters the stats bar plus the Executions and Observations lists to a single engagement. Executions are bound to an engagement explicitly by an `engagement_id` set at queue time — pass `engagement_id` to `request_security_action` (validated against existing engagements), and reporting renders inherit it. This keeps two engagements assessed over the same or overlapping scope cleanly separated. You can also tag or re-assign an execution after the fact from its detail panel in the Executions tab. Untagged/legacy executions appear only under "All engagements".
+
+**Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), a findings rollup in the stats bar, markdown-rendered finding bodies, dark theme.
 
 ## 🔑 Directory Structure
 

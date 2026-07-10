@@ -7,7 +7,7 @@ Repository-local instructions for agentic coding assistants working in this code
 `request_security_action` only queues work. A `QUEUED` execution does not provision a worker by itself.
 
 Default workflow:
-1. **Queue** — call `request_security_action`.
+1. **Queue** — call `request_security_action`. When the work belongs to a known reporting engagement, pass its `engagement_id` (create it first with `create_reporting_engagement`) so the execution is scoped to that engagement in the dashboard.
 2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
 3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
 4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable observations, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. The interpretation should match what you would tell the user in the CLI when reviewing the result.
@@ -38,7 +38,7 @@ Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, in
 Taskmaster separates execution results from client-facing report findings:
 
 - Execution observations are raw worker results attached to executions. The dashboard's **Observations** tab shows these legacy execution-derived results.
-- Report findings are curated records stored in Taskmaster's reporting tables. They are the source of truth for client deliverables and can be managed through MCP tools or the dashboard's **Report Findings** page.
+- Report findings are curated records stored in Taskmaster's reporting tables. They are the source of truth for client deliverables and can be managed through MCP tools or the dashboard's **Engagements** hub / **Report Findings** page.
 
 Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
 
@@ -50,7 +50,7 @@ Preferred flow for final reporting:
 4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; each response includes `report_shape` for the docx renderer.
 5. Queue the document with `request_reporting_docx`, then spawn a `reporting` agent and call `wait_for_completion`.
 
-Dashboard equivalent: use `/reporting/findings` to create engagements, create or edit report findings, append evidence and references, review filters, and queue DOCX renders. The dashboard queue action still creates a normal Taskmaster execution; provision a `reporting` worker and wait for completion.
+Dashboard equivalent: the **Engagements** hub (`/reporting/engagements`) is the primary surface — per-engagement severity/status rollups, an editable scope panel, a filtered findings list with inline status transitions, and a render-history panel where finished DOCX deliverables download. The flat **Report Findings** page (`/reporting/findings`) covers cross-engagement create/edit, evidence and references, filtering, and queuing DOCX renders. The dashboard queue action still creates a normal Taskmaster execution; provision a `reporting` worker and wait for completion. A global **scope selector** (top of the dashboard, cookie-persisted) filters the stats bar plus the Executions and Observations lists to one engagement. Executions are bound to an engagement by an explicit `engagement_id`: create the engagement first with `create_reporting_engagement`, then pass its `engagement_id` to `request_security_action` when queuing work so per-engagement metrics and lists are accurate. Reporting renders inherit the engagement automatically. Untagged or legacy executions can be assigned from the execution detail panel in the dashboard.
 
 `request_reporting_docx` rejects findings that are missing report-required fields (`affected`, `description`, `impact`, `proof_of_concept`, `remediation`, etc.). Fill the database record instead of bypassing validation with a direct `report_skill` call.
 

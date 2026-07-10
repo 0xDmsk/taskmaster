@@ -28,6 +28,7 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         },
         "phase": {"type": "string"},
         "target": {"type": "string"},
+        "engagement_id": {"type": "string"},
         "action_type": {
             "type": "string",
             "enum": ["skill", "python", "playwright", "playwright_skill", "report_skill"],
@@ -159,6 +160,21 @@ def handle_request(payload):
     target = payload["target"]
     requested_phase = payload["phase"]
 
+    # Optional engagement binding: reject an unknown id rather than silently
+    # queuing an execution that no engagement scope will ever surface.
+    engagement_id = payload.get("engagement_id")
+    if engagement_id:
+        from state.reporting import get_engagement
+
+        if not get_engagement(engagement_id):
+            return {
+                "error": "Unknown engagement_id",
+                "details": (
+                    f"No engagement '{engagement_id}' exists. Create it with "
+                    "create_reporting_engagement or omit engagement_id."
+                ),
+            }
+
     # 3. Platform constraint validation (only for python with shell commands)
     command = payload.get("command", "")
     if action_type == "python" and command:  # playwright types run in their own container
@@ -203,6 +219,7 @@ def handle_request(payload):
         security_phase=requested_phase,
         request_payload=payload,
         created_by=payload.get("agent_role", "unknown"),
+        engagement_id=engagement_id,
     )
 
     # 6. Audit Logging

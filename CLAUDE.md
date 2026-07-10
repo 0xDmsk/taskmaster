@@ -84,7 +84,7 @@ Kali Linux container (executors/Dockerfile)
 
 **Browser engines:** The Playwright agent ships three engines selectable per-spawn via `browser_engine` on `spawn_agent`: `playwright` (vanilla Chromium), `patchright` (anti-detection Chromium drop-in, **default**), `camoufox` (fingerprint-hardened Firefox). `BaseBrowserSkill` dispatches at run time on the engine; skills written for vanilla Playwright work unchanged across all three.
 
-**Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Observations tab shows execution-derived results only. Manage report findings through MCP tools or the dashboard's **Report Findings** page, then render from stored findings with `request_reporting_docx` or the dashboard's queue action. Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
+**Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `report_assets`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Observations tab shows execution-derived results only. Manage report findings through MCP tools or the dashboard's **Engagements** hub / **Report Findings** page, then render from stored findings with `request_reporting_docx` or the dashboard's queue action (rendered DOCX deliverables are downloadable from an engagement's render-history panel). Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
 
 **Audit:** Every state transition is logged to `runtime/audit/audit_log.jsonl`. Final report at `runtime/audit/session_report.md`.
 
@@ -99,7 +99,7 @@ Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `
 This section applies whenever Claude is the orchestrating LLM driving Taskmaster (not just when editing source code in this repo). Sister files `AGENTS.md` (Codex) and `GEMINI.md` carry the same workflow — keep them in sync when changing it.
 
 Standard workflow:
-1. **Queue** — call `request_security_action`.
+1. **Queue** — call `request_security_action`. When the work belongs to a known reporting engagement, pass its `engagement_id` so the execution is scoped to that engagement in the dashboard (create it first with `create_reporting_engagement`).
 2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
 3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
 4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable observations, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. Match the level of detail you would surface to a human reviewer in the CLI.
@@ -147,7 +147,7 @@ Use the database-backed reporting tools for normal engagements:
 4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; responses include `report_shape`.
 5. Queue rendering with `request_reporting_docx`, then spawn `agent_type: "reporting"` and call `wait_for_completion`.
 
-Dashboard equivalent: use `/reporting/findings` to create engagements, create or edit report findings, append evidence and references, filter stored records, and queue DOCX renders. The queue action still creates a normal Taskmaster execution; a `reporting` worker must claim it.
+Dashboard equivalent: the **Engagements** hub (`/reporting/engagements`) is the primary surface — per-engagement severity/status rollups, an editable scope panel, a filtered findings list with inline status transitions, and a render-history panel with DOCX download links. The flat **Report Findings** page (`/reporting/findings`) covers cross-engagement create/edit, evidence and references, filtering, and queuing DOCX renders. The queue action still creates a normal Taskmaster execution; a `reporting` worker must claim it. A global **scope selector** (top of the dashboard, cookie-persisted) filters the stats bar plus the Executions and Observations lists to one engagement. Executions are bound to an engagement by an explicit `engagement_id`: pass `engagement_id` to `request_security_action` when queuing work for a known engagement (create the engagement first with `create_reporting_engagement`) so its metrics and lists are accurate. Reporting renders inherit the engagement automatically. Untagged or legacy executions can be assigned from the execution detail panel in the dashboard.
 
 `request_reporting_docx` validates report-readiness and returns `not_ready` when required client-facing fields are missing. Fill the stored finding instead of bypassing that validation with a direct `report_skill` payload.
 

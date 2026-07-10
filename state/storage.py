@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS executions (
     executor_id TEXT,
     request TEXT NOT NULL DEFAULT '{}',
     result TEXT,
-    interpretation TEXT
+    interpretation TEXT,
+    engagement_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_target_status ON executions (target, status);
 CREATE INDEX IF NOT EXISTS idx_status ON executions (status);
@@ -149,6 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_reports_engagement ON reports (engagement_id);
 
 _REQUIRED_COLUMNS = {
     "interpretation": "TEXT",
+    "engagement_id": "TEXT",
 }
 
 
@@ -183,6 +185,11 @@ def _add_missing_columns(conn):
     for column, sql_type in _REQUIRED_COLUMNS.items():
         if column not in existing:
             conn.execute(f"ALTER TABLE executions ADD COLUMN {column} {sql_type}")
+    # Indexes on migrated columns are created here (not in _SCHEMA) so they run
+    # after the column exists on legacy databases.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_executions_engagement ON executions (engagement_id)"
+    )
 
 
 def _migrate_from_json(json_file, db):
@@ -280,8 +287,8 @@ def append_execution(record):
             """INSERT INTO executions
                (execution_id, target, security_phase, status,
                 created_at, created_by, updated_at, updated_by,
-                executor_id, request, result)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                executor_id, request, result, engagement_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 record["execution_id"],
                 record["target"],
@@ -294,6 +301,7 @@ def append_execution(record):
                 record.get("executor_id"),
                 json.dumps(record.get("request", {})),
                 record.get("result"),
+                record.get("engagement_id"),
             ),
         )
 

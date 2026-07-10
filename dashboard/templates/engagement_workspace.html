@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ workspace.engagement.name }}{% endblock %}
+{% block content %}
+{% set eng = workspace.engagement %}
+<div class="page-heading">
+    <div class="engagement-title-block">
+        <a class="breadcrumb" href="/reporting/engagements">&larr; Engagements</a>
+        <h2 class="page-title">{{ eng.name }}</h2>
+        <div class="engagement-card-meta">
+            {% if eng.client_name %}<span>{{ eng.client_name }}</span>{% endif %}
+            <span class="badge">{{ eng.status }}</span>
+        </div>
+    </div>
+    <a class="action-btn primary" href="/reporting/findings/new?engagement_id={{ eng.engagement_id }}">New Finding</a>
+</div>
+
+{% if message %}<div class="flash success">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+{% if eng.summary %}<p class="engagement-summary">{{ eng.summary | analysis }}</p>{% endif %}
+
+<div class="workspace-grid">
+    <section class="workspace-main">
+        <div class="workspace-rollup">
+            <div class="rollup-block">
+                <h3 class="panel-title">Severity</h3>
+                <div class="sev-chips">
+                    {% for severity, count in workspace.severity_counts.items() %}
+                    <span class="sev-chip sev-{{ severity|lower }} {% if not count %}muted{% endif %}">{{ severity }} {{ count }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="rollup-block">
+                <h3 class="panel-title">Pipeline</h3>
+                <div class="status-funnel">
+                    {% for status, count in workspace.status_counts.items() %}
+                    <span class="status-pill status-{{ status }} {% if not count %}muted{% endif %}">{{ status|replace('_', ' ') }}: {{ count }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="report-controls">
+            <form class="report-filter-bar" id="eng-filter-form">
+                <select name="status"
+                        hx-get="/api/reporting/engagements/{{ eng.engagement_id }}/findings"
+                        hx-target="#eng-findings-list"
+                        hx-swap="innerHTML"
+                        hx-include="#eng-filter-form">
+                    <option value="">All statuses</option>
+                    {% for status in options.statuses %}
+                    <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
+                    {% endfor %}
+                </select>
+                <select name="severity"
+                        hx-get="/api/reporting/engagements/{{ eng.engagement_id }}/findings"
+                        hx-target="#eng-findings-list"
+                        hx-swap="innerHTML"
+                        hx-include="#eng-filter-form">
+                    <option value="">All severities</option>
+                    {% for severity in options.severities %}
+                    <option value="{{ severity }}" {% if filters.severity == severity %}selected{% endif %}>{{ severity }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text"
+                       name="q"
+                       value="{{ filters.q or '' }}"
+                       placeholder="Search title, affected, description"
+                       hx-get="/api/reporting/engagements/{{ eng.engagement_id }}/findings"
+                       hx-target="#eng-findings-list"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-swap="innerHTML"
+                       hx-include="#eng-filter-form">
+            </form>
+        </div>
+
+        <div id="eng-findings-list">
+            {% set findings = workspace.findings %}
+            {% include "partials/engagement_findings_list.html" %}
+        </div>
+    </section>
+
+    <aside class="workspace-side">
+        {% include "partials/engagement_scope.html" %}
+        {% include "partials/engagement_renders.html" %}
+    </aside>
+</div>
+{% endblock %}

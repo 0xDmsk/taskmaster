@@ -20,3 +20,25 @@
         <div class="value failed">{{ stats.FAILED }}</div>
     </div>
 </div>
+{% if stats.findings %}
+<div class="stats-bar findings-stats">
+    <div class="stat-card">
+        <div class="label">Findings</div>
+        <div class="value">{{ stats.findings.total }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Open</div>
+        <div class="value running">{{ stats.findings.open }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Reported</div>
+        <div class="value completed">{{ stats.findings.reported }}</div>
+    </div>
+    {% for severity, count in stats.findings.severity.items() %}
+    <div class="stat-card">
+        <div class="label">{{ severity }}</div>
+        <div class="value sev-{{ severity|lower }}">{{ count }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

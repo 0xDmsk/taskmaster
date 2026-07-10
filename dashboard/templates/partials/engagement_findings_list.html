@@ -1,0 +1,80 @@
+<div class="finding-list-summary">
+    <span>{{ findings | length }} shown</span>
+    {% for status in options.statuses %}
+    {% set n = findings | selectattr('status', 'equalto', status) | list | length %}
+    {% if n %}<span class="status-count">{{ status|replace('_', ' ') }}: {{ n }}</span>{% endif %}
+    {% endfor %}
+</div>
+
+{% if findings %}
+<div class="finding-rows">
+    {% for finding in findings %}
+    <details class="report-finding-card" id="finding-{{ finding.finding_id }}">
+        <summary>
+            <span class="sev-dot sev-{{ finding.severity|lower }}" title="{{ finding.severity }}"></span>
+            <span class="report-finding-title">{{ finding.title }}</span>
+            <select class="status-select status-{{ finding.status }}"
+                    name="new_status"
+                    hx-post="/reporting/findings/{{ finding.finding_id }}/status"
+                    hx-target="#eng-findings-list"
+                    hx-swap="innerHTML"
+                    hx-include="#eng-filter-form"
+                    onclick="event.stopPropagation();">
+                {% for status in options.statuses %}
+                <option value="{{ status }}" {% if finding.status == status %}selected{% endif %}>{{ status|replace('_', ' ') }}</option>
+                {% endfor %}
+            </select>
+            <span class="report-finding-counts">{{ finding.evidence_count }} evid &middot; {{ finding.reference_count }} refs</span>
+        </summary>
+        <div class="report-finding-detail">
+            <div class="report-finding-meta">
+                <span>Category {{ finding.category }}</span>
+                {% if finding.cvss_score %}<span>CVSS {{ finding.cvss_score }}</span>{% endif %}
+                {% if finding.source_execution_id %}
+                <span>Source
+                    <a class="mono" href="/executions#exec:{{ finding.source_execution_id }}">{{ finding.source_execution_id[:12] }}</a>
+                </span>
+                {% endif %}
+            </div>
+
+            {% if finding.affected %}
+            <div class="report-field"><strong>Affected</strong><div>{{ finding.affected }}</div></div>
+            {% endif %}
+            {% if finding.description %}
+            <div class="report-field"><strong>Description</strong><div class="md-body">{{ finding.description | analysis }}</div></div>
+            {% endif %}
+            {% if finding.impact %}
+            <div class="report-field"><strong>Impact</strong><div class="md-body">{{ finding.impact | analysis }}</div></div>
+            {% endif %}
+            {% if finding.proof_of_concept %}
+            <div class="report-field"><strong>Proof of Concept</strong><div class="md-body">{{ finding.proof_of_concept | analysis }}</div></div>
+            {% endif %}
+            {% if finding.remediation %}
+            <div class="report-field"><strong>Remediation</strong><div class="md-body">{{ finding.remediation | analysis }}</div></div>
+            {% endif %}
+
+            {% if finding.references %}
+            <div class="report-field">
+                <strong>References</strong>
+                <ul class="report-inline-list">
+                    {% for ref in finding.references %}
+                    <li><a href="{{ ref.url }}" target="_blank" rel="noopener">{{ ref.label or ref.url }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div class="report-actions">
+                <a class="action-btn" href="/reporting/findings/{{ finding.finding_id }}/edit">Edit</a>
+                <form method="post" action="/reporting/reports/docx">
+                    <input type="hidden" name="finding_id" value="{{ finding.finding_id }}">
+                    <button class="action-btn" type="submit">Queue DOCX</button>
+                </form>
+            </div>
+        </div>
+    </details>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No findings match the current filters.</div>
+{% endif %}

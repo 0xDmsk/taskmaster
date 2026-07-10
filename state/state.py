@@ -17,9 +17,14 @@ def create_execution(
     security_phase: str,
     request_payload: dict,
     created_by: str = "system",
+    engagement_id: str | None = None,
 ) -> dict:
     """
     Create a new execution in QUEUED status.
+
+    ``engagement_id`` optionally binds the execution to a reporting engagement so
+    the dashboard can scope metrics and lists to it unambiguously (executions on
+    shared scope no longer collide across engagements).
     """
     record = {
         "execution_id": execution_id,
@@ -33,6 +38,7 @@ def create_execution(
         "executor_id": None,
         "request": request_payload,
         "result": None,
+        "engagement_id": engagement_id,
     }
 
     append_execution(record)

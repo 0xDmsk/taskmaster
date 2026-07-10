@@ -1,0 +1,34 @@
+<section class="side-panel">
+    <div class="panel-title-row">
+        <h3 class="panel-title">Renders</h3>
+        <form method="post" action="/reporting/reports/docx" class="render-queue">
+            <input type="hidden" name="engagement_id" value="{{ workspace.engagement.engagement_id }}">
+            <input type="hidden" name="status" value="confirmed">
+            <button class="action-btn" type="submit" title="Render confirmed findings to DOCX">Queue DOCX</button>
+        </form>
+    </div>
+    {% if workspace.renders %}
+    <ul class="render-list">
+        {% for render in workspace.renders %}
+        <li class="render-item">
+            <a class="render-status pj-status-{{ render.status|lower }}"
+               href="/executions#exec:{{ render.execution_id }}">{{ render.status }}</a>
+            <span class="render-time">{{ render.updated_at or render.created_at }}</span>
+            {% if render.artifacts %}
+            <ul class="render-artifacts">
+                {% for artifact in render.artifacts %}
+                <li>
+                    <a class="render-download mono"
+                       href="/reporting/download?exec={{ render.execution_id }}&amp;i={{ loop.index0 }}"
+                       title="{{ artifact }}">{{ artifact.split('/')|last }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state small">No renders yet. Queue a DOCX to produce a deliverable.</div>
+    {% endif %}
+</section>

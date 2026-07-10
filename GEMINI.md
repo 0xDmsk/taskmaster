@@ -64,8 +64,9 @@ Before queuing an execution, explicitly decide between these options:
 4.  **Render a report deliverable**
     *   Choose this once the report findings underlying a target or engagement are settled and you need a Word/Google-Docs-friendly artifact.
     *   Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
-    *   Store the curated findings first. Use `create_reporting_engagement`, `create_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, and `add_reporting_finding_reference` to maintain Taskmaster's reporting database, or use the dashboard's `/reporting/findings` UI for the same database-backed records.
-    *   Queue rendering with `request_reporting_docx`, using either explicit `finding_ids` or an `engagement_id` plus optional `status`, or use the dashboard's **Queue DOCX** action. Then spawn the worker with `agent_type: "reporting"` and call `wait_for_completion`.
+    *   Store the curated findings first. Use `create_reporting_engagement`, `create_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, and `add_reporting_finding_reference` to maintain Taskmaster's reporting database, or use the dashboard's **Engagements** hub (`/reporting/engagements`) / **Report Findings** page (`/reporting/findings`) for the same database-backed records.
+    *   Queue rendering with `request_reporting_docx`, using either explicit `finding_ids` or an `engagement_id` plus optional `status`, or use the dashboard's **Queue DOCX** action. Then spawn the worker with `agent_type: "reporting"` and call `wait_for_completion`. Finished DOCX deliverables download from an engagement's render-history panel in the dashboard.
+    *   The dashboard's global **scope selector** (top of the page, cookie-persisted) filters the stats bar plus the Executions and Observations lists to a single engagement. Executions are bound to an engagement by an explicit `engagement_id`: create the engagement first with `create_reporting_engagement`, then pass its `engagement_id` to `request_security_action` when queuing work so per-engagement metrics stay accurate. Reporting renders inherit the engagement automatically; untagged or legacy executions can be assigned from the execution detail panel.
     *   The reporting executor renders a **single combined docx** for all requested findings using `templates/finding_template.docx`, writing to `/reports/` (host: `runtime/reports/`) by default. Filename derives from the common dotted id prefix (e.g. `BHI-OFFSEC-25.05-findings-2026-06-10.docx`) or the target slug when ids don't share a prefix.
     *   Current DOCX output renders finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code; Markdown pipe tables remain literal text, and stored evidence records are not yet rendered into a dedicated evidence section.
     *   Do not render speculative findings mid-engagement — `request_reporting_docx` validates that required client-facing fields are populated before it queues work.
@@ -271,7 +272,7 @@ Pair this with `spawn_agent(agent_type="reporting", target="example.test")`. The
 ## 🔄 The Standard Loop (Worker-Queue Model)
 
 1.  **Analyze**: Look at the current `runtime/audit/session_report.md` and check `docker ps` for active workers.
-2.  **Request**: Use `request_security_action` to queue the task.
+2.  **Request**: Use `request_security_action` to queue the task. When the work belongs to a known reporting engagement, pass its `engagement_id` (create it first with `create_reporting_engagement`) so the execution is scoped to that engagement in the dashboard.
 3.  **Provision**: 
     *   **Default**: After queuing an execution, immediately call `spawn_agent`.
     *   **Reuse**: Skip `spawn_agent` only if you have already verified that a compatible worker is currently running for the same `TARGET` and executor type.

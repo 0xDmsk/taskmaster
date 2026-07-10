@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Engagements{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <h2 class="page-title">Engagements</h2>
+</div>
+
+{% if message %}<div class="flash success">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/reporting/engagements" class="report-filter-bar engagement-create">
+    <input type="text" name="name" required placeholder="Engagement name">
+    <input type="text" name="client_name" placeholder="Client">
+    <input type="text" name="summary" placeholder="Summary (optional)">
+    <button class="action-btn primary" type="submit">Create Engagement</button>
+</form>
+
+{% if engagements %}
+<div class="engagement-grid">
+    {% for engagement in engagements %}
+    <a class="engagement-card" href="/reporting/engagements/{{ engagement.engagement_id }}">
+        <div class="engagement-card-head">
+            <span class="engagement-card-name">{{ engagement.name }}</span>
+            <span class="badge">{{ engagement.status }}</span>
+        </div>
+        <div class="engagement-card-meta">
+            {% if engagement.client_name %}<span>{{ engagement.client_name }}</span>{% endif %}
+            <span>{{ engagement.asset_count }} scope</span>
+        </div>
+        <div class="engagement-card-counts">
+            <span class="finding-total">{{ engagement.finding_total }} findings</span>
+            <span class="finding-open">{{ engagement.open_count }} open</span>
+        </div>
+        <div class="sev-chips">
+            {% for severity, count in engagement.severity_counts.items() %}
+            {% if count %}<span class="sev-chip sev-{{ severity|lower }}">{{ severity[0] }} {{ count }}</span>{% endif %}
+            {% endfor %}
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">No engagements yet. Create one above to start curating report findings.</div>
+{% endif %}
+{% endblock %}

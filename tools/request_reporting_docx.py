@@ -92,6 +92,18 @@ def handle_request_reporting_docx(args):
         "expected_output": "JSON envelope with a rendered DOCX artifact path.",
     }
 
+    # Bind the render to an engagement: the explicit arg wins, otherwise inherit
+    # it from the findings when they all belong to the same engagement.
+    render_engagement_id = engagement_id
+    if not render_engagement_id:
+        finding_engagements = {
+            finding.get("engagement_id")
+            for finding in stored_findings
+            if finding.get("engagement_id")
+        }
+        if len(finding_engagements) == 1:
+            render_engagement_id = next(iter(finding_engagements))
+
     execution_id = str(uuid.uuid4())
     create_execution(
         execution_id=execution_id,
@@ -99,6 +111,7 @@ def handle_request_reporting_docx(args):
         security_phase="reporting",
         request_payload=request_payload,
         created_by="reporting",
+        engagement_id=render_engagement_id,
     )
 
     return {

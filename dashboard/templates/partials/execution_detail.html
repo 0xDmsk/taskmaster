@@ -12,6 +12,21 @@
                     <dd><a href="/targets#target:{{ e.target }}" onclick="event.stopPropagation()">{{ e.target }}</a></dd>
                     <dt>Phase</dt>
                     <dd>{{ e.security_phase }}</dd>
+                    <dt>Engagement</dt>
+                    <dd>
+                        <form class="assign-engagement"
+                              hx-post="/executions/{{ e.execution_id }}/engagement"
+                              hx-target="closest .detail-panel"
+                              hx-swap="outerHTML"
+                              onclick="event.stopPropagation()">
+                            <select name="engagement_id" onchange="this.form.requestSubmit()">
+                                <option value="">Unassigned</option>
+                                {% for engagement in all_engagements() %}
+                                <option value="{{ engagement.engagement_id }}" {% if e.engagement_id == engagement.engagement_id %}selected{% endif %}>{{ engagement.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </dd>
                     <dt>Executor</dt>
                     <dd>{% if e.executor_id %}<a href="/agents#agent:{{ e.executor_id }}" onclick="event.stopPropagation()">{{ e.executor_id }}</a>{% else %}—{% endif %}</dd>
                     <dt>Created</dt>

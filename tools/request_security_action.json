@@ -36,6 +36,10 @@
         "type": "string",
         "description": "IP, hostname, URL, or logical target name"
       },
+      "engagement_id": {
+        "type": "string",
+        "description": "Optional reporting engagement id (from create_reporting_engagement) to bind this execution to. Tag executions with the engagement they belong to so the dashboard can scope metrics per engagement, even when two engagements share the same target/scope. An unknown id is rejected."
+      },
       "action_type": {
         "type": "string",
         "enum": [

@@ -24,6 +24,15 @@ env/
 # Taskmaster runtime artifacts — single umbrella under WORK_DIR.
 runtime/
 
+# Legacy top-level runtime artifacts (pre runtime/ move) — never commit engagement data.
+state/*.db
+state/*.db-wal
+state/*.db-shm
+audit/audit_log.jsonl
+audit/session_report.md
+audit/loot/*
+!audit/loot/.gitkeep
+
 # Environment Variables
 .env
 .env.local
@@ -60,3 +69,4 @@ temp/
 
 # Claude Code
 claude_session_id.txt
+codex_session.txt

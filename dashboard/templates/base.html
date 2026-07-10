@@ -28,18 +28,54 @@
                 <a href="/observations" class="{% if page == 'observations' %}active{% endif %}">
                     <span class="icon">&#9733;</span> Observations
                 </a>
+                <a href="/reporting/engagements" class="{% if page == 'engagements' %}active{% endif %}">
+                    <span class="icon">&#9707;</span> Engagements
+                </a>
                 <a href="/reporting/findings" class="{% if page == 'report_findings' %}active{% endif %}">
                     <span class="icon">&#9635;</span> Report Findings
                 </a>
             </nav>
         </aside>
         <main class="main">
+            <div class="scope-bar">
+                <label for="engagement-scope">Scope</label>
+                <select id="engagement-scope" onchange="setEngagementScope(this.value)">
+                    <option value="">All engagements</option>
+                    {% for engagement in all_engagements() %}
+                    <option value="{{ engagement.engagement_id }}">{{ engagement.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div hx-get="/api/stats" hx-trigger="load, every 5s" hx-swap="innerHTML">
                 {% include "partials/stats_bar.html" %}
             </div>
             {% block content %}{% endblock %}
         </main>
     </div>
+    <script>
+    /* --- Global engagement scope: persisted in a cookie, drives server-side
+       scoping of the stats bar plus the Executions and Observations lists --- */
+    function setEngagementScope(value) {
+        document.cookie = 'tm_scope=' + encodeURIComponent(value) +
+                          ';path=/;max-age=31536000;samesite=lax';
+        location.reload();
+    }
+    (function restoreScope() {
+        var m = document.cookie.match(/(?:^|; )tm_scope=([^;]*)/);
+        if (!m) return;
+        var value = decodeURIComponent(m[1]);
+        var sel = document.getElementById('engagement-scope');
+        if (!sel) return;
+        var known = Array.prototype.some.call(sel.options, function(o) { return o.value === value; });
+        /* Drop a stale cookie (e.g. a deleted engagement) so it can't wedge the
+           whole dashboard at zero. */
+        if (known) {
+            sel.value = value;
+        } else if (value) {
+            document.cookie = 'tm_scope=;path=/;max-age=0';
+        }
+    })();
+    </script>
     <script>
     (function() {
         /* --- Pause polling when any detail is expanded --- */

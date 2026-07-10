@@ -1,0 +1,36 @@
+<section class="side-panel">
+    <h3 class="panel-title">Scope</h3>
+    {% if workspace.assets %}
+    <ul class="scope-list">
+        {% for asset in workspace.assets %}
+        <li>
+            <span class="scope-kind">{{ asset.kind }}</span>
+            <span class="scope-value mono">{{ asset.value }}</span>
+            {% if asset.description %}<span class="scope-desc">{{ asset.description }}</span>{% endif %}
+            <form method="post"
+                  action="/reporting/engagements/{{ workspace.engagement.engagement_id }}/assets/{{ asset.asset_id }}/delete"
+                  class="scope-delete">
+                <button type="submit" title="Remove from scope">&times;</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state small">No scope recorded.</div>
+    {% endif %}
+
+    <form method="post"
+          action="/reporting/engagements/{{ workspace.engagement.engagement_id }}/assets"
+          class="scope-add">
+        <select name="kind">
+            <option value="host">host</option>
+            <option value="url">url</option>
+            <option value="domain">domain</option>
+            <option value="network">network</option>
+            <option value="app">app</option>
+        </select>
+        <input type="text" name="value" required placeholder="Asset (e.g. 10.0.0.5, api.example.com)">
+        <input type="text" name="description" placeholder="Note (optional)">
+        <button class="action-btn" type="submit">Add</button>
+    </form>
+</section>

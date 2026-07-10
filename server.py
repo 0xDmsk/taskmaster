@@ -3,9 +3,10 @@ import json
 import logging
 import mimetypes
 import os
+import sqlite3
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 import config
 from tools.request_security_action import handle_request
@@ -31,6 +32,7 @@ from tools.request_reporting_docx import handle_request_reporting_docx
 from tools.update_reporting_finding import handle_update_reporting_finding
 from tools.add_reporting_finding_evidence import handle_add_reporting_finding_evidence
 from tools.add_reporting_finding_reference import handle_add_reporting_finding_reference
+from state.reporting import create_asset, delete_asset
 
 
 def load_tool_schema(tool_name):
@@ -840,15 +842,29 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
         render = self._dashboard.render
 
         is_htmx = self.headers.get("HX-Request") == "true"
+        scope = self._scope_id(api)
 
         # --- Static files ---
         if path.startswith("/static/"):
             self._serve_static(path)
             return
 
+        # --- Rendered deliverable download ---
+        if path == "/reporting/download":
+            try:
+                index = int(params.get("i", "0"))
+            except ValueError:
+                index = -1
+            host_path = api.get_render_artifact(params.get("exec", ""), index)
+            if not host_path:
+                self._send_html(404, "<h1>Artifact not found</h1>")
+                return
+            self._send_download(host_path)
+            return
+
         # --- API endpoints ---
         if path == "/api/stats":
-            data = api.get_stats()
+            data = api.get_stats(engagement_id=scope)
             if is_htmx:
                 html = render("partials/stats_bar.html", stats=data)
                 self._send_html(200, html)
@@ -861,6 +877,7 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
                 status=params.get("status"),
                 target=params.get("target"),
                 phase=params.get("phase"),
+                engagement_id=scope,
             )
             if is_htmx:
                 html = render("partials/execution_table.html", executions=data)
@@ -945,7 +962,7 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             return
 
         if path in ("/api/observations", "/api/findings"):
-            data = api.get_observations()
+            data = api.get_observations(engagement_id=scope)
             if is_htmx:
                 html = render("partials/observations_detail.html", observations=data)
                 self._send_html(200, html)
@@ -967,14 +984,36 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json(200, data)
             return
 
+        if path.startswith("/api/reporting/engagements/") and path.endswith("/findings"):
+            engagement_id = path[len("/api/reporting/engagements/") : -len("/findings")]
+            findings = api.get_engagement_findings(
+                engagement_id,
+                status=params.get("status"),
+                severity=params.get("severity"),
+                query=params.get("q"),
+            )
+            options = api.get_report_finding_options()
+            if is_htmx:
+                html = render(
+                    "partials/engagement_findings_list.html",
+                    findings=findings,
+                    options=options,
+                    engagement_id=engagement_id,
+                )
+                self._send_html(200, html)
+            else:
+                self._send_json(200, findings)
+            return
+
         # --- Dashboard pages ---
-        stats = api.get_stats()
+        stats = api.get_stats(engagement_id=scope)
 
         if path in ("/", "/executions"):
             execs = api.get_executions(
                 status=params.get("status"),
                 target=params.get("target"),
                 phase=params.get("phase"),
+                engagement_id=scope,
             )
             html = render(
                 "executions.html",
@@ -1005,12 +1044,53 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/observations":
-            observations = api.get_observations()
+            observations = api.get_observations(engagement_id=scope)
             html = render(
                 "observations.html",
                 page="observations",
                 stats=stats,
                 observations=observations,
+            )
+            self._send_html(200, html)
+            return
+
+        if path == "/reporting/engagements":
+            html = render(
+                "engagements.html",
+                page="engagements",
+                stats=stats,
+                engagements=api.get_engagements_overview(),
+                message=params.get("message"),
+                error=params.get("error"),
+            )
+            self._send_html(200, html)
+            return
+
+        if path.startswith("/reporting/engagements/"):
+            engagement_id = path[len("/reporting/engagements/") :]
+            filters = {
+                "status": params.get("status"),
+                "severity": params.get("severity"),
+                "q": params.get("q"),
+            }
+            workspace = api.get_engagement_workspace(
+                engagement_id,
+                status=filters["status"],
+                severity=filters["severity"],
+                query=filters["q"],
+            )
+            if not workspace:
+                self._send_html(404, "<h1>Engagement not found</h1>")
+                return
+            html = render(
+                "engagement_workspace.html",
+                page="engagements",
+                stats=stats,
+                workspace=workspace,
+                options=api.get_report_finding_options(),
+                filters=filters,
+                message=params.get("message"),
+                error=params.get("error"),
             )
             self._send_html(200, html)
             return
@@ -1048,6 +1128,7 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
                 stats=stats,
                 mode="new",
                 finding=None,
+                preset_engagement_id=params.get("engagement_id"),
                 options=api.get_report_finding_options(),
                 message=params.get("message"),
                 error=params.get("error"),
@@ -1108,6 +1189,35 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _scope_id(self, api):
+        """Current engagement scope from the tm_scope cookie, validated.
+
+        Returns the engagement_id when the cookie names a real engagement, else
+        None (an unknown/stale id would otherwise scope every metric to zero).
+        """
+        cookie = self.headers.get("Cookie", "")
+        for part in cookie.split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == "tm_scope" and value:
+                engagement_id = unquote(value)
+                if engagement_id and api.get_engagement(engagement_id):
+                    return engagement_id
+                return None
+        return None
+
+    def _send_download(self, filepath):
+        """Stream a file as an attachment download."""
+        content_type = mimetypes.guess_type(filepath)[0] or "application/octet-stream"
+        with open(filepath, "rb") as f:
+            data = f.read()
+        filename = os.path.basename(filepath)
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _send_html(self, status, html):
         payload = html.encode() if isinstance(html, str) else html
         self.send_response(status)
@@ -1125,6 +1235,11 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
         if path.startswith("/reporting/"):
             form = self._parse_form(body)
             self._handle_reporting_post(path, form)
+            return
+
+        if path.startswith("/executions/") and path.endswith("/engagement"):
+            form = self._parse_form(body)
+            self._handle_execution_engagement_post(path, form)
             return
 
         try:
@@ -1191,7 +1306,33 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             "source_execution_id": self._blank_to_none(form.get("source_execution_id")),
         }
 
+    def _handle_execution_engagement_post(self, path, form):
+        """Assign or clear an execution's engagement, then re-render its detail."""
+        self._ensure_dashboard()
+        api = self._dash_api
+        render = self._dashboard.render
+
+        execution_id = path[len("/executions/") : -len("/engagement")]
+        engagement_id = self._blank_to_none(form.get("engagement_id"))
+        # Ignore an unknown engagement rather than tagging with a dangling id.
+        if engagement_id and not api.get_engagement(engagement_id):
+            engagement_id = None
+
+        from state.storage import update_execution
+
+        update_execution(execution_id, {"engagement_id": engagement_id})
+
+        detail = api.get_execution_detail(execution_id)
+        if detail is None:
+            self._send_html(404, "<h1>Execution not found</h1>")
+            return
+        self._send_html(200, render("partials/execution_detail.html", e=detail))
+
     def _handle_reporting_post(self, path, form):
+        self._ensure_dashboard()
+        api = self._dash_api
+        render = self._dashboard.render
+
         if path == "/reporting/engagements":
             result = handle_create_reporting_engagement(
                 {
@@ -1248,8 +1389,63 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             return
 
         parts = path.strip("/").split("/")
+
+        # Engagement scope: add / delete assets.
+        if len(parts) >= 4 and parts[0] == "reporting" and parts[1] == "engagements":
+            engagement_id = parts[2]
+            workspace_url = f"/reporting/engagements/{engagement_id}"
+            if parts[3] == "assets" and len(parts) == 4:
+                value = self._blank_to_none(form.get("value"))
+                if not value:
+                    self._redirect_with_message(workspace_url, error="Asset value is required")
+                    return
+                try:
+                    create_asset(
+                        value,
+                        engagement_id=engagement_id,
+                        kind=form.get("kind", "host"),
+                        description=self._blank_to_none(form.get("description")),
+                    )
+                    self._redirect_with_message(workspace_url, message="Scope asset added")
+                except (sqlite3.IntegrityError, ValueError) as exc:
+                    self._redirect_with_message(workspace_url, error=str(exc))
+                return
+            if len(parts) == 6 and parts[3] == "assets" and parts[5] == "delete":
+                delete_asset(parts[4])
+                self._redirect_with_message(workspace_url, message="Scope asset removed")
+                return
+
         if len(parts) >= 3 and parts[0] == "reporting" and parts[1] == "findings":
             finding_id = parts[2]
+
+            # Inline status change from the engagement workspace — htmx swaps the
+            # findings list, so return the re-rendered partial rather than redirect.
+            if len(parts) == 4 and parts[3] == "status":
+                result = handle_update_reporting_finding(
+                    {
+                        "finding_id": finding_id,
+                        "status": form.get("new_status", ""),
+                        "updated_by": "dashboard",
+                    }
+                )
+                engagement_id = None
+                if "finding" in result:
+                    engagement_id = result["finding"].get("engagement_id")
+                findings = api.get_engagement_findings(
+                    engagement_id,
+                    status=self._blank_to_none(form.get("status")),
+                    severity=self._blank_to_none(form.get("severity")),
+                    query=self._blank_to_none(form.get("q")),
+                )
+                html = render(
+                    "partials/engagement_findings_list.html",
+                    findings=findings,
+                    options=api.get_report_finding_options(),
+                    engagement_id=engagement_id,
+                )
+                self._send_html(200, html)
+                return
+
             if len(parts) == 3:
                 payload = self._finding_payload_from_form(form)
                 payload["finding_id"] = finding_id

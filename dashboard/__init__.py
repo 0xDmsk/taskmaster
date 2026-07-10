@@ -77,9 +77,7 @@ _HTTP_HEADER_RE = re.compile(r"(?m)^([A-Za-z][A-Za-z0-9_-]+):")
 _MD_HEADER_RE = re.compile(r"(?m)^(#{1,6})[ \t]+(.+)$")
 _MD_FENCE_RE = re.compile(r"(?m)^```.*$")
 _URL_RE = re.compile(r"(https?://[^\s<>\"')]+)")
-_LOG_PREFIX_RE = re.compile(
-    r"(?mi)^(error|warning|warn|info|notice|debug|fatal|critical):"
-)
+_LOG_PREFIX_RE = re.compile(r"(?mi)^(error|warning|warn|info|notice|debug|fatal|critical):")
 
 
 def _looks_like_url(s: str) -> bool:
@@ -354,8 +352,7 @@ def pretty_json(value, depth=0, parent_key=None):
                 )
 
         list_items = "".join(
-            f"<li>{pretty_json(it, depth + 1, parent_key=parent_key)}</li>"
-            for it in items
+            f"<li>{pretty_json(it, depth + 1, parent_key=parent_key)}</li>" for it in items
         )
         return Markup(f'<ul class="pj-list">{list_items}</ul>')
 
@@ -372,6 +369,17 @@ _env.filters["highlight"] = highlight_code
 _env.filters["pretty_json"] = pretty_json
 _env.filters["analysis"] = render_analysis
 _env.globals["pygments_css"] = PYGMENTS_CSS
+
+
+def _all_engagements():
+    """Engagement options for the global scope selector (id + name only)."""
+    # Imported lazily so importing the dashboard package doesn't require the DB.
+    from state.reporting import list_engagements
+
+    return [{"engagement_id": e["engagement_id"], "name": e["name"]} for e in list_engagements()]
+
+
+_env.globals["all_engagements"] = _all_engagements
 
 
 def render(template_name, **context):
