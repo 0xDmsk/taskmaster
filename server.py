@@ -146,6 +146,23 @@ TOOLS = {
                         "configured to match."
                     ),
                 },
+                "session_dir": {
+                    "type": "string",
+                    "description": (
+                        "Absolute host path to a directory of user-supplied "
+                        "session material (cookie exports, auth tokens, a "
+                        "Playwright storage_state.json) to mount read-only at "
+                        "/session in the agent. Use this to point at a folder "
+                        "inside your engagement/project directory when the "
+                        "Taskmaster server's working directory differs from "
+                        "where you run — the path is resolved on the server "
+                        "host. Must be an absolute path to an existing "
+                        "directory. Defaults to <WORK_DIR>/runtime/session. "
+                        "Never paste session contents into the mission or "
+                        "other arguments; reference files by their /session "
+                        "path instead."
+                    ),
+                },
             },
         },
     },

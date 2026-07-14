@@ -16,6 +16,16 @@ Default workflow:
 
 Use `query_execution_status` mainly for debugging, recovery, or explicit spot-checks. Do not use it as the default next step after queuing work.
 
+### Passing session material to agents (cookies, tokens, browser state)
+
+When a spawned agent needs user-supplied session material, **never paste its contents** into the mission, arguments, or any tool call — that leaks it into the execution request, audit log, and dashboard. Instead:
+
+1. Keep the file in a folder inside the current engagement directory, e.g. `./session/` (for a browser login, name it `storage_state.json`; otherwise `cookies.json`, a token file, etc.).
+2. On `spawn_agent`, set `session_dir` to the **absolute** path of that folder — resolve `./session` to an absolute path first, because the Taskmaster server's working directory is not the same as yours. It is mounted read-only at `/session`.
+3. Point the skill/mission at the container path (`/session/cookies.json`), never the host path or the contents.
+
+Playwright agents auto-load `/session/storage_state.json` into every browser context, so for a browser session steps 1–2 are all you need.
+
 ### Interpretation field — required for good UX
 
 Every finalization call should include `interpretation`. Without it, the dashboard's observations panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. With it, the user sees:

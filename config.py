@@ -17,3 +17,10 @@ LOOT_DIR = os.path.join(RUNTIME_DIR, "loot")
 REPORTS_DIR = os.path.join(RUNTIME_DIR, "reports")
 AUDIT_DIR = os.path.join(RUNTIME_DIR, "audit")
 STATE_DIR = os.path.join(RUNTIME_DIR, "state")
+
+# User-supplied session material (cookie exports, Playwright storage_state,
+# auth token files) that agents need but must never travel through the spawn
+# payload / execution request / audit log. Drop files here on the host; every
+# spawned agent sees them read-only at /session (SESSION_DIR env inside the
+# container). Override the host location with TASKMASTER_SESSION_DIR.
+SESSION_DIR = os.environ.get("TASKMASTER_SESSION_DIR", os.path.join(RUNTIME_DIR, "session"))

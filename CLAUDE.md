@@ -57,6 +57,7 @@ Kali Linux container (executors/Dockerfile)
     skills/*.py                 # Security skills mounted at /work/skills
     /loot → runtime/loot/    # Shared volume for tool artifacts
     /reports → runtime/reports/  # Reporting agents only — rendered docx
+    /session → runtime/session/ (read-only)  # User-supplied session material
 ```
 
 **Runtime layout under `WORK_DIR` (defaults to cwd, override with `TASKMASTER_WORK_DIR`):**
@@ -68,7 +69,15 @@ Kali Linux container (executors/Dockerfile)
     reports/         # rendered docx deliverables
     audit/           # session_report.md, audit_log.jsonl
     state/           # executions.db (sqlite + WAL)
+    session/         # user-supplied session material (input; mounted read-only at /session)
 ```
+
+**Providing session material to agents (cookies, tokens, browser state) — how to pass it:** When a spawned agent needs user-supplied session material, **never paste its contents** into the mission, arguments, or any tool call — that leaks it into the execution request, audit log, and dashboard. Instead:
+1. Keep the file in a folder inside the current engagement directory, e.g. `./session/` (for a browser login, name it `storage_state.json`; otherwise `cookies.json`, a token file, etc.).
+2. On `spawn_agent`, set `session_dir` to the **absolute** path of that folder — resolve `./session` to an absolute path first, because the Taskmaster server's working directory is not the same as yours. It is mounted **read-only** at `/session` (with `SESSION_DIR=/session`).
+3. Point the skill/mission at the container path (`/session/cookies.json`), never the host path or the contents.
+
+Playwright/patchright/camoufox agents auto-load `/session/storage_state.json` into every browser context (via `BaseBrowserSkill._context_options`), so for a browser session steps 1–2 are all you need. If instead you run a Taskmaster server scoped to a single engagement (`TASKMASTER_WORK_DIR` set to that folder), you can skip `session_dir` and just drop files in `<WORK_DIR>/runtime/session/` (or override globally with `TASKMASTER_SESSION_DIR`).
 
 **Execution flow:** `request_security_action` queues work only. The default next step is `spawn_agent`, unless you have already verified a compatible live worker for the same target and executor type. After provisioning, use `wait_for_completion` as the normal monitor path. Use `query_execution_status` mainly for debugging or recovery.
 

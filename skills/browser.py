@@ -230,14 +230,36 @@ class BaseBrowserSkill(ABC):
     def _context_options(self) -> dict:
         """
         Build extra options for browser.new_context().
-        Automatically picks up BROWSER_PROXY env var (e.g. for Burp/ZAP).
-        Override to add headers, viewport, storage state, etc.
+        Automatically picks up BROWSER_PROXY env var (e.g. for Burp/ZAP) and a
+        user-supplied Playwright storage_state from the session mount.
+        Override to add headers, viewport, etc.
         """
         options = {}
         proxy_url = os.environ.get("BROWSER_PROXY")
         if proxy_url:
             options["proxy"] = {"server": proxy_url}
+        storage_state = self._storage_state_path()
+        if storage_state:
+            options["storage_state"] = storage_state
         return options
+
+    def _storage_state_path(self):
+        """Path to a user-supplied Playwright storage_state file, if present.
+
+        The playwright-operator mounts host session material read-only at
+        SESSION_DIR (/session). A ``storage_state.json`` dropped there is loaded
+        into every new browser context so skills start already authenticated —
+        the session never travels through the spawn payload or audit log. Point
+        STORAGE_STATE_FILE at a different filename, or set it empty, to override.
+        """
+        session_dir = os.environ.get("SESSION_DIR")
+        if not session_dir:
+            return None
+        filename = os.environ.get("STORAGE_STATE_FILE", "storage_state.json")
+        if not filename:
+            return None
+        path = os.path.join(session_dir, filename)
+        return path if os.path.isfile(path) else None
 
     def _launch_options(self) -> dict:
         headless = _env_flag("PLAYWRIGHT_HEADLESS", self.headless)

@@ -98,6 +98,35 @@ def handle_spawn_agent(arguments):
     templates_dir = os.path.abspath(os.path.join(config.PROJECT_DIR, "templates"))
     seclists_path = env_vars.get("SECLISTS_PATH") or os.environ.get("SECLISTS_PATH")
 
+    # Session material directory to mount read-only at /session. A caller can
+    # override the default (<WORK_DIR>/runtime/session) with an absolute host
+    # path — needed when the server's WORK_DIR differs from where the caller
+    # runs (e.g. one shared server, many engagement folders). The path is
+    # resolved on the server host; it is NOT auto-created when supplied, so a
+    # typo surfaces as an error instead of a silently-empty root-owned mount.
+    session_arg = arguments.get("session_dir")
+    if session_arg:
+        session_dir = os.path.expanduser(session_arg)
+        if not os.path.isabs(session_dir):
+            return {
+                "status": "error",
+                "message": (
+                    f"session_dir must be an absolute host path (got {session_arg!r}); "
+                    "the server's working directory differs from the caller's."
+                ),
+            }
+        if not os.path.isdir(session_dir):
+            return {
+                "status": "error",
+                "message": (
+                    f"session_dir does not exist or is not a directory: {session_dir}. "
+                    "Create it and place the session files there before spawning."
+                ),
+            }
+    else:
+        session_dir = os.path.abspath(config.SESSION_DIR)
+        os.makedirs(session_dir, exist_ok=True)
+
     # Ensure host-side directories exist before binding — Docker would
     # otherwise create them as root-owned, breaking later host access.
     os.makedirs(loot_dir, exist_ok=True)
@@ -120,6 +149,11 @@ def handle_spawn_agent(arguments):
         f"{loot_dir}:/loot",  # Mount host runtime/loot to container /loot
         "-v",
         f"{skills_dir}:/work/skills",  # Mount host skills to /work/skills
+        # User-supplied session material (cookie/storage_state exports, tokens)
+        # mounted read-only. Keeps secrets out of the spawn payload and audit
+        # log; skills read them from /session (SESSION_DIR).
+        "-v",
+        f"{session_dir}:/session:ro",
     ]
 
     # Shadow the reporting container's baked-in /app/templates with the host
@@ -148,6 +182,8 @@ def handle_spawn_agent(arguments):
             f"TASKMASTER_PORT={taskmaster_port}",
             "-e",
             f"EXECUTOR_ID={agent_id}",
+            "-e",
+            "SESSION_DIR=/session",
         ]
     )
 
