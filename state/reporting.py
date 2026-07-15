@@ -25,6 +25,52 @@ FINDING_STATUSES = {
 }
 ENGAGEMENT_STATUSES = {"active", "archived", "complete"}
 
+# Finding categories are a fixed set mirrored from the pwndoc-ng
+# `vulnerabilitycategories` collection so Taskmaster findings line up with the
+# internal tracking apps. Two Taskmaster-side buckets are appended: "TBD" (the
+# default when a category is omitted) and "Other" (the catch-all a non-matching
+# value coerces to — the LLM never invents a free-form category). Keep this list
+# in sync with pwndoc when categories are added there.
+FINDING_CATEGORY_ORDER = [
+    "Web",
+    "OS-Windows",
+    "Multi",
+    "Cloud-AWS",
+    "API",
+    "Containers",
+    "Infrastructure",
+    "OS-Multi",
+    "Cloud-GCP",
+    "Software",
+    "Thick-Client",
+    "ActiveDirectory",
+    "OS-Linux",
+    "Mobile-Android",
+    "CI-CD",
+    "Cloud-Azure",
+    "Okta",
+    "AI-LLM",
+    "Other",
+    "TBD",
+]
+FINDING_CATEGORIES = set(FINDING_CATEGORY_ORDER)
+DEFAULT_FINDING_CATEGORY = "TBD"
+FALLBACK_FINDING_CATEGORY = "Other"
+
+
+def normalize_category(value: Any) -> str:
+    """Coerce a finding category to the fixed set.
+
+    Omitted/empty -> DEFAULT_FINDING_CATEGORY ("TBD"); an unrecognized value ->
+    FALLBACK_FINDING_CATEGORY ("Other"); a recognized value passes through. This
+    coerces rather than rejects, so a write never fails on category alone — but
+    the stored (possibly coerced) value is returned so the caller sees it.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return DEFAULT_FINDING_CATEGORY
+    return value if value in FINDING_CATEGORIES else FALLBACK_FINDING_CATEGORY
+
+
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -197,7 +243,7 @@ def create_finding(
     engagement_id: str | None = None,
     finding_id: str | None = None,
     severity: str = "Info",
-    category: str = "General",
+    category: str | None = None,
     status: str = "draft",
     affected: str | list[str] | None = None,
     affected_assets: list[str] | None = None,
@@ -218,6 +264,7 @@ def create_finding(
         raise ValueError("title is required")
     _validate_choice(severity, SEVERITIES, "severity")
     _validate_choice(status, FINDING_STATUSES, "status")
+    category = normalize_category(category)
 
     payload = {
         "affected": affected,
@@ -341,6 +388,8 @@ def update_finding(finding_id: str, *, updated_by: str = "system", **updates) ->
         _validate_choice(updates["severity"], SEVERITIES, "severity")
     if "status" in updates:
         _validate_choice(updates["status"], FINDING_STATUSES, "status")
+    if "category" in updates:
+        updates["category"] = normalize_category(updates["category"])
 
     if not updates:
         return get_finding(finding_id)

@@ -14,7 +14,7 @@ def handle_create_reporting_finding(args):
             engagement_id=args.get("engagement_id"),
             finding_id=args.get("finding_id"),
             severity=args.get("severity", "Info"),
-            category=args.get("category", "General"),
+            category=args.get("category"),
             status=args.get("status", "draft"),
             affected=args.get("affected"),
             affected_assets=args.get("affected_assets"),

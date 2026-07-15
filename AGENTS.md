@@ -74,6 +74,7 @@ When you create or update a report finding, write for the **client**, not the in
 - **Never reference** `Findings.md`, `recon-data.md`, `F-NNN` IDs, or `§N.M` recon section markers — those are internal working files that are not shared with the client. Ground claims in URLs, parameters, response headers, or `/loot` artifacts the client can verify.
 - `description` = what was found (concrete). `impact` = why it matters in plain consequences (not "severe security impact"). `proof_of_concept` = a self-contained, copy-pasteable reproduction. `remediation` = specific actions, not generic platitudes.
 - Severity is a final value — strip "(pending triage)" qualifiers before rendering.
+- `category` is a fixed set mirrored from the internal tracker (pwndoc) — pick the closest match from the enum in the tool schema; use `TBD` when uncategorized. An off-list value is coerced to `Other`, so don't invent categories.
 
 The full style contract is documented in the module docstring of `skills/reporting.py` and in `templates/README.md`.
 

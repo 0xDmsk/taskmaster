@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS findings (
     engagement_id TEXT,
     title TEXT NOT NULL,
     severity TEXT NOT NULL DEFAULT 'Info',
-    category TEXT NOT NULL DEFAULT 'General',
+    category TEXT NOT NULL DEFAULT 'TBD',
     status TEXT NOT NULL DEFAULT 'draft',
     affected TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',

@@ -76,6 +76,7 @@ Before queuing an execution, explicitly decide between these options:
         * Ground every claim in something the client can verify themselves — a URL, parameter, response header, or an artifact saved to `/loot`.
         * Keep each field tight: `description` = what (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions ("apply output encoding on `q` and serve a CSP that disallows inline scripts"), not platitudes ("implement XSS defenses").
         * A few short paragraphs per field is plenty — the table layout breaks on wall-of-text prose.
+        * `category` is a fixed set mirrored from the internal tracker (pwndoc) — pick the closest match from the enum in the tool schema; use `TBD` when uncategorized. An off-list value is coerced to `Other`, so don't invent categories.
         * Full style contract lives in the `skills/reporting.py` module docstring and `templates/README.md`.
 
 ## 🎭 When To Use Playwright

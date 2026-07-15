@@ -32,7 +32,7 @@ from tools.request_reporting_docx import handle_request_reporting_docx
 from tools.update_reporting_finding import handle_update_reporting_finding
 from tools.add_reporting_finding_evidence import handle_add_reporting_finding_evidence
 from tools.add_reporting_finding_reference import handle_add_reporting_finding_reference
-from state.reporting import create_asset, delete_asset
+from state.reporting import FINDING_CATEGORY_ORDER, create_asset, delete_asset
 
 
 def load_tool_schema(tool_name):
@@ -473,7 +473,16 @@ TOOLS = {
                     "enum": ["Critical", "High", "Medium", "Low", "Info"],
                     "default": "Info",
                 },
-                "category": {"type": "string", "default": "General"},
+                "category": {
+                    "type": "string",
+                    "enum": FINDING_CATEGORY_ORDER,
+                    "default": "TBD",
+                    "description": (
+                        "Finding category from the fixed internal set (mirrored from "
+                        "pwndoc). Pick the best fit; use 'TBD' if not yet categorized. "
+                        "An off-list value is coerced to 'Other'."
+                    ),
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -569,7 +578,14 @@ TOOLS = {
                     "type": "string",
                     "enum": ["Critical", "High", "Medium", "Low", "Info"],
                 },
-                "category": {"type": "string"},
+                "category": {
+                    "type": "string",
+                    "enum": FINDING_CATEGORY_ORDER,
+                    "description": (
+                        "Finding category from the fixed internal set. An off-list "
+                        "value is coerced to 'Other'."
+                    ),
+                },
                 "status": {
                     "type": "string",
                     "enum": [
@@ -1311,7 +1327,7 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
             "engagement_id": self._blank_to_none(form.get("engagement_id")),
             "title": form.get("title", ""),
             "severity": form.get("severity", "Info"),
-            "category": form.get("category", "General"),
+            "category": self._blank_to_none(form.get("category")),
             "status": form.get("status", "draft"),
             "affected": form.get("affected", ""),
             "description": form.get("description", ""),

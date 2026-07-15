@@ -12,7 +12,7 @@
 {% set action = '/reporting/findings/' ~ finding.finding_id if mode == 'edit' else '/reporting/findings' %}
 {% set current_severity = finding.severity if finding else 'Info' %}
 {% set current_status = finding.status if finding else 'draft' %}
-{% set current_category = finding.category if finding else 'General' %}
+{% set current_category = finding.category if finding else 'TBD' %}
 {% set current_engagement_id = finding.engagement_id if finding else (preset_engagement_id or '') %}
 
 <form class="report-form" method="post" action="{{ action }}">

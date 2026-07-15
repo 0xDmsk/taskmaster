@@ -170,6 +170,7 @@ When creating or updating report findings, the stored fields become the **client
 - Each field has one job: `description` = what was found (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions.
 - Plain, succinct language — a few short paragraphs per field, not pages of prose.
 - Severity is a final value; strip working-estimate qualifiers.
+- `category` is a **fixed set** mirrored from the internal tracker (pwndoc) — pick the closest match from the enum shown in the tool schema; use `TBD` when not yet categorized. Do not invent a category: an off-list value is silently coerced to `Other`.
 
 Full style contract lives in the `skills/reporting.py` module docstring and `templates/README.md`.
 

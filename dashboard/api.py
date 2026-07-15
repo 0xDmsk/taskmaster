@@ -7,6 +7,7 @@ import os
 import config
 from state.storage import load_executions, get_execution_by_id
 from state.reporting import (
+    FINDING_CATEGORY_ORDER,
     FINDING_STATUSES,
     SEVERITIES,
     get_engagement,
@@ -303,7 +304,7 @@ def get_report_finding_options():
         "engagements": list_engagements(),
         "severities": [severity for severity in SEVERITY_ORDER if severity in SEVERITIES],
         "statuses": [status for status in STATUS_ORDER if status in FINDING_STATUSES],
-        "categories": ["Web", "API", "Cloud", "Infra", "Mobile", "General"],
+        "categories": list(FINDING_CATEGORY_ORDER),
     }
 
 
