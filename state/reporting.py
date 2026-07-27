@@ -598,3 +598,630 @@ def _next_sort_order(conn, table: str, finding_id: str) -> int:
         (finding_id,),
     ).fetchone()
     return int(row["next_order"])
+
+
+# --------------------------------------------------------------------------- #
+# Threat models (evidence-grounded, multi-entity)                             #
+# --------------------------------------------------------------------------- #
+
+THREAT_MODEL_STATUSES = {"draft", "in_review", "final"}
+
+# Entity registry. Each entity type maps to its table, the columns it owns
+# (besides the universal ``ref``), which of those are required, the human-facing
+# ref prefix (A-#, CA-#, AP-#, ...), and the section title used in exports.
+# Cross-references between entities are plain ref strings the caller authors
+# (e.g. an attack path's ``impacted_assets`` = "CA-1, CA-4").
+TM_ENTITIES = {
+    "assumption": {
+        "table": "tm_assumptions",
+        "prefix": "A",
+        "title": "Validated Context and Assumptions",
+        "cols": ["status", "context", "impact"],
+        "required": ["context"],
+    },
+    "role": {
+        "table": "tm_roles",
+        "prefix": "UR",
+        "title": "User Roles",
+        "cols": ["name", "description"],
+        "required": ["name"],
+    },
+    "asset": {
+        "table": "tm_assets",
+        "prefix": "CA",
+        "title": "Critical Assets",
+        "cols": ["name", "description"],
+        "required": ["name"],
+    },
+    "terminal_goal": {
+        "table": "tm_terminal_goals",
+        "prefix": "ATG",
+        "title": "Attacker Terminal Goals",
+        "cols": ["name", "description"],
+        "required": ["name"],
+    },
+    "attack_surface": {
+        "table": "tm_attack_surface",
+        "prefix": "AS",
+        "title": "Attack Surface",
+        "cols": ["name", "description"],
+        "required": ["name"],
+    },
+    "trust_boundary": {
+        "table": "tm_trust_boundaries",
+        "prefix": "TB",
+        "title": "Trust Boundaries",
+        "cols": ["boundary", "protocol", "authn", "authz", "encryption", "validation", "evidence"],
+        "required": ["boundary"],
+    },
+    "attack_path": {
+        "table": "tm_attack_paths",
+        "prefix": "AP",
+        "title": "Attack Paths",
+        "cols": [
+            "title",
+            "description",
+            "threat_category",
+            "impacted_assets",
+            "abused_surface",
+            "preconditions",
+            "existing_controls",
+            "gaps",
+            "likelihood",
+            "impact",
+            "priority",
+            "evidence",
+            "source_execution_id",
+            "finding_id",
+        ],
+        "required": ["title"],
+    },
+    "test_objective": {
+        "table": "tm_test_objectives",
+        "prefix": "TO",
+        "title": "Test Objectives",
+        "cols": ["attack_path_ref", "status", "objective", "priority", "environment", "notes"],
+        "required": ["objective"],
+    },
+    "existing_mitigation": {
+        "table": "tm_existing_mitigations",
+        "prefix": "EM",
+        "title": "Existing Mitigations",
+        "cols": ["mitigation", "control_type", "evidence", "related_paths"],
+        "required": ["mitigation"],
+    },
+    "recommended_mitigation": {
+        "table": "tm_recommended_mitigations",
+        "prefix": "RM",
+        "title": "Recommended Mitigation Focus",
+        "cols": ["recommendation", "control_type", "location", "related_paths"],
+        "required": ["recommendation"],
+    },
+    "open_question": {
+        "table": "tm_open_questions",
+        "prefix": "OQ",
+        "title": "Resolved Questions and Remaining Open Questions",
+        "cols": ["status", "question", "resolution"],
+        "required": ["question"],
+    },
+    "evidence_note": {
+        "table": "tm_evidence_notes",
+        "prefix": "EV",
+        "title": "Evidence and Out-of-Scope Notes",
+        "cols": ["note", "status"],
+        "required": ["note"],
+    },
+}
+TM_ENTITY_ORDER = [
+    "assumption",
+    "role",
+    "asset",
+    "terminal_goal",
+    "attack_surface",
+    "trust_boundary",
+    "attack_path",
+    "test_objective",
+    "existing_mitigation",
+    "recommended_mitigation",
+    "open_question",
+    "evidence_note",
+]
+# Columns that are nullable foreign keys — an empty value must be stored as NULL,
+# not "" (which would violate the FK to executions/findings).
+TM_NULLABLE_COLS = {"source_execution_id", "finding_id"}
+
+
+def _tm_col_value(col: str, fields: dict):
+    if col in TM_NULLABLE_COLS:
+        return fields.get(col) or None
+    return _clean_text(fields.get(col, ""))
+
+
+def _tm_entity(entity_type: str) -> dict:
+    spec = TM_ENTITIES.get(entity_type)
+    if spec is None:
+        allowed = ", ".join(TM_ENTITY_ORDER)
+        raise ValueError(f"Unknown entity_type '{entity_type}'. Allowed: {allowed}")
+    return spec
+
+
+def _threat_model_exists(conn, threat_model_id: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM threat_models WHERE threat_model_id = ?", (threat_model_id,)
+        ).fetchone()
+        is not None
+    )
+
+
+def create_threat_model(
+    *,
+    engagement_id: str | None = None,
+    title: str,
+    threat_model_id: str | None = None,
+    methodology: str = "STRIDE",
+    status: str = "draft",
+    review_date: str | None = None,
+    scope: str = "",
+    out_of_scope: str = "",
+    summary: str = "",
+    created_by: str = "system",
+) -> dict:
+    """Create a threat model shell. Add entries with add_threat_model_entry."""
+    if not title:
+        raise ValueError("title is required")
+    _validate_choice(status, THREAT_MODEL_STATUSES, "status")
+    now = _now()
+    threat_model_id = threat_model_id or _new_id("tm")
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO threat_models
+               (threat_model_id, engagement_id, title, methodology, status, review_date,
+                scope, out_of_scope, summary, created_at, created_by, updated_at, updated_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                threat_model_id,
+                engagement_id,
+                title,
+                methodology,
+                status,
+                review_date,
+                _clean_text(scope),
+                _clean_text(out_of_scope),
+                _clean_text(summary),
+                now,
+                created_by,
+                now,
+                created_by,
+            ),
+        )
+    return get_threat_model(threat_model_id)
+
+
+def update_threat_model(
+    threat_model_id: str, *, updated_by: str = "system", **updates
+) -> dict | None:
+    allowed = {
+        "engagement_id",
+        "title",
+        "methodology",
+        "status",
+        "review_date",
+        "scope",
+        "out_of_scope",
+        "summary",
+    }
+    unknown = set(updates) - allowed
+    if unknown:
+        raise ValueError(f"Unsupported threat model fields: {', '.join(sorted(unknown))}")
+    if "status" in updates:
+        _validate_choice(updates["status"], THREAT_MODEL_STATUSES, "status")
+    if not updates:
+        return get_threat_model(threat_model_id)
+    updates = dict(updates)
+    updates["updated_at"] = _now()
+    updates["updated_by"] = updated_by
+    set_clauses = ", ".join(f"{f} = ?" for f in updates)
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE threat_models SET {set_clauses} WHERE threat_model_id = ?",
+            list(updates.values()) + [threat_model_id],
+        )
+    return get_threat_model(threat_model_id)
+
+
+def get_threat_model(threat_model_id: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM threat_models WHERE threat_model_id = ?", (threat_model_id,)
+        ).fetchone()
+        if not row:
+            return None
+        model = dict(row)
+        entries: dict = {}
+        counts: dict = {}
+        for entity_type in TM_ENTITY_ORDER:
+            rows = _list_tm_entries(conn, threat_model_id, entity_type)
+            entries[entity_type] = rows
+            counts[entity_type] = len(rows)
+        model["entries"] = entries
+        model["counts"] = counts
+        return model
+
+
+def list_threat_models(engagement_id: str | None = None, status: str | None = None) -> list[dict]:
+    query = "SELECT * FROM threat_models"
+    clauses, values = [], []
+    if engagement_id:
+        clauses.append("engagement_id = ?")
+        values.append(engagement_id)
+    if status:
+        clauses.append("status = ?")
+        values.append(status)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY created_at DESC"
+    with _connect() as conn:
+        rows = conn.execute(query, values).fetchall()
+        out = []
+        for row in rows:
+            model = dict(row)
+            model["counts"] = {
+                et: _count_tm_entries(conn, model["threat_model_id"], et) for et in TM_ENTITY_ORDER
+            }
+            out.append(model)
+        return out
+
+
+def add_threat_model_entry(
+    threat_model_id: str,
+    entity_type: str,
+    *,
+    ref: str | None = None,
+    created_by: str = "system",
+    **fields,
+) -> dict:
+    """Add one entity (assumption, asset, attack path, ...) to a threat model."""
+    spec = _tm_entity(entity_type)
+    unknown = set(fields) - set(spec["cols"])
+    if unknown:
+        raise ValueError(
+            f"Unsupported {entity_type} fields: {', '.join(sorted(unknown))}. "
+            f"Allowed: {', '.join(spec['cols'])}"
+        )
+    missing = [f for f in spec["required"] if not (fields.get(f) or "").strip()]
+    if missing:
+        raise ValueError(f"{entity_type} requires: {', '.join(missing)}")
+
+    now = _now()
+    entry_id = _new_id("tme")
+    with _connect() as conn:
+        if not _threat_model_exists(conn, threat_model_id):
+            raise ValueError(f"Unknown threat_model_id: {threat_model_id}")
+        sort_order = _next_entry_sort(conn, spec["table"], threat_model_id)
+        ref = ref or f"{spec['prefix']}-{sort_order + 1}"
+        cols = (
+            ["entry_id", "threat_model_id", "ref"]
+            + spec["cols"]
+            + [
+                "sort_order",
+                "created_at",
+                "created_by",
+                "updated_at",
+                "updated_by",
+            ]
+        )
+        values = (
+            [entry_id, threat_model_id, ref]
+            + [_tm_col_value(c, fields) for c in spec["cols"]]
+            + [sort_order, now, created_by, now, created_by]
+        )
+        placeholders = ", ".join("?" for _ in cols)
+        conn.execute(
+            f"INSERT INTO {spec['table']} ({', '.join(cols)}) VALUES ({placeholders})", values
+        )
+        return _get_tm_entry(conn, entity_type, entry_id)
+
+
+def update_threat_model_entry(
+    threat_model_id: str,
+    entity_type: str,
+    ref: str,
+    *,
+    updated_by: str = "system",
+    **fields,
+) -> dict | None:
+    spec = _tm_entity(entity_type)
+    unknown = set(fields) - set(spec["cols"])
+    if unknown:
+        raise ValueError(
+            f"Unsupported {entity_type} fields: {', '.join(sorted(unknown))}. "
+            f"Allowed: {', '.join(spec['cols'])}"
+        )
+    if not fields:
+        with _connect() as conn:
+            return _find_tm_entry(conn, entity_type, threat_model_id, ref)
+    updates = {c: _tm_col_value(c, fields) for c in fields}
+    updates["updated_at"] = _now()
+    updates["updated_by"] = updated_by
+    set_clauses = ", ".join(f"{c} = ?" for c in updates)
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE {spec['table']} SET {set_clauses} " "WHERE threat_model_id = ? AND ref = ?",
+            list(updates.values()) + [threat_model_id, ref],
+        )
+        if cur.rowcount == 0:
+            return None
+        return _find_tm_entry(conn, entity_type, threat_model_id, ref)
+
+
+def delete_threat_model_entry(threat_model_id: str, entity_type: str, ref: str) -> bool:
+    spec = _tm_entity(entity_type)
+    with _connect() as conn:
+        cur = conn.execute(
+            f"DELETE FROM {spec['table']} WHERE threat_model_id = ? AND ref = ?",
+            (threat_model_id, ref),
+        )
+        return cur.rowcount > 0
+
+
+def _list_tm_entries(conn, threat_model_id: str, entity_type: str) -> list[dict]:
+    spec = _tm_entity(entity_type)
+    rows = conn.execute(
+        f"SELECT * FROM {spec['table']} WHERE threat_model_id = ? "
+        "ORDER BY sort_order, created_at",
+        (threat_model_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _count_tm_entries(conn, threat_model_id: str, entity_type: str) -> int:
+    spec = _tm_entity(entity_type)
+    row = conn.execute(
+        f"SELECT COUNT(*) AS n FROM {spec['table']} WHERE threat_model_id = ?",
+        (threat_model_id,),
+    ).fetchone()
+    return int(row["n"])
+
+
+def _get_tm_entry(conn, entity_type: str, entry_id: str) -> dict | None:
+    spec = _tm_entity(entity_type)
+    row = conn.execute(f"SELECT * FROM {spec['table']} WHERE entry_id = ?", (entry_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def _find_tm_entry(conn, entity_type: str, threat_model_id: str, ref: str) -> dict | None:
+    spec = _tm_entity(entity_type)
+    row = conn.execute(
+        f"SELECT * FROM {spec['table']} WHERE threat_model_id = ? AND ref = ?",
+        (threat_model_id, ref),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _next_entry_sort(conn, table: str, threat_model_id: str) -> int:
+    row = conn.execute(
+        f"SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order "
+        f"FROM {table} WHERE threat_model_id = ?",
+        (threat_model_id,),
+    ).fetchone()
+    return int(row["next_order"])
+
+
+# --------------------------------------------------------------------------- #
+# Threat model markdown export (reference deliverable format)                  #
+# --------------------------------------------------------------------------- #
+
+
+def _md_cell(value: Any) -> str:
+    """Escape a value for a markdown table cell."""
+    text = "" if value is None else str(value)
+    return text.replace("|", "\\|").replace("\n", "<br>").strip()
+
+
+def _md_table(headers: list[str], rows: list[list]) -> str:
+    head = "| " + " | ".join(headers) + " |"
+    sep = "| " + " | ".join(["---"] * len(headers)) + " |"
+    body = "\n".join("| " + " | ".join(_md_cell(c) for c in r) + " |" for r in rows)
+    return "\n".join([head, sep, body]) if rows else "\n".join([head, sep])
+
+
+def threat_model_sections(model: dict) -> list[dict]:
+    """Shared tabular sections for a get_threat_model() dict.
+
+    Returns a list of {title, headers, rows} used by both the markdown export
+    and the dashboard (rendered as auto-escaped HTML tables). Cross-references
+    stay as the ref strings the caller authored.
+    """
+    e = model["entries"]
+    return [
+        {
+            "title": "Validated Context and Assumptions",
+            "headers": ["ID", "Status", "Context / Assumption", "Threat Model Impact"],
+            "rows": [[a["ref"], a["status"], a["context"], a["impact"]] for a in e["assumption"]],
+        },
+        {
+            "title": "User Roles",
+            "headers": ["ID", "User Role", "Description"],
+            "rows": [[r["ref"], r["name"], r["description"]] for r in e["role"]],
+        },
+        {
+            "title": "Critical Assets",
+            "headers": ["ID", "Critical Asset", "Description"],
+            "rows": [[a["ref"], a["name"], a["description"]] for a in e["asset"]],
+        },
+        {
+            "title": "Attacker Terminal Goals",
+            "headers": ["ID", "Attacker End Goal", "Description"],
+            "rows": [[g["ref"], g["name"], g["description"]] for g in e["terminal_goal"]],
+        },
+        {
+            "title": "Attack Surface",
+            "headers": ["ID", "Attack Surface", "Description"],
+            "rows": [[s["ref"], s["name"], s["description"]] for s in e["attack_surface"]],
+        },
+        {
+            "title": "Trust Boundaries",
+            "headers": [
+                "ID",
+                "Boundary",
+                "Protocol / Mechanism",
+                "Authn / Authz",
+                "Encryption",
+                "Validation / Rate Limiting",
+                "Evidence / Assumptions",
+            ],
+            "rows": [
+                [
+                    b["ref"],
+                    b["boundary"],
+                    b["protocol"],
+                    " / ".join(x for x in (b["authn"], b["authz"]) if x),
+                    b["encryption"],
+                    b["validation"],
+                    b["evidence"],
+                ]
+                for b in e["trust_boundary"]
+            ],
+        },
+        {
+            "title": "Attack Paths Summary",
+            "headers": ["ID", "Attack Path", "Threat Category", "Priority"],
+            "rows": [
+                [p["ref"], p["title"], p["threat_category"], p["priority"]]
+                for p in e["attack_path"]
+            ],
+        },
+        {
+            "title": "Test Objectives",
+            "headers": [
+                "AP-ID",
+                "Attack Path / Test Objective Status",
+                "Test Objective ID",
+                "Test Objective",
+                "Test Priority",
+                "Environment",
+                "Notes",
+            ],
+            "rows": [
+                [
+                    t["attack_path_ref"],
+                    t["status"],
+                    t["ref"],
+                    t["objective"],
+                    t["priority"],
+                    t["environment"],
+                    t["notes"],
+                ]
+                for t in e["test_objective"]
+            ],
+        },
+        {
+            "title": "Existing Mitigations",
+            "headers": [
+                "ID",
+                "Mitigation",
+                "Control Type",
+                "Evidence / Status",
+                "Related Attack Paths",
+            ],
+            "rows": [
+                [m["ref"], m["mitigation"], m["control_type"], m["evidence"], m["related_paths"]]
+                for m in e["existing_mitigation"]
+            ],
+        },
+        {
+            "title": "Recommended Mitigation Focus",
+            "headers": [
+                "ID",
+                "Recommendation",
+                "Control Type",
+                "Location / Boundary",
+                "Related Attack Paths",
+            ],
+            "rows": [
+                [
+                    m["ref"],
+                    m["recommendation"],
+                    m["control_type"],
+                    m["location"],
+                    m["related_paths"],
+                ]
+                for m in e["recommended_mitigation"]
+            ],
+        },
+        {
+            "title": "Resolved Questions and Remaining Open Questions",
+            "headers": ["ID", "Status", "Question / Topic", "Resolution or Remaining Risk"],
+            "rows": [
+                [q["ref"], q["status"], q["question"], q["resolution"]] for q in e["open_question"]
+            ],
+        },
+        {
+            "title": "Evidence and Out-of-Scope Notes",
+            "headers": ["ID", "Note", "Status"],
+            "rows": [[n["ref"], n["note"], n["status"]] for n in e["evidence_note"]],
+        },
+    ]
+
+
+def threat_model_detail_paths(model: dict) -> list[dict]:
+    """Detailed attack paths for a get_threat_model() dict: {ref, title, fields}."""
+    out = []
+    for p in model["entries"]["attack_path"]:
+        out.append(
+            {
+                "ref": p["ref"],
+                "title": p["title"],
+                "fields": [
+                    ("ID", p["ref"]),
+                    ("Attack Path", p["title"]),
+                    ("Description", p["description"]),
+                    ("Threat Category", p["threat_category"]),
+                    ("Impacted Assets", p["impacted_assets"]),
+                    ("Abused Entry Point or Trust Boundary", p["abused_surface"]),
+                    ("Preconditions", p["preconditions"]),
+                    ("Existing Controls", p["existing_controls"]),
+                    ("Gaps / Open Questions", p["gaps"]),
+                    ("Likelihood", p["likelihood"]),
+                    ("Impact", p["impact"]),
+                    ("Priority", p["priority"]),
+                    ("Evidence / Assumptions", p["evidence"]),
+                ],
+            }
+        )
+    return out
+
+
+def render_threat_model_markdown(threat_model_id: str) -> str | None:
+    """Render a threat model as the reference-format markdown deliverable."""
+    model = get_threat_model(threat_model_id)
+    if not model:
+        return None
+    parts: list[str] = [f"# {model['title']}", ""]
+    if model.get("review_date"):
+        parts += [f"Review date: {model['review_date']}", ""]
+    if model.get("scope"):
+        parts += [f"Scope: {model['scope']}", ""]
+    if model.get("out_of_scope"):
+        parts += [f"Out of scope: {model['out_of_scope']}", ""]
+    if model.get("summary"):
+        parts += [model["summary"], ""]
+
+    for sec in threat_model_sections(model):
+        parts.append(f"## {sec['title']}")
+        parts.append("")
+        parts.append(_md_table(sec["headers"], sec["rows"]) if sec["rows"] else "_None recorded._")
+        parts.append("")
+
+    detail_paths = threat_model_detail_paths(model)
+    if detail_paths:
+        parts.append("## Detailed Attack Paths")
+        parts.append("")
+        for path in detail_paths:
+            parts.append(f"### {path['ref']}: {path['title']}")
+            parts.append("")
+            parts.append(_md_table(["Field", "Detail"], [[k, v] for k, v in path["fields"]]))
+            parts.append("")
+
+    return "\n".join(parts).rstrip() + "\n"

@@ -12,9 +12,13 @@ from state.reporting import (
     SEVERITIES,
     get_engagement,
     get_finding,
+    get_threat_model,
     list_assets,
     list_engagements,
     list_findings,
+    list_threat_models,
+    threat_model_detail_paths,
+    threat_model_sections,
 )
 
 logger = logging.getLogger(__name__)
@@ -407,7 +411,21 @@ def get_engagement_workspace(engagement_id, status=None, severity=None, query=No
         "severity_counts": _severity_counts(all_findings),
         "status_counts": _status_counts(all_findings),
         "renders": get_engagement_renders(engagement),
+        "threat_models": get_engagement_threat_models(engagement_id),
     }
+
+
+def get_engagement_threat_models(engagement_id):
+    """Threat models for an engagement, each with rendered sections + attack paths."""
+    models = []
+    for summary in list_threat_models(engagement_id=engagement_id):
+        model = get_threat_model(summary["threat_model_id"])
+        if not model:
+            continue
+        model["sections"] = threat_model_sections(model)
+        model["detail_paths"] = threat_model_detail_paths(model)
+        models.append(model)
+    return models
 
 
 def get_engagement_findings(engagement_id, status=None, severity=None, query=None):

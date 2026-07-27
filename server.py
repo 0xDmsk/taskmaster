@@ -3,6 +3,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import sqlite3
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,7 +33,22 @@ from tools.request_reporting_docx import handle_request_reporting_docx
 from tools.update_reporting_finding import handle_update_reporting_finding
 from tools.add_reporting_finding_evidence import handle_add_reporting_finding_evidence
 from tools.add_reporting_finding_reference import handle_add_reporting_finding_reference
-from state.reporting import FINDING_CATEGORY_ORDER, create_asset, delete_asset
+from tools.assemble_threat_model_context import handle_assemble_threat_model_context
+from tools.create_threat_model import handle_create_threat_model
+from tools.list_threat_models import handle_list_threat_models
+from tools.get_threat_model import handle_get_threat_model
+from tools.update_threat_model import handle_update_threat_model
+from tools.add_threat_model_entry import handle_add_threat_model_entry
+from tools.update_threat_model_entry import handle_update_threat_model_entry
+from tools.delete_threat_model_entry import handle_delete_threat_model_entry
+from tools.export_threat_model_markdown import handle_export_threat_model_markdown
+from state.reporting import (
+    FINDING_CATEGORY_ORDER,
+    create_asset,
+    delete_asset,
+    get_threat_model,
+    render_threat_model_markdown,
+)
 
 
 def load_tool_schema(tool_name):
@@ -713,6 +729,195 @@ TOOLS = {
             },
         },
     },
+    "assemble_threat_model_context": {
+        "description": (
+            "Gather the engagement-scoped evidence for building an evidence-grounded "
+            "threat model: scoped assets, recon/enumeration observations (executions "
+            "tagged to the engagement), curated findings, existing models, and any "
+            "unresolved assumptions/open questions. Combine with the engagement's "
+            "Findings.md / recon-data.md (in your working directory) and write the model "
+            "with create_threat_model + add_threat_model_entry; export with "
+            "export_threat_model_markdown."
+        ),
+        "handler": handle_assemble_threat_model_context,
+        "inputSchema": {
+            "type": "object",
+            "required": ["engagement_id"],
+            "properties": {"engagement_id": {"type": "string"}},
+        },
+    },
+    "create_threat_model": {
+        "description": (
+            "Create an evidence-grounded threat model for an engagement (a shell). Add "
+            "entities (assumptions, roles, assets, attack paths, …) with "
+            "add_threat_model_entry."
+        ),
+        "handler": handle_create_threat_model,
+        "inputSchema": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+                "threat_model_id": {"type": "string"},
+                "engagement_id": {"type": "string"},
+                "title": {"type": "string"},
+                "methodology": {"type": "string", "default": "STRIDE"},
+                "status": {
+                    "type": "string",
+                    "enum": ["draft", "in_review", "final"],
+                    "default": "draft",
+                },
+                "review_date": {"type": "string", "description": "e.g. 2026-07-15"},
+                "scope": {
+                    "type": "string",
+                    "description": "What the model covers (prose intro).",
+                },
+                "out_of_scope": {
+                    "type": "string",
+                    "description": "Explicitly excluded items (prose).",
+                },
+                "summary": {"type": "string"},
+                "created_by": {"type": "string"},
+            },
+        },
+    },
+    "list_threat_models": {
+        "description": "List threat models (with per-entity counts), filtered by engagement or status.",
+        "handler": handle_list_threat_models,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "engagement_id": {"type": "string"},
+                "status": {"type": "string", "enum": ["draft", "in_review", "final"]},
+            },
+        },
+    },
+    "get_threat_model": {
+        "description": "Get a threat model with all entities grouped by type.",
+        "handler": handle_get_threat_model,
+        "inputSchema": {
+            "type": "object",
+            "required": ["threat_model_id"],
+            "properties": {"threat_model_id": {"type": "string"}},
+        },
+    },
+    "update_threat_model": {
+        "description": (
+            "Update the threat model shell (title, status draft→in_review→final, scope, "
+            "out_of_scope, review_date, summary)."
+        ),
+        "handler": handle_update_threat_model,
+        "inputSchema": {
+            "type": "object",
+            "required": ["threat_model_id"],
+            "properties": {
+                "threat_model_id": {"type": "string"},
+                "engagement_id": {"type": "string"},
+                "title": {"type": "string"},
+                "methodology": {"type": "string"},
+                "status": {"type": "string", "enum": ["draft", "in_review", "final"]},
+                "review_date": {"type": "string"},
+                "scope": {"type": "string"},
+                "out_of_scope": {"type": "string"},
+                "summary": {"type": "string"},
+                "updated_by": {"type": "string"},
+            },
+        },
+    },
+    "add_threat_model_entry": {
+        "description": (
+            "Add one entity to a threat model. `entity_type` selects the section and its "
+            "`fields`. `ref` (e.g. AP-1) is auto-generated if omitted; supply explicit "
+            "refs so cross-references stay stable. Cross-references are ref strings you "
+            "author (e.g. an attack_path's impacted_assets='CA-1, CA-4'). Tag evidence "
+            "EVIDENCED / USER-CONFIRMED / ASSUMED / OUT-OF-SCOPE. Fields per entity_type: "
+            "assumption{status,context,impact}; role{name,description}; "
+            "asset{name,description}; terminal_goal{name,description}; "
+            "attack_surface{name,description}; "
+            "trust_boundary{boundary,protocol,authn,authz,encryption,validation,evidence}; "
+            "attack_path{title,description,threat_category,impacted_assets,abused_surface,"
+            "preconditions,existing_controls,gaps,likelihood,impact,priority,evidence,"
+            "source_execution_id,finding_id}; "
+            "test_objective{attack_path_ref,status,objective,priority,environment,notes}; "
+            "existing_mitigation{mitigation,control_type,evidence,related_paths}; "
+            "recommended_mitigation{recommendation,control_type,location,related_paths}; "
+            "open_question{status,question,resolution}; evidence_note{note,status}."
+        ),
+        "handler": handle_add_threat_model_entry,
+        "inputSchema": {
+            "type": "object",
+            "required": ["threat_model_id", "entity_type", "fields"],
+            "properties": {
+                "threat_model_id": {"type": "string"},
+                "entity_type": {
+                    "type": "string",
+                    "enum": [
+                        "assumption",
+                        "role",
+                        "asset",
+                        "terminal_goal",
+                        "attack_surface",
+                        "trust_boundary",
+                        "attack_path",
+                        "test_objective",
+                        "existing_mitigation",
+                        "recommended_mitigation",
+                        "open_question",
+                        "evidence_note",
+                    ],
+                },
+                "ref": {"type": "string", "description": "Optional explicit ref (e.g. AP-1)."},
+                "fields": {"type": "object", "additionalProperties": True},
+                "created_by": {"type": "string"},
+            },
+        },
+    },
+    "update_threat_model_entry": {
+        "description": (
+            "Update fields on one threat model entity, identified by entity_type + ref. "
+            "Use this to propagate a validated answer into an attack path's likelihood/"
+            "impact/priority/controls, or to resolve an open question. Same per-entity "
+            "fields as add_threat_model_entry."
+        ),
+        "handler": handle_update_threat_model_entry,
+        "inputSchema": {
+            "type": "object",
+            "required": ["threat_model_id", "entity_type", "ref", "fields"],
+            "properties": {
+                "threat_model_id": {"type": "string"},
+                "entity_type": {"type": "string"},
+                "ref": {"type": "string"},
+                "fields": {"type": "object", "additionalProperties": True},
+                "updated_by": {"type": "string"},
+            },
+        },
+    },
+    "delete_threat_model_entry": {
+        "description": "Remove one threat model entity by entity_type + ref.",
+        "handler": handle_delete_threat_model_entry,
+        "inputSchema": {
+            "type": "object",
+            "required": ["threat_model_id", "entity_type", "ref"],
+            "properties": {
+                "threat_model_id": {"type": "string"},
+                "entity_type": {"type": "string"},
+                "ref": {"type": "string"},
+            },
+        },
+    },
+    "export_threat_model_markdown": {
+        "description": (
+            "Render a threat model as the reference-format markdown deliverable (summary "
+            "tables first, then detailed attack paths). Returns the markdown and a "
+            "suggested filename; save it in the engagement directory as "
+            "<name>-threat-model.md."
+        ),
+        "handler": handle_export_threat_model_markdown,
+        "inputSchema": {
+            "type": "object",
+            "required": ["threat_model_id"],
+            "properties": {"threat_model_id": {"type": "string"}},
+        },
+    },
 }
 
 
@@ -893,6 +1098,25 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
                 self._send_html(404, "<h1>Artifact not found</h1>")
                 return
             self._send_download(host_path)
+            return
+
+        # --- Threat model markdown export ---
+        if path.startswith("/reporting/threat-models/") and path.endswith("/export"):
+            tm_id = path[len("/reporting/threat-models/") : -len("/export")]
+            model = get_threat_model(tm_id)
+            if not model:
+                self._send_html(404, "<h1>Threat model not found</h1>")
+                return
+            markdown = render_threat_model_markdown(tm_id) or ""
+            slug = re.sub(r"[^a-z0-9]+", "-", (model.get("title") or "").lower()).strip("-")
+            filename = f"{slug or 'threat-model'}-threat-model.md"
+            payload = markdown.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/markdown; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
 
         # --- API endpoints ---

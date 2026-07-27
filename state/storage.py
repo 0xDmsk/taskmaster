@@ -146,11 +146,244 @@ CREATE TABLE IF NOT EXISTS reports (
         ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_reports_engagement ON reports (engagement_id);
+
+CREATE TABLE IF NOT EXISTS threat_models (
+    threat_model_id TEXT PRIMARY KEY,
+    engagement_id TEXT,
+    title TEXT NOT NULL,
+    methodology TEXT NOT NULL DEFAULT 'STRIDE',
+    status TEXT NOT NULL DEFAULT 'draft',
+    review_date TEXT,
+    scope TEXT NOT NULL DEFAULT '',
+    out_of_scope TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (engagement_id) REFERENCES engagements (engagement_id)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_threat_models_engagement
+    ON threat_models (engagement_id);
+
+-- Threat model entries: one table per entity type in the evidence-grounded
+-- model. Cross-references between entities (e.g. an attack path's impacted
+-- assets) are stored as human-readable ref strings ("CA-1, CA-4") the LLM
+-- authors, matching the reference document format. Every table shares
+-- (entry_id, threat_model_id, ref, sort_order, audit columns).
+
+CREATE TABLE IF NOT EXISTS tm_assumptions (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ASSUMED',
+    context TEXT NOT NULL DEFAULT '',
+    impact TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_roles (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_assets (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_terminal_goals (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_attack_surface (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_trust_boundaries (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    boundary TEXT NOT NULL DEFAULT '',
+    protocol TEXT NOT NULL DEFAULT '',
+    authn TEXT NOT NULL DEFAULT '',
+    authz TEXT NOT NULL DEFAULT '',
+    encryption TEXT NOT NULL DEFAULT '',
+    validation TEXT NOT NULL DEFAULT '',
+    evidence TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_attack_paths (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    threat_category TEXT NOT NULL DEFAULT '',
+    impacted_assets TEXT NOT NULL DEFAULT '',
+    abused_surface TEXT NOT NULL DEFAULT '',
+    preconditions TEXT NOT NULL DEFAULT '',
+    existing_controls TEXT NOT NULL DEFAULT '',
+    gaps TEXT NOT NULL DEFAULT '',
+    likelihood TEXT NOT NULL DEFAULT 'Medium',
+    impact TEXT NOT NULL DEFAULT 'Medium',
+    priority TEXT NOT NULL DEFAULT 'Medium',
+    evidence TEXT NOT NULL DEFAULT '',
+    source_execution_id TEXT,
+    finding_id TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_execution_id) REFERENCES executions (execution_id) ON DELETE SET NULL,
+    FOREIGN KEY (finding_id) REFERENCES findings (finding_id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS tm_test_objectives (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    attack_path_ref TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'Not Started',
+    objective TEXT NOT NULL DEFAULT '',
+    priority TEXT NOT NULL DEFAULT 'Medium',
+    environment TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_existing_mitigations (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    mitigation TEXT NOT NULL DEFAULT '',
+    control_type TEXT NOT NULL DEFAULT '',
+    evidence TEXT NOT NULL DEFAULT '',
+    related_paths TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_recommended_mitigations (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    recommendation TEXT NOT NULL DEFAULT '',
+    control_type TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    related_paths TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_open_questions (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'REMAINING OPEN QUESTION',
+    question TEXT NOT NULL DEFAULT '',
+    resolution TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tm_evidence_notes (
+    entry_id TEXT PRIMARY KEY,
+    threat_model_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT,
+    FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
+);
 """
 
+# Online-migration columns, keyed by table. Adding a column to an existing table
+# here (rather than only in _SCHEMA) is required because CREATE TABLE IF NOT
+# EXISTS is a no-op on a table that already exists in a legacy database.
 _REQUIRED_COLUMNS = {
-    "interpretation": "TEXT",
-    "engagement_id": "TEXT",
+    "executions": {
+        "interpretation": "TEXT",
+        "engagement_id": "TEXT",
+    },
+    "threat_models": {
+        "review_date": "TEXT",
+        "scope": "TEXT NOT NULL DEFAULT ''",
+        "out_of_scope": "TEXT NOT NULL DEFAULT ''",
+    },
 }
 
 
@@ -181,10 +414,16 @@ def _ensure_db():
 
 def _add_missing_columns(conn):
     """Online migration: add new columns to legacy DBs without dropping data."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(executions)").fetchall()}
-    for column, sql_type in _REQUIRED_COLUMNS.items():
-        if column not in existing:
-            conn.execute(f"ALTER TABLE executions ADD COLUMN {column} {sql_type}")
+    for table, columns in _REQUIRED_COLUMNS.items():
+        info = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        if not info:
+            # Table not present yet; CREATE TABLE IF NOT EXISTS creates it fresh
+            # (with all columns) on a new database, so nothing to migrate.
+            continue
+        existing = {row[1] for row in info}
+        for column, sql_type in columns.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
     # Indexes on migrated columns are created here (not in _SCHEMA) so they run
     # after the column exists on legacy databases.
     conn.execute(

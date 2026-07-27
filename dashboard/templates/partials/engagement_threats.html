@@ -1,0 +1,56 @@
+<section class="workspace-threats">
+    <h3 class="panel-title">Threat Model{% if workspace.threat_models|length > 1 %}s{% endif %}</h3>
+    {% if workspace.threat_models %}
+    {% for model in workspace.threat_models %}
+    <div class="threat-model">
+        <div class="threat-model-head">
+            <span class="threat-model-title">{{ model.title }}</span>
+            <span class="badge tm-status-{{ model.status }}">{{ model.status|replace('_', ' ') }}</span>
+            <span class="threat-model-meta">
+                {{ model.methodology }} &middot;
+                {{ model.counts.attack_path }} attack paths &middot;
+                {{ model.counts.open_question }} questions
+                {% if model.review_date %}&middot; {{ model.review_date }}{% endif %}
+            </span>
+            <a class="action-btn" href="/reporting/threat-models/{{ model.threat_model_id }}/export">Export .md</a>
+        </div>
+        {% if model.scope %}<p class="threat-model-summary"><strong>Scope.</strong> {{ model.scope }}</p>{% endif %}
+        {% if model.out_of_scope %}<p class="threat-model-summary"><strong>Out of scope.</strong> {{ model.out_of_scope }}</p>{% endif %}
+
+        {% for sec in model.sections if sec.rows %}
+        <details class="tm-section"{% if sec.title == 'Attack Paths Summary' %} open{% endif %}>
+            <summary>{{ sec.title }} <span class="tm-count">{{ sec.rows|length }}</span></summary>
+            <table class="threat-table">
+                <thead><tr>{% for h in sec.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+                <tbody>
+                    {% for row in sec.rows %}
+                    <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endfor %}
+
+        {% if model.detail_paths %}
+        <details class="tm-section">
+            <summary>Detailed Attack Paths <span class="tm-count">{{ model.detail_paths|length }}</span></summary>
+            {% for path in model.detail_paths %}
+            <div class="tm-attack-path">
+                <h4>{{ path.ref }}: {{ path.title }}</h4>
+                <table class="threat-table tm-detail">
+                    <tbody>
+                        {% for field, value in path.fields %}
+                        <tr><th>{{ field }}</th><td>{{ value }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </details>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state small">No threat model yet. Build one from the recon/enumeration data with the MCP tools: <span class="mono">assemble_threat_model_context</span> &rarr; <span class="mono">create_threat_model</span> &rarr; <span class="mono">add_threat_model_entry</span> &rarr; <span class="mono">export_threat_model_markdown</span>.</div>
+    {% endif %}
+</section>

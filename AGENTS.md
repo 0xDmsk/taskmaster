@@ -78,6 +78,20 @@ When you create or update a report finding, write for the **client**, not the in
 
 The full style contract is documented in the module docstring of `skills/reporting.py` and in `templates/README.md`.
 
+### Threat modeling (evidence-grounded, two-pass)
+
+A threat model is a per-engagement artifact you synthesize — Taskmaster stores, renders, and exports it, but the reasoning is yours.
+
+**First pass:**
+1. `assemble_threat_model_context(engagement_id)` gathers DB-side evidence: scoped assets, recon/enumeration observations (executions tagged to the engagement), findings, existing models, and unresolved assumptions/open questions.
+2. Read the engagement's `Findings.md` / `recon-data.md` in your working directory for context the DB doesn't hold.
+3. `create_threat_model` (title, `scope`, `out_of_scope`, `review_date`), then build it with `add_threat_model_entry` one entity at a time: `role`, `asset`, `terminal_goal`, `attack_surface`, `trust_boundary`, a **small set of high-quality** `attack_path` entries (threat category, impacted assets, abused surface/boundary, preconditions, existing controls, gaps, likelihood, impact, priority), a `test_objective` for every High/Critical path, split `existing_mitigation` vs `recommended_mitigation`, plus `assumption` and `open_question` entries.
+4. **Evidence rule:** tag every element `EVIDENCED` (link an `execution_id`/`finding_id` or cite an artifact), `USER-CONFIRMED`, `ASSUMED`, or `OUT-OF-SCOPE` — never present an assumption as fact. Author cross-references as ref strings (`impacted_assets` = "CA-1, CA-4"); supply explicit `ref`s so they stay stable.
+
+**Validation pass:** ask the material open questions one at a time, then `update_threat_model_entry` to propagate each answer into the affected attack paths (likelihood/impact/priority, controls, mitigations) — not just a summary. Promote `draft → in_review → final`.
+
+Export with `export_threat_model_markdown` (save `<name>-threat-model.md` in the engagement dir). Don't invent threats the evidence doesn't support; keep the set small. Renders as tables in the engagement workspace.
+
 ## Bot-Protected Targets (Akamai, Cloudflare, Datadome…)
 
 When a target sits behind fingerprint-based bot defenses, plain headless Chromium and Burp's outbound Java TLS stack both get blocked **below** the HTTP layer — you see `ERR_HTTP2_PROTOCOL_ERROR`, silent 403s, challenge pages, or a "Burp Suite" upstream-failure page rendered by Burp itself. Burp cannot fix this; its own outbound fingerprint is part of what's being detected. Skip the proxy for these targets and lean on the agent's own logging instead.

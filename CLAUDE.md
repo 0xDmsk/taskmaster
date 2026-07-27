@@ -95,9 +95,11 @@ Playwright/patchright/camoufox agents auto-load `/session/storage_state.json` in
 
 **Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `report_assets`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Observations tab shows execution-derived results only. Manage report findings through MCP tools or the dashboard's **Engagements** hub / **Report Findings** page, then render from stored findings with `request_reporting_docx` or the dashboard's queue action (rendered DOCX deliverables are downloadable from an engagement's render-history panel). Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
 
+**Threat model:** A per-engagement, evidence-grounded model in the reporting tables (`threat_models` + twelve `tm_*` entity tables: assumptions, roles, assets, terminal goals, attack surface, trust boundaries, attack paths, test objectives, existing/recommended mitigations, open questions, evidence notes). The orchestrating LLM synthesizes it from recon/enumeration data and findings; Taskmaster stores and displays it. Cross-references are ref strings the LLM authors (`AP-1` impacts `CA-1, CA-4`); every element is evidence-tagged (`EVIDENCED`/`USER-CONFIRMED`/`ASSUMED`/`OUT-OF-SCOPE`). Assemble inputs with `assemble_threat_model_context`, build with `create_threat_model` + `add_threat_model_entry`, export with `export_threat_model_markdown`. Rendered as tables in the engagement workspace. See the Threat modeling workflow below.
+
 **Audit:** Every state transition is logged to `runtime/audit/audit_log.jsonl`. Final report at `runtime/audit/session_report.md`.
 
-**MCP Tools (in `tools/`):** Core orchestration: `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`. Reporting: `create_reporting_engagement`, `list_reporting_engagements`, `create_reporting_finding`, `get_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, `add_reporting_finding_reference`, `list_reporting_findings`, `request_reporting_docx`.
+**MCP Tools (in `tools/`):** Core orchestration: `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`. Reporting: `create_reporting_engagement`, `list_reporting_engagements`, `create_reporting_finding`, `get_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, `add_reporting_finding_reference`, `list_reporting_findings`, `request_reporting_docx`. Threat modeling: `assemble_threat_model_context`, `create_threat_model`, `list_threat_models`, `get_threat_model`, `update_threat_model`, `add_threat_model_entry`, `update_threat_model_entry`, `delete_threat_model_entry`, `export_threat_model_markdown`.
 
 ## Environment
 
@@ -161,6 +163,21 @@ Dashboard equivalent: the **Engagements** hub (`/reporting/engagements`) is the 
 `request_reporting_docx` validates report-readiness and returns `not_ready` when required client-facing fields are missing. Fill the stored finding instead of bypassing that validation with a direct `report_skill` payload.
 
 Current DOCX output renders the finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code. Markdown pipe tables are not converted into Word tables yet, and stored evidence records are not rendered into a separate evidence section.
+
+### Threat modeling workflow (evidence-grounded, two-pass)
+
+A threat model is a per-engagement artifact you (the orchestrating LLM) synthesize — Taskmaster stores, renders, and exports it, but the reasoning is yours. Work in two passes.
+
+**First pass:**
+1. Call `assemble_threat_model_context(engagement_id)` for the DB-side evidence: scoped assets, recon/enumeration observations (executions tagged with `engagement_id` at queue time), curated findings, existing models, and any unresolved assumptions/open questions.
+2. Read the engagement's `Findings.md` and `recon-data.md` in your working directory — context the server can't see.
+3. `create_threat_model` (title, `scope`, `out_of_scope`, `review_date`). Then build the model with `add_threat_model_entry`, one entity at a time: `role`, `asset`, `terminal_goal`, `attack_surface`, `trust_boundary`, then a **small set of high-quality** `attack_path` entries (threat category, impacted assets, abused surface/boundary, preconditions, existing controls, gaps, likelihood, impact, priority). For every High/Critical attack path add at least one `test_objective` mapped to it. Split `existing_mitigation` from `recommended_mitigation`. Record `assumption` and `open_question` entries.
+4. **Evidence rule:** tag every element `EVIDENCED` (link a Taskmaster `execution_id`/`finding_id`, or cite an artifact), `USER-CONFIRMED`, `ASSUMED`, or `OUT-OF-SCOPE`. Never present an assumption as fact.
+5. Supply explicit `ref`s (e.g. `AP-1`) so cross-references stay stable; author cross-refs as ref strings (`impacted_assets` = "CA-1, CA-4").
+
+**Validation pass:** ask the material open questions one at a time (see `unresolved_for_validation`), then **propagate** each answer with `update_threat_model_entry` into the affected attack paths' likelihood/impact/priority, controls, and mitigations — not just a summary. Resolve the open question and promote the model `draft → in_review → final` with `update_threat_model`.
+
+Export the deliverable with `export_threat_model_markdown` (save as `<name>-threat-model.md` in the engagement directory). The model also renders as tables in the engagement workspace. Keep the set of threats small and high-quality; do not invent threats the evidence doesn't support.
 
 ### Writing report content (`report_skill` deliverables)
 

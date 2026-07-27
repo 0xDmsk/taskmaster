@@ -79,6 +79,12 @@ Before queuing an execution, explicitly decide between these options:
         * `category` is a fixed set mirrored from the internal tracker (pwndoc) — pick the closest match from the enum in the tool schema; use `TBD` when uncategorized. An off-list value is coerced to `Other`, so don't invent categories.
         * Full style contract lives in the `skills/reporting.py` module docstring and `templates/README.md`.
 
+5.  **Build a threat model (evidence-grounded, two-pass)** — a per-engagement artifact you synthesize; Taskmaster stores, renders, and exports it.
+    *   **First pass:** `assemble_threat_model_context(engagement_id)` gathers DB-side evidence (scoped assets, recon/enumeration observations, findings, existing models, unresolved assumptions/open questions). Read the engagement's `Findings.md` / `recon-data.md` for context the server can't see. `create_threat_model` (title, `scope`, `out_of_scope`, `review_date`), then build with `add_threat_model_entry` one entity at a time: `role`, `asset`, `terminal_goal`, `attack_surface`, `trust_boundary`, a small set of high-quality `attack_path` entries (threat category, impacted assets, abused surface/boundary, preconditions, existing controls, gaps, likelihood, impact, priority), a `test_objective` for every High/Critical path, `existing_mitigation` vs `recommended_mitigation`, plus `assumption` and `open_question` entries.
+    *   **Evidence rule:** tag every element `EVIDENCED` (link `execution_id`/`finding_id` or cite an artifact), `USER-CONFIRMED`, `ASSUMED`, or `OUT-OF-SCOPE`. Author cross-references as ref strings (`impacted_assets` = "CA-1, CA-4"); supply explicit `ref`s.
+    *   **Validation pass:** ask material open questions one at a time, then `update_threat_model_entry` to propagate answers into the affected attack paths (likelihood/impact/priority, controls, mitigations) — not just a summary. Promote `draft → in_review → final`.
+    *   Export with `export_threat_model_markdown` (save `<name>-threat-model.md`). Don't invent threats the evidence doesn't support; keep the set small. Renders as tables in the engagement workspace.
+
 ## 🎭 When To Use Playwright
 
 Use the Playwright executor when:

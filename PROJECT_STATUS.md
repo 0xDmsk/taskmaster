@@ -66,6 +66,7 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] Rendered DOCX download with path-containment guard (`/reporting/download`)
 - [x] Findings rollup in the stats bar; markdown-rendered finding bodies
 - [x] Executions bound to an engagement via an explicit `engagement_id` (set by `request_security_action` / reporting renders, or reassigned from the execution detail panel)
+- [x] Evidence-grounded threat model per engagement (`threat_models` + twelve `tm_*` entity tables, ref-string cross-references, evidence tags, two-pass workflow; `assemble_threat_model_context` / `create_threat_model` / `add_threat_model_entry` / `export_threat_model_markdown` MCP tools; dashboard tables + `.md` export)
 - [x] Global engagement scope selector (cookie-persisted) scoping the stats bar + Executions/Observations lists by `engagement_id`
 - [x] Deep-linking across views (click target/agent/execution to navigate and auto-expand)
 - [x] HTMX auto-refresh with pause-on-expand to prevent content loss

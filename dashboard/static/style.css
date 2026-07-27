@@ -1429,3 +1429,122 @@ details.agent-output[open] > summary .ao-toggle {
     max-width: 100%;
 }
 .assign-engagement select:focus { outline: none; border-color: var(--accent); }
+
+/* ===================================================================== */
+/* Threat model (STRIDE)                                                 */
+/* ===================================================================== */
+.workspace-threats { margin-top: 1.5rem; }
+.threat-model {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 1rem;
+}
+.threat-model-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.4rem;
+}
+.threat-model-title { font-weight: 600; color: var(--text-primary); }
+.threat-model-meta { color: var(--text-muted); font-size: 0.76rem; }
+.threat-model-summary { margin: 0.3rem 0 0.7rem; color: var(--text-secondary); font-size: 0.84rem; }
+
+.badge.tm-status-draft { background: var(--bg-tertiary); color: var(--text-secondary); }
+.badge.tm-status-in_review { background: rgba(210,153,34,0.15); color: var(--status-claimed); }
+.badge.tm-status-final { background: rgba(63,185,80,0.15); color: var(--status-completed); }
+
+.stride-chip {
+    font-size: 0.72rem;
+    padding: 0.12rem 0.5rem;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.threat-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.7rem;
+    font-size: 0.82rem;
+}
+.threat-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+.threat-table td {
+    padding: 0.5rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+.threat-table .stride-cat { white-space: nowrap; color: var(--text-secondary); font-weight: 600; }
+.threat-title { color: var(--text-primary); font-weight: 500; }
+.threat-vector { color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.15rem; }
+.threat-control { color: var(--text-muted); font-size: 0.76rem; margin-top: 0.2rem; }
+.threat-control strong { color: var(--text-secondary); }
+.threat-links a {
+    display: inline-block;
+    width: 1.2rem; text-align: center;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* Likelihood / impact coloring */
+.lik-high, .imp-high { color: #ffa657; font-weight: 600; }
+.imp-critical { color: #f85149; font-weight: 600; }
+.lik-medium, .imp-medium { color: #d29922; }
+.lik-low, .imp-low { color: var(--text-secondary); }
+
+/* Threat lifecycle status */
+.tstatus-open { color: var(--status-running); font-weight: 600; }
+.tstatus-mitigated { color: var(--status-completed); }
+.tstatus-accepted { color: var(--accent); }
+.tstatus-not_applicable { color: var(--text-muted); }
+
+/* Threat model sections (evidence-grounded model) */
+.tm-section { margin-top: 0.7rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.tm-section > summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0;
+}
+.tm-section > summary::before {
+    content: "\25b6";
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+}
+.tm-section[open] > summary::before { transform: rotate(90deg); }
+.tm-count {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border-radius: 10px;
+    padding: 0 0.4rem;
+}
+.tm-attack-path { margin: 0.6rem 0 0.9rem; }
+.tm-attack-path h4 { font-size: 0.85rem; margin: 0 0 0.35rem; color: var(--text-primary); }
+.threat-table.tm-detail th {
+    text-align: left;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    vertical-align: top;
+    width: 190px;
+    font-size: 0.72rem;
+    text-transform: none;
+    letter-spacing: 0;
+}
