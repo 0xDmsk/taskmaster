@@ -40,6 +40,15 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         "allow_complex_tooling": {"type": "boolean"},
         "justification": {"type": "string", "minLength": 50},
         "expected_output": {"type": "string"},
+        "depends_on": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional prerequisite execution_ids. This execution stays queued "
+                "and hidden from workers until every prerequisite COMPLETES, and is "
+                "cancelled if any prerequisite fails."
+            ),
+        },
     },
 }
 
@@ -220,6 +229,7 @@ def handle_request(payload):
         request_payload=payload,
         created_by=payload.get("agent_role", "unknown"),
         engagement_id=engagement_id,
+        depends_on=payload.get("depends_on"),
     )
 
     # 6. Audit Logging

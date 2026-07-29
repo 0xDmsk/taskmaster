@@ -1,0 +1,44 @@
+{% if templates %}
+<div class="table-wrap">
+    <table class="template-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Severity</th>
+                <th>Category</th>
+                <th>Use in engagement</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for t in templates %}
+            <tr>
+                <td><a class="tpl-title" href="/reporting/templates/{{ t.template_id }}/edit">{{ t.title }}</a></td>
+                <td><span class="badge badge-severity-{{ (t.severity or 'info')|lower }}">{{ t.severity }}</span></td>
+                <td><span class="tpl-category">{{ t.category }}</span></td>
+                <td>
+                    <form class="tpl-use" method="post" action="/reporting/templates/{{ t.template_id }}/use">
+                        <select name="engagement_id">
+                            <option value="">Unassigned</option>
+                            {% for e in engagements %}
+                            <option value="{{ e.engagement_id }}">{{ e.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="action-btn" type="submit">Use</button>
+                    </form>
+                </td>
+                <td class="tpl-row-actions">
+                    <a class="action-btn subtle" href="/reporting/templates/{{ t.template_id }}/edit">Edit</a>
+                    <form method="post" action="/reporting/templates/{{ t.template_id }}/delete"
+                          onsubmit="return confirm('Delete this template?');">
+                        <button class="action-btn subtle danger" type="submit">Delete</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">No finding templates match. Create one, or use "Save as template" on a finding.</div>
+{% endif %}

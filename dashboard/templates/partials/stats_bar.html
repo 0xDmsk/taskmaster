@@ -19,6 +19,12 @@
         <div class="label">Failed</div>
         <div class="value failed">{{ stats.FAILED }}</div>
     </div>
+    {% if stats.CANCELLED %}
+    <div class="stat-card">
+        <div class="label">Cancelled</div>
+        <div class="value cancelled">{{ stats.CANCELLED }}</div>
+    </div>
+    {% endif %}
 </div>
 {% if stats.findings %}
 <div class="stats-bar findings-stats">

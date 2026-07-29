@@ -103,9 +103,12 @@ Example configurations provided for:
 **See `examples/EXAMPLES.md` for detailed configuration guides.**
 
 ### The Agentic Workflow
-1.  **Plan**: Request an action via `request_security_action`.
-2.  **Spawn**: Launch a specialized agent via `spawn_agent`.
-3.  **Review**: Watch `runtime/audit/session_report.md` for live updates and structured observations.
+1.  **Orient**: Call `suggest_next_action` to see the prioritized gaps in the current state (failed work, executions missing an interpretation, findings not yet report-ready, phase holes, threat-model status). New to the session? `get_operational_guide` serves the canonical operating manual.
+2.  **Plan**: Request a single action via `request_security_action`, or lay down an ordered, self-gating sequence with `request_playbook` (named playbook or inline steps). Chain manual work with `depends_on`.
+3.  **Spawn**: Launch a specialized agent via `spawn_agent`.
+4.  **Review**: Watch `runtime/audit/session_report.md` for live updates and structured observations, or the **Overview** dashboard page for the at-a-glance picture.
+
+Taskmaster is a stateful orchestrator, not an autopilot — the methodology stays with the operating LLM. `suggest_next_action`, `request_playbook`, dependency chains, and the operational guide exist to make that orchestration less manual and more consistent across MCP clients (Claude Code, Codex, and others).
 
 ### Interactive Playwright Sessions
 
@@ -115,7 +118,7 @@ Playwright agents expose a local noVNC browser view by default. This is useful w
 - `interactive_browser`: defaults to `true` for `agent_type: "playwright"`. Set `false` only for fully unattended browser runs.
 - `interactive_hold_ms`: how long a browser skill should keep the live session open before collecting final observations.
 - `novnc_port`: optional fixed localhost port for the noVNC session. If omitted, Taskmaster selects a free port automatically.
-- `browser_engine`: `"playwright" | "patchright" | "camoufox"`. Defaults to `"patchright"`. Use `"camoufox"` when a target sits behind aggressive bot defenses that Patchright still trips (Akamai Bot Manager, PerimeterX). Use `"playwright"` only when you specifically need a non-patched baseline. See the "Bot-Protected Targets" section in `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` for the full three-tier ladder, including `curl_cffi` for JS-free recon on a Kali agent.
+- `browser_engine`: `"playwright" | "patchright" | "camoufox"`. Defaults to `"patchright"`. Use `"camoufox"` when a target sits behind aggressive bot defenses that Patchright still trips (Akamai Bot Manager, PerimeterX). Use `"playwright"` only when you specifically need a non-patched baseline. See the "Bot-Protected Targets" section in `OPERATIONAL_GUIDE.md` for the full three-tier ladder, including `curl_cffi` for JS-free recon on a Kali agent.
 
 Example:
 ```json
@@ -193,27 +196,32 @@ See `skills/TEMPLATE.md` for creating new skills (CLI, browser, and reporting va
 
 ## 📊 Dashboard
 
-Taskmaster ships with a built-in web dashboard for real-time monitoring. Start the HTTP server and open `http://localhost:5000` in your browser.
+Taskmaster ships with a built-in web dashboard for real-time monitoring. Start the HTTP server and open `http://localhost:5001` in your browser.
 
 ```bash
 uv run python server.py --http
 ```
 
+The server runs two listeners: the **MCP JSON-RPC endpoint** on `TASKMASTER_HOST:TASKMASTER_PORT` (default `0.0.0.0:5000`, reachable by agent containers via `host.docker.internal`) and the **dashboard** on `TASKMASTER_DASHBOARD_HOST:TASKMASTER_DASHBOARD_PORT` (default `127.0.0.1:5001`, loopback-only so it is not exposed beyond this machine). Override with `--dashboard-host` / `--dashboard-port` or the matching env vars.
+
+The sidebar groups the tabs into **Operations** (Overview, Executions, Targets, Agents, Observations) and **Reporting** (Engagements, Report Findings). Both listeners also answer `GET /healthz` for liveness checks.
+
 **Tabs:**
-- **Executions** — live table with status badges. Click any row to expand full request/result detail (justification, tool, command, observation data, artifacts, errors).
+- **Overview** — the landing page and screen-share home: a findings-by-severity chart, phase-coverage meters, and Recent activity + Latest findings lists. Respects the engagement scope selector. This is the one page that also carries the execution/finding stats bar.
+- **Executions** — live table with status badges. Click any row to expand full request/result detail (justification, tool, command, observation data, artifacts, errors). Rows in a dependency chain show a `⛓` chip; cascade-cancelled rows carry their cancel reason.
 - **Targets** — per-target cards with phase progress bars. Expand to see executions grouped by security phase.
 - **Agents** — agent history with container info and task stats. Expand for full task history table.
 - **Observations** — execution-derived observations and results only.
 - **Engagements** — the engagement-centric reporting hub. The list view shows per-engagement finding, severity, and scope rollups; each engagement's workspace (`/reporting/engagements/<id>`) has severity/status pipeline rollups, a filtered findings list with an inline status control, an editable scope panel (`report_assets`), a render-history panel with DOCX download links, and an **evidence-grounded threat model** (assumptions, assets, attack surface, trust boundaries, attack paths, test objectives, mitigations, open questions) rendered as tables and exportable as a `<name>-threat-model.md` deliverable.
 - **Report Findings** — flat cross-engagement view of client-facing reporting records. Create/edit findings, append evidence and references, filter by engagement/status/severity, and queue DOCX renders.
 
-**Engagement scope selector:** a dashboard-wide selector (top of the main pane, remembered across pages via a cookie) filters the stats bar plus the Executions and Observations lists to a single engagement. Executions are bound to an engagement explicitly by an `engagement_id` set at queue time — pass `engagement_id` to `request_security_action` (validated against existing engagements), and reporting renders inherit it. This keeps two engagements assessed over the same or overlapping scope cleanly separated. You can also tag or re-assign an execution after the fact from its detail panel in the Executions tab. Untagged/legacy executions appear only under "All engagements".
+**Engagement scope selector:** a dashboard-wide selector (top of the main pane, remembered across pages via a cookie) filters the Overview, Executions, Observations, Targets, and Agents views to a single engagement. It is hidden on the Engagements and Report Findings pages, which carry their own engagement filters. Executions are bound to an engagement explicitly by an `engagement_id` set at queue time — pass `engagement_id` to `request_security_action` (validated against existing engagements), and reporting renders inherit it. This keeps two engagements assessed over the same or overlapping scope cleanly separated. You can also tag or re-assign an execution after the fact from its detail panel in the Executions tab. Untagged/legacy executions appear only under "All engagements".
 
-**Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), a findings rollup in the stats bar, markdown-rendered finding bodies, dark theme.
+**Features:** HTMX-powered auto-refresh (pauses when a detail is open), deep-linking between views (click a target/agent/execution ID to jump and auto-expand), Targets/Agents detail as a real show/hide toggle, an execution/finding stats bar on the Overview page, markdown-rendered finding bodies, dark theme.
 
 ## 🔑 Directory Structure
 
-*   `taskmaster/` (under `WORK_DIR`, gitignored): runtime artifacts — `loot/` (tool outputs), `reports/` (rendered docx deliverables), `audit/` (`session_report.md`, `audit_log.jsonl`), `state/` (sqlite DB).
+*   `runtime/` (under `WORK_DIR`, gitignored): runtime artifacts — `loot/` (tool outputs), `reports/` (rendered docx deliverables), `audit/` (`session_report.md`, `audit_log.jsonl`), `state/` (sqlite DB), `session/` (user-supplied session material, mounted read-only at `/session`).
 *   `dashboard/`: Web UI — API handlers, Jinja2 templates, static assets.
 *   `skills/`: Reusable Python modules for specialized tasks. `base.py` for CLI skills, `browser.py` for Playwright-based skills, `reporting.py` for document-rendering skills.
 *   `executors/`: Operator logic and Dockerfiles for all three executor types:

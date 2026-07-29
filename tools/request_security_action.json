@@ -78,6 +78,13 @@
       },
       "expected_output": {
         "type": "string"
+      },
+      "depends_on": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional prerequisite execution_ids. This execution stays queued and hidden from workers until every prerequisite COMPLETES, and is cancelled automatically if any prerequisite fails. Use it to chain dependent steps (e.g. fuzz after tech-detect) without hand-sequencing spawn/wait calls."
       }
     }
   }

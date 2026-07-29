@@ -45,9 +45,17 @@ def get_agents():
         return []
 
 
-def get_agent_history():
-    """Group all executions by executor_id, merge with active container data."""
+def get_agent_history(engagement_id=None):
+    """Group executions by executor_id, merged with active container data.
+
+    When ``engagement_id`` is set, only executions tagged with that engagement are
+    counted, and idle containers with no matching executions are omitted — under an
+    engagement scope an unrelated live container isn't relevant. Unscoped ("All
+    engagements"), idle containers are still surfaced so the fleet stays visible.
+    """
     execs = load_executions()
+    if engagement_id:
+        execs = [e for e in execs if e.get("engagement_id") == engagement_id]
     containers = get_agents()
     container_map = {c["name"]: c for c in containers}
 
@@ -76,8 +84,11 @@ def get_agent_history():
         elif s in ("QUEUED", "CLAIMED"):
             entry["stats"]["queued"] += 1
 
-    # Add containers with no executions
+    # Add live containers with no executions — only when unscoped, since an idle
+    # container has no engagement association to match against.
     for name, c in container_map.items():
+        if engagement_id:
+            break
         if name not in agents_by_id:
             agents_by_id[name] = {
                 "executor_id": name,

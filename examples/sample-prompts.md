@@ -8,7 +8,7 @@ Before starting an assessment, provide this context to your AI agent:
 
 ```
 I'm using Taskmaster, an agentic security orchestration platform.
-Please read the GEMINI.md file for operational guidelines.
+Please read the OPERATIONAL_GUIDE.md file for operational guidelines (or call the get_operational_guide MCP tool).
 
 Key points:
 - Use request_security_action to queue tasks

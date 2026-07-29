@@ -5,16 +5,15 @@
     hx-target="#detail-{{ loop.index }}" hx-swap="innerHTML"
     hx-trigger="click once"
     onclick="var dr=document.getElementById('detailrow-{{ loop.index }}');if(dr.classList.toggle('expanded')){document.body.dispatchEvent(new Event('detail-open'))}else{document.body.dispatchEvent(new Event('detail-close'))}">
-    <td class="mono truncate" title="{{ e.execution_id }}">{{ e.execution_id[:12] }}</td>
-    <td class="mono">{{ e.target }}</td>
+    <td class="mono"><span class="exec-target" title="{{ e.target }}">{{ e.target }}</span>{% if e.depends_on %}<span class="dep-chip" title="Depends on {{ e.depends_on|length }} execution(s)">⛓ {{ e.depends_on|length }}</span>{% endif %}</td>
     <td>{{ e.security_phase }}</td>
     <td><span class="badge badge-{{ e.status|lower }}">{{ e.status }}</span></td>
     <td class="mono">{{ e.executor_id or '—' }}</td>
-    <td class="mono">{{ e.created_at[:19] if e.created_at else '—' }}</td>
-    <td class="mono">{{ e.updated_at[:19] if e.updated_at else '—' }}</td>
+    <td class="mono nowrap">{{ e.created_at[:19] if e.created_at else '—' }}</td>
+    <td class="mono nowrap">{{ e.updated_at[:19] if e.updated_at else '—' }}</td>
 </tr>
 <tr class="detail-row" id="detailrow-{{ loop.index }}">
-    <td colspan="7">
+    <td colspan="6">
         <div id="detail-{{ loop.index }}">
             <div class="detail-panel" style="text-align:center;color:var(--text-muted);font-size:0.8rem;padding:1rem">Loading...</div>
         </div>
@@ -22,5 +21,5 @@
 </tr>
 {% endfor %}
 {% else %}
-<tr><td colspan="7" class="empty-state">No executions found</td></tr>
+<tr><td colspan="6" class="empty-state">No executions found</td></tr>
 {% endif %}

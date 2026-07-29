@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+{% set ov = overview %}
+<div class="page-heading">
+    <h2 class="page-title">Overview</h2>
+    {% if ov.engagement %}
+    <a class="action-btn" href="/reporting/engagements/{{ ov.engagement.engagement_id }}">
+        {{ ov.engagement.name }} workspace →
+    </a>
+    {% endif %}
+</div>
+
+<div class="overview-grid">
+    <!-- Findings by severity -->
+    <section class="ov-card">
+        <h3 class="ov-card-title">Findings by severity</h3>
+        {% if ov.stats.findings.total %}
+        <div class="sev-chart">
+            {% for severity, count in ov.severity.items() %}
+            <div class="sev-row" title="{{ severity }}: {{ count }} finding(s)">
+                <span class="sev-name sev-name-{{ severity|lower }}">{{ severity }}</span>
+                <div class="sev-track">
+                    <div class="sev-fill sev-fill-{{ severity|lower }}"
+                         style="width: {{ ((100 * count / ov.severity_max)|round|int) if ov.severity_max else 0 }}%"></div>
+                </div>
+                <span class="sev-count">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="ov-empty">No report findings yet.</p>
+        {% endif %}
+    </section>
+
+    <!-- Phase progress -->
+    <section class="ov-card">
+        <h3 class="ov-card-title">Phase coverage</h3>
+        <div class="phase-meters">
+            {% for p in ov.phase_progress %}
+            <div class="phase-meter" title="{{ p.completed }}/{{ p.total }} completed">
+                <div class="phase-meter-head">
+                    <span class="phase-name">{{ p.phase|replace('_', ' ') }}</span>
+                    <span class="phase-frac">{{ p.completed }}/{{ p.total }}</span>
+                </div>
+                <div class="phase-track">
+                    <div class="phase-fill" style="width: {{ p.pct }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Recent activity -->
+    <section class="ov-card">
+        <h3 class="ov-card-title">Recent activity</h3>
+        {% if ov.recent_executions %}
+        <ul class="ov-list">
+            {% for e in ov.recent_executions %}
+            <li>
+                <a class="ov-list-main" href="/executions#exec:{{ e.execution_id }}">
+                    <span class="badge badge-{{ e.status|lower }}">{{ e.status }}</span>
+                    <span class="ov-list-target mono">{{ e.target }}</span>
+                    <span class="ov-list-sub">{{ e.security_phase|replace('_', ' ') }}</span>
+                </a>
+                <span class="ov-list-time mono">{{ (e.updated_at or e.created_at or '')[:19] }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="ov-empty">No executions yet.</p>
+        {% endif %}
+    </section>
+
+    <!-- Latest findings -->
+    <section class="ov-card">
+        <h3 class="ov-card-title">Latest findings</h3>
+        {% if ov.latest_findings %}
+        <ul class="ov-list">
+            {% for f in ov.latest_findings %}
+            <li>
+                <a class="ov-list-main" href="/reporting/findings/{{ f.finding_id }}/edit">
+                    <span class="badge badge-severity-{{ (f.severity or 'info')|lower }}">{{ f.severity or 'Info' }}</span>
+                    <span class="ov-list-title">{{ f.title }}</span>
+                </a>
+                <span class="ov-list-sub">{{ (f.status or 'draft')|replace('_', ' ') }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="ov-empty">No report findings yet.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

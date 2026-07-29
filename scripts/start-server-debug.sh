@@ -17,11 +17,13 @@ fi
 
 PORT="${TASKMASTER_PORT:-5000}"
 HOST="${TASKMASTER_HOST:-0.0.0.0}"
+DASHBOARD_HOST="${TASKMASTER_DASHBOARD_HOST:-127.0.0.1}"
+DASHBOARD_PORT="${TASKMASTER_DASHBOARD_PORT:-5001}"
 
 echo "🐛 Starting Taskmaster MCP Server (DEBUG MODE)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Host: $HOST"
-echo "Port: $PORT"
+echo "MCP endpoint:  http://$HOST:$PORT"
+echo "Dashboard:     http://$DASHBOARD_HOST:$DASHBOARD_PORT  (loopback only)"
 echo "Debug logs will appear below"
 echo ""
 
@@ -37,4 +39,5 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Start the persistent HTTP server (stderr debug logs show inline)
-uv run python server.py --http --host "$HOST" --port "$PORT" 2>&1
+uv run python server.py --http --host "$HOST" --port "$PORT" \
+    --dashboard-host "$DASHBOARD_HOST" --dashboard-port "$DASHBOARD_PORT" 2>&1

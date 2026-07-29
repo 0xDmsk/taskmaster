@@ -11,12 +11,21 @@ A container is reaped when ANY of these is true:
                       than idle_timeout seconds ago. Catches "spawned, never
                       assigned work, forgotten".
 
+Separately, each pass also sweeps **orphaned executions**: rows still in
+CLAIMED/RUNNING whose executor has no live container at all (the container
+crashed or was removed out-of-band) and whose ``updated_at`` is older than
+orphan_timeout. These are force-failed so the per-target lock releases without
+waiting for a manual ``recover_execution`` call. The container-based rules above
+can only act on containers Docker still reports; the orphan sweep covers the
+gap where the container is already gone.
+
 Configured via env vars (all optional):
   TASKMASTER_REAPER_ENABLED         default true
   TASKMASTER_REAPER_INTERVAL        default 60   (seconds between passes)
   TASKMASTER_REAPER_IDLE_TIMEOUT    default 900  (15 min)
   TASKMASTER_REAPER_STALE_TIMEOUT   default 7200 (2 h)
   TASKMASTER_REAPER_MAX_AGE         default 14400 (4 h)
+  TASKMASTER_REAPER_ORPHAN_TIMEOUT  default 300  (5 min)
 """
 
 import json
@@ -36,6 +45,7 @@ DEFAULT_INTERVAL = 60
 DEFAULT_IDLE_TIMEOUT = 900
 DEFAULT_STALE_TIMEOUT = 7200
 DEFAULT_MAX_AGE = 14400
+DEFAULT_ORPHAN_TIMEOUT = 300
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +60,9 @@ def _config():
         "idle_timeout": int(os.environ.get("TASKMASTER_REAPER_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT)),
         "stale_timeout": int(os.environ.get("TASKMASTER_REAPER_STALE_TIMEOUT", DEFAULT_STALE_TIMEOUT)),
         "max_age": int(os.environ.get("TASKMASTER_REAPER_MAX_AGE", DEFAULT_MAX_AGE)),
+        "orphan_timeout": int(
+            os.environ.get("TASKMASTER_REAPER_ORPHAN_TIMEOUT", DEFAULT_ORPHAN_TIMEOUT)
+        ),
     }
 
 
@@ -109,6 +122,8 @@ def _stop_container(name):
 
 
 def _fail_execution_for_reap(execution_id, reason):
+    from state.state import cancel_blocked_dependents
+
     update_execution(execution_id, {
         "status": "FAILED",
         "updated_at": datetime.utcnow().isoformat(),
@@ -120,6 +135,8 @@ def _fail_execution_for_reap(execution_id, reason):
         "reason": reason,
         "source": "reaper",
     })
+    # A failed execution can never satisfy its dependents — cancel the chain.
+    cancel_blocked_dependents(execution_id, f"Cancelled: dependency {execution_id} failed (reaper)")
 
 
 def _classify(active, age_seconds, cfg):
@@ -159,14 +176,17 @@ def reap_once(cfg=None):
     now = datetime.now(timezone.utc)
     reaped = []
 
+    executions = load_executions()
     active_by_executor = {}
-    for e in load_executions():
+    for e in executions:
         if e.get("status") in ("CLAIMED", "RUNNING") and e.get("executor_id"):
             active_by_executor.setdefault(e["executor_id"], []).append(e)
 
+    live_executors = set()
     for name, inspect in _list_running_taskmaster_containers():
         env = _extract_env(inspect)
         executor_id = env.get("EXECUTOR_ID") or name
+        live_executors.add(executor_id)
         started_at = _container_started_at(inspect)
         age_seconds = (now - started_at).total_seconds() if started_at else 0
         active = active_by_executor.get(executor_id, [])
@@ -192,7 +212,45 @@ def reap_once(cfg=None):
         logger.info("Reaper stopped %s (%s)", name, reason)
         reaped.append({"container": name, "reason": reason})
 
-    return {"reaped": reaped}
+    orphans = _sweep_orphans(executions, live_executors, cfg)
+    return {"reaped": reaped, "orphans_recovered": orphans}
+
+
+def _sweep_orphans(executions, live_executors, cfg):
+    """Force-fail CLAIMED/RUNNING executions whose container no longer exists.
+
+    An execution is orphaned when its executor is not among the currently
+    running Taskmaster containers *and* it has been untouched for longer than
+    ``orphan_timeout`` (a grace window so a briefly-restarting or just-spawned
+    container isn't mistaken for a dead one). Force-failing releases the
+    per-target lock that a vanished container would otherwise hold forever.
+    """
+    cutoff = datetime.utcnow() - timedelta(seconds=cfg["orphan_timeout"])
+    recovered = []
+    for e in executions:
+        if e.get("status") not in ("CLAIMED", "RUNNING"):
+            continue
+        executor_id = e.get("executor_id")
+        if not executor_id or executor_id in live_executors:
+            continue
+        updated = e.get("updated_at")
+        if not updated:
+            continue
+        try:
+            if datetime.fromisoformat(updated) >= cutoff:
+                continue
+        except ValueError:
+            continue
+
+        eid = e["execution_id"]
+        reason = (
+            f"Reaper recovered orphan {eid}: executor {executor_id} has no live "
+            f"container (idle > {cfg['orphan_timeout']}s)"
+        )
+        _fail_execution_for_reap(eid, reason)
+        logger.info("Reaper recovered orphan %s (executor %s gone)", eid, executor_id)
+        recovered.append({"execution_id": eid, "executor_id": executor_id})
+    return recovered
 
 
 def start_reaper_thread():

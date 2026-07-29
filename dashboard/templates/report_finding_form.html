@@ -3,7 +3,8 @@
 {% block content %}
 <div class="page-heading">
     <h2 class="page-title">{% if mode == 'edit' %}Edit Report Finding{% else %}New Report Finding{% endif %}</h2>
-    <a class="action-btn" href="/reporting/findings">Back to Report Findings</a>
+    {% set back_url = ('/reporting/engagements/' ~ finding.engagement_id) if (finding and finding.engagement_id) else '/reporting/engagements' %}
+    <a class="action-btn" href="{{ back_url }}">Back to Engagement</a>
 </div>
 
 {% if message %}<div class="flash success">{{ message }}</div>{% endif %}
@@ -166,6 +167,10 @@
         <form class="stacked-form render-inline" method="post" action="/reporting/reports/docx">
             <input type="hidden" name="finding_id" value="{{ finding.finding_id }}">
             <button class="action-btn primary" type="submit">Queue DOCX for This Finding</button>
+        </form>
+
+        <form class="stacked-form render-inline" method="post" action="/reporting/findings/{{ finding.finding_id }}/save-as-template">
+            <button class="action-btn" type="submit">Save as Template</button>
         </form>
     </section>
 </div>

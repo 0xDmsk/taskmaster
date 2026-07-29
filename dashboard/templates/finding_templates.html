@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Finding Templates{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <h2 class="page-title">Finding Templates</h2>
+    <a class="action-btn primary" href="/reporting/templates/new">New Template</a>
+</div>
+
+{% if message %}<div class="flash success">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+<p class="page-subtitle muted">Reusable vulnerability write-ups. <strong>Use</strong> instantiates a template into a new finding under an engagement, where you set the affected target and add evidence. Promote a real finding into the library with <strong>Save as template</strong> on its edit page.</p>
+
+<div class="report-controls">
+    <form class="report-filter-bar" id="template-filter-form">
+        <select name="severity"
+                hx-get="/api/reporting/templates" hx-target="#finding-templates-list"
+                hx-swap="innerHTML" hx-include="#template-filter-form">
+            <option value="">All severities</option>
+            {% for severity in options.severities %}
+            <option value="{{ severity }}" {% if filters.severity == severity %}selected{% endif %}>{{ severity }}</option>
+            {% endfor %}
+        </select>
+        <select name="category"
+                hx-get="/api/reporting/templates" hx-target="#finding-templates-list"
+                hx-swap="innerHTML" hx-include="#template-filter-form">
+            <option value="">All categories</option>
+            {% for category in options.categories %}
+            <option value="{{ category }}" {% if filters.category == category %}selected{% endif %}>{{ category }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="q" value="{{ filters.q or '' }}"
+               placeholder="Search title, description, remediation"
+               hx-get="/api/reporting/templates" hx-target="#finding-templates-list"
+               hx-trigger="keyup changed delay:300ms" hx-swap="innerHTML"
+               hx-include="#template-filter-form">
+    </form>
+</div>
+
+<div id="finding-templates-list">
+    {% include "partials/finding_templates_list.html" %}
+</div>
+{% endblock %}

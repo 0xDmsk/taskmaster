@@ -15,6 +15,7 @@ CFG = {
     "idle_timeout": 900,
     "stale_timeout": 7200,
     "max_age": 14400,
+    "orphan_timeout": 300,
 }
 
 
@@ -184,6 +185,86 @@ def test_non_taskmaster_container_is_ignored():
         result = reaper.reap_once(CFG)
 
     assert result["reaped"] == []
+
+
+def test_orphan_execution_with_no_live_container_is_recovered():
+    """A RUNNING row whose container has vanished should be force-failed."""
+    old_updated = (datetime.utcnow() - timedelta(seconds=600)).isoformat()
+    executions = [
+        {
+            "execution_id": "orphan-1",
+            "executor_id": "kali-agent-gone",
+            "status": "RUNNING",
+            "updated_at": old_updated,
+        }
+    ]
+
+    with patch("tools.reaper.subprocess.run") as run, \
+         patch("tools.reaper.load_executions", return_value=executions), \
+         patch("tools.reaper.update_execution") as upd, \
+         patch("tools.reaper.log_event") as log:
+        # docker ps reports no running containers.
+        run.side_effect = [_completed("")]
+        result = reaper.reap_once(CFG)
+
+    assert result["reaped"] == []
+    assert len(result["orphans_recovered"]) == 1
+    assert result["orphans_recovered"][0]["execution_id"] == "orphan-1"
+    upd.assert_called_once()
+    assert upd.call_args.args[0] == "orphan-1"
+    assert upd.call_args.args[1]["status"] == "FAILED"
+    event_types = [c.args[0] for c in log.call_args_list]
+    assert "execution_recovered" in event_types
+
+
+def test_orphan_within_grace_window_is_kept():
+    """A recently-updated row without a container is inside the grace window."""
+    fresh_updated = (datetime.utcnow() - timedelta(seconds=30)).isoformat()
+    executions = [
+        {
+            "execution_id": "orphan-young",
+            "executor_id": "kali-agent-gone",
+            "status": "RUNNING",
+            "updated_at": fresh_updated,
+        }
+    ]
+
+    with patch("tools.reaper.subprocess.run") as run, \
+         patch("tools.reaper.load_executions", return_value=executions), \
+         patch("tools.reaper.update_execution") as upd, \
+         patch("tools.reaper.log_event"):
+        run.side_effect = [_completed("")]
+        result = reaper.reap_once(CFG)
+
+    assert result["orphans_recovered"] == []
+    upd.assert_not_called()
+
+
+def test_execution_with_live_container_is_not_treated_as_orphan():
+    """A stale row is left to the container-based rules while its container lives."""
+    name = "kali-agent-live"
+    old_updated = (datetime.utcnow() - timedelta(seconds=600)).isoformat()
+    executions = [
+        {
+            "execution_id": "e-live",
+            "executor_id": name,
+            "status": "RUNNING",
+            "updated_at": old_updated,
+        }
+    ]
+
+    with patch("tools.reaper.subprocess.run") as run, \
+         patch("tools.reaper.load_executions", return_value=executions), \
+         patch("tools.reaper._inspect_container", return_value=_inspect(name, 120)[0]), \
+         patch("tools.reaper.update_execution") as upd, \
+         patch("tools.reaper.log_event"):
+        # Container is present and young; neither stale nor orphan rules fire.
+        run.side_effect = [_completed(_ps_listing(name))]
+        result = reaper.reap_once(CFG)
+
+    assert result["reaped"] == []
+    assert result["orphans_recovered"] == []
+    upd.assert_not_called()
 
 
 def test_parse_docker_time_handles_nanoseconds_and_z():

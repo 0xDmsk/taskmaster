@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'edit' %}Edit Template{% else %}New Template{% endif %}{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <h2 class="page-title">{% if mode == 'edit' %}Edit Finding Template{% else %}New Finding Template{% endif %}</h2>
+    <a class="action-btn" href="/reporting/templates">Back to Templates</a>
+</div>
+
+{% if message %}<div class="flash success">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+{% set action = '/reporting/templates/' ~ template.template_id if mode == 'edit' else '/reporting/templates' %}
+{% set cur_sev = template.severity if template else 'Info' %}
+{% set cur_cat = template.category if template else 'TBD' %}
+{% set refs_text %}{% if template %}{% for r in template.references %}{% if r.label %}{{ r.label }}|{{ r.url }}{% else %}{{ r.url }}{% endif %}
+{% endfor %}{% endif %}{% endset %}
+
+<form class="report-form" method="post" action="{{ action }}">
+    <div class="form-grid">
+        <label class="span-2">
+            <span>Title</span>
+            <input type="text" name="title" required value="{{ template.title if template else '' }}">
+        </label>
+        <label>
+            <span>Severity</span>
+            <select name="severity">
+                {% for s in options.severities %}
+                <option value="{{ s }}" {% if cur_sev == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Category</span>
+            <select name="category">
+                {% for c in options.categories %}
+                <option value="{{ c }}" {% if cur_cat == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>CVSS Score</span>
+            <input type="text" name="cvss_score" value="{{ template.cvss_score if template and template.cvss_score else '' }}">
+        </label>
+        <label>
+            <span>CVSS Vector</span>
+            <input type="text" name="cvss_vector" value="{{ template.cvss_vector if template and template.cvss_vector else '' }}">
+        </label>
+        <label class="span-2">
+            <span>Description</span>
+            <textarea name="description">{{ template.description if template else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Impact</span>
+            <textarea name="impact">{{ template.impact if template else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Proof of Concept <small class="muted">(generic — instance detail is added on the finding)</small></span>
+            <textarea name="proof_of_concept">{{ template.proof_of_concept if template else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>Remediation</span>
+            <textarea name="remediation">{{ template.remediation if template else '' }}</textarea>
+        </label>
+        <label class="span-2">
+            <span>References <small class="muted">(one per line — "label|url" or "url")</small></span>
+            <textarea name="references">{{ refs_text | trim }}</textarea>
+        </label>
+    </div>
+    <div class="form-actions">
+        <button class="action-btn primary" type="submit">{% if mode == 'edit' %}Save Template{% else %}Create Template{% endif %}</button>
+    </div>
+</form>
+
+{% if mode == 'edit' and template %}
+<form class="template-delete-form" method="post"
+      action="/reporting/templates/{{ template.template_id }}/delete"
+      onsubmit="return confirm('Delete this template?');">
+    <button class="action-btn danger" type="submit">Delete Template</button>
+</form>
+{% endif %}
+{% endblock %}

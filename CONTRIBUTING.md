@@ -178,7 +178,7 @@ We welcome contributions in these areas:
 ## 💬 Questions?
 
 - Check the [README.md](README.md) for basic information
-- Review [GEMINI.md](GEMINI.md) for operational guidance
+- Review [OPERATIONAL_GUIDE.md](OPERATIONAL_GUIDE.md) for operational guidance
 - Open a discussion in GitHub Discussions
 - Join our community channels (if available)
 

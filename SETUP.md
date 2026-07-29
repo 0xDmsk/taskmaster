@@ -62,6 +62,11 @@ TASKMASTER_PORT=5000
 
 # Linux — use the docker0 bridge IP instead:
 # TASKMASTER_HOST=172.17.0.1
+
+# Dashboard listener (separate from the MCP endpoint above). Loopback-only by
+# default so it is not exposed on the network; browse it at http://127.0.0.1:5001.
+# TASKMASTER_DASHBOARD_HOST=127.0.0.1
+# TASKMASTER_DASHBOARD_PORT=5001
 ```
 
 **Finding your container-accessible host IP:**
@@ -184,7 +189,7 @@ Taskmaster is designed to be controlled by Gemini (or other LLMs) via the MCP pr
    # Should show: request_security_action, spawn_agent, etc.
    ```
 
-4. **Provide Context**: Share `GEMINI.md` as context for the AI agent
+4. **Provide Context**: The operator workflow (`OPERATIONAL_GUIDE.md`) is served automatically to any MCP client via the `initialize` handshake and the `get_operational_guide` tool
 
 5. **Start Assessment**: Use natural language to request security actions:
    ```
@@ -313,7 +318,7 @@ uv sync
 
 ## 🎯 Next Steps
 
-1. **Read the operational guide**: See `GEMINI.md` for agent workflows
+1. **Read the operational guide**: See `OPERATIONAL_GUIDE.md` for agent workflows
 2. **Review skills**: Check `skills/` directory for available capabilities
 3. **Create custom skills**: Use `skills/TEMPLATE.md` as a starting point
 4. **Set up authorization**: Ensure you have proper authorization before testing any targets
@@ -330,7 +335,7 @@ uv sync
 ## 📚 Additional Resources
 
 - [README.md](README.md) - Architecture overview
-- [GEMINI.md](GEMINI.md) - Operational guide for AI agents
+- [OPERATIONAL_GUIDE.md](OPERATIONAL_GUIDE.md) - Operational guide for AI agents
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Development guidelines
 - [SECURITY.md](SECURITY.md) - Security and ethics
 

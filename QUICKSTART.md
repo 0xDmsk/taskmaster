@@ -82,7 +82,7 @@ ls -la runtime/reports/
 ## 📚 Learn More
 
 - **Architecture**: [README.md](README.md)
-- **AI Operational Guide**: [GEMINI.md](GEMINI.md)
+- **AI Operational Guide**: [OPERATIONAL_GUIDE.md](OPERATIONAL_GUIDE.md)
 - **Skills Development**: [skills/TEMPLATE.md](skills/TEMPLATE.md)
 
 ## 🐛 Troubleshooting

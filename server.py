@@ -1,16 +1,18 @@
 import argparse
 import json
 import logging
-import mimetypes
 import os
-import re
-import sqlite3
+import signal
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, unquote, urlencode, urlparse
+from urllib.parse import urlparse
 
 import config
 from tools.request_security_action import handle_request
+from tools.request_playbook import handle_request_playbook
+from tools.get_operational_guide import core_instructions, handle_get_operational_guide
+from tools.suggest_next_action import handle_suggest_next_action
 from tools.query_execution_status import handle_query_execution_status
 from tools.fetch_execution_result import handle_fetch_execution_result
 from tools.mark_execution_complete import handle_mark_execution_complete
@@ -42,13 +44,7 @@ from tools.add_threat_model_entry import handle_add_threat_model_entry
 from tools.update_threat_model_entry import handle_update_threat_model_entry
 from tools.delete_threat_model_entry import handle_delete_threat_model_entry
 from tools.export_threat_model_markdown import handle_export_threat_model_markdown
-from state.reporting import (
-    FINDING_CATEGORY_ORDER,
-    create_asset,
-    delete_asset,
-    get_threat_model,
-    render_threat_model_markdown,
-)
+from state.reporting import FINDING_CATEGORY_ORDER
 
 
 def load_tool_schema(tool_name):
@@ -63,14 +59,91 @@ def load_tool_schema(tool_name):
 TOOLS = {
     "request_security_action": {
         "description": (
-            "Request execution of a security-related action. Commands are validated "
-            "against macOS VM platform constraints — raw-socket scans (nmap -sS, -sU, "
-            "-O) are blocked. Use nmap -sT. This tool only queues work; after it "
-            "returns QUEUED, spawn or reuse a compatible agent, then monitor with "
-            "wait_for_completion."
+            "Request execution of a security-related action. (New to this Taskmaster "
+            "session? Call get_operational_guide first for the full workflow.) Commands "
+            "are validated against macOS VM platform constraints — raw-socket scans "
+            "(nmap -sS, -sU, -O) are blocked. Use nmap -sT. This tool only queues work; "
+            "after it returns QUEUED, spawn or reuse a compatible agent, then monitor "
+            "with wait_for_completion."
         ),
         "handler": handle_request,
         "schema": load_tool_schema("request_security_action"),
+    },
+    "suggest_next_action": {
+        "description": (
+            "Inspect current state (optionally scoped to an engagement_id) and return a "
+            "prioritized list of concrete next actions: failed work to review, completed "
+            "executions missing an interpretation, ready work waiting for a worker, "
+            "observations not yet triaged into findings, findings missing required report "
+            "fields, phase-coverage gaps, and threat-model status. Read-only. Use it to "
+            "orient at the start of a session or whenever you're deciding what to do next."
+        ),
+        "handler": handle_suggest_next_action,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "engagement_id": {
+                    "type": "string",
+                    "description": "Optional engagement id to scope the analysis to.",
+                }
+            },
+        },
+    },
+    "get_operational_guide": {
+        "description": (
+            "Return the full Taskmaster operational guide — the canonical workflow "
+            "for orchestration, playbooks/dependencies, note-taking discipline, the "
+            "bot-protection escalation ladder, the reporting-database flow, and the "
+            "threat-modeling process. Call this once at the start of an assessment "
+            "(the MCP handshake only carries a short core), and whenever you need the "
+            "detailed reporting or threat-model steps."
+        ),
+        "handler": handle_get_operational_guide,
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    "request_playbook": {
+        "description": (
+            "(New to this Taskmaster session? Call get_operational_guide first.) "
+            "Queue a named playbook (or an inline list of steps) as a dependency "
+            "chain against one target. Each step runs only after the previous one "
+            "COMPLETES; if a step fails, the rest of the chain is cancelled. Call "
+            "with no 'playbook'/'steps' to list the built-in playbooks. Prefer this "
+            "over issuing several request_security_action calls by hand when the "
+            "steps are ordered. After queuing, spawn a compatible agent and monitor "
+            "the last execution_id with wait_for_completion."
+        ),
+        "handler": handle_request_playbook,
+        "inputSchema": {
+            "type": "object",
+            "required": ["target"],
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "IP, hostname, or URL the whole chain runs against.",
+                },
+                "playbook": {
+                    "type": "string",
+                    "description": (
+                        "Name of a built-in playbook (e.g. 'web-recon', "
+                        "'subdomain-recon'). Omit both playbook and steps to list them."
+                    ),
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Inline ordered steps, each a partial request_security_action "
+                        "payload (phase, agent_role, action_type, skill/command/script, "
+                        "arguments, justification, expected_output). target/engagement_id/"
+                        "depends_on are filled in automatically. Ignored if 'playbook' is set."
+                    ),
+                },
+                "engagement_id": {
+                    "type": "string",
+                    "description": "Optional reporting engagement id applied to every step.",
+                },
+            },
+        },
     },
     "spawn_agent": {
         "description": (
@@ -960,6 +1033,7 @@ def dispatch(message):
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {"name": "taskmaster", "version": "0.2.0"},
                     "capabilities": {"tools": {}},
+                    "instructions": core_instructions(),
                 },
             }
 
@@ -1028,6 +1102,7 @@ def dispatch(message):
             "protocolVersion": "1.0.0",
             "serverInfo": {"name": "taskmaster", "version": "0.2.0"},
             "capabilities": {"tools": {}},
+            "instructions": core_instructions(),
             "tools": tools_list,
         }
 
@@ -1045,460 +1120,28 @@ def dispatch(message):
 
 
 # ---------------------------------------------------------------------------
-# HTTP mode — persistent server using stdlib http.server
+# HTTP mode — MCP JSON-RPC endpoint (dashboard lives in dashboard/webapp.py)
 # ---------------------------------------------------------------------------
 
 
-class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
-    """Handle POST /mcp and GET /dashboard requests."""
+class MCPHandler(BaseHTTPRequestHandler):
+    """Handle MCP JSON-RPC over HTTP (POST) plus a liveness probe.
 
-    # Lazy imports to avoid circular deps and startup cost when dashboard isn't used
-    _dashboard_imported = False
-
-    @classmethod
-    def _ensure_dashboard(cls):
-        if not cls._dashboard_imported:
-            import dashboard
-            import dashboard.api as dash_api
-            import dashboard.agents as dash_agents
-
-            cls._dashboard = dashboard
-            cls._dash_api = dash_api
-            cls._dash_agents = dash_agents
-            cls._dashboard_imported = True
+    The dashboard is served by a separate listener (see ``run_http``) so it can
+    bind a loopback-only interface while this endpoint stays reachable by agent
+    containers.
+    """
 
     def do_GET(self):
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/") or "/executions"
-        qs = parse_qs(parsed.query)
-        # Flatten query params (take first value)
-        params = {k: v[0] for k, v in qs.items()}
-
-        self._ensure_dashboard()
-        api = self._dash_api
-        agents_mod = self._dash_agents
-        render = self._dashboard.render
-
-        is_htmx = self.headers.get("HX-Request") == "true"
-        scope = self._scope_id(api)
-
-        # --- Static files ---
-        if path.startswith("/static/"):
-            self._serve_static(path)
+        path = urlparse(self.path).path.rstrip("/") or "/"
+        if path == "/healthz":
+            self._send_json(200, {"status": "ok"})
             return
-
-        # --- Rendered deliverable download ---
-        if path == "/reporting/download":
-            try:
-                index = int(params.get("i", "0"))
-            except ValueError:
-                index = -1
-            host_path = api.get_render_artifact(params.get("exec", ""), index)
-            if not host_path:
-                self._send_html(404, "<h1>Artifact not found</h1>")
-                return
-            self._send_download(host_path)
-            return
-
-        # --- Threat model markdown export ---
-        if path.startswith("/reporting/threat-models/") and path.endswith("/export"):
-            tm_id = path[len("/reporting/threat-models/") : -len("/export")]
-            model = get_threat_model(tm_id)
-            if not model:
-                self._send_html(404, "<h1>Threat model not found</h1>")
-                return
-            markdown = render_threat_model_markdown(tm_id) or ""
-            slug = re.sub(r"[^a-z0-9]+", "-", (model.get("title") or "").lower()).strip("-")
-            filename = f"{slug or 'threat-model'}-threat-model.md"
-            payload = markdown.encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/markdown; charset=utf-8")
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
-            return
-
-        # --- API endpoints ---
-        if path == "/api/stats":
-            data = api.get_stats(engagement_id=scope)
-            if is_htmx:
-                html = render("partials/stats_bar.html", stats=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path == "/api/executions":
-            data = api.get_executions(
-                status=params.get("status"),
-                target=params.get("target"),
-                phase=params.get("phase"),
-                engagement_id=scope,
-            )
-            if is_htmx:
-                html = render("partials/execution_table.html", executions=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        # Detail endpoint must come before the generic /api/executions/<id>
-        if path.endswith("/detail") and path.startswith("/api/executions/"):
-            eid = path.split("/api/executions/", 1)[1].replace("/detail", "")
-            data = api.get_execution_detail(eid)
-            if data is None:
-                self._send_json(404, {"error": "Not found"})
-            elif is_htmx:
-                html = render("partials/execution_detail.html", e=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path.startswith("/api/executions/"):
-            eid = path.split("/api/executions/", 1)[1]
-            data = api.get_execution(eid)
-            if data is None:
-                self._send_json(404, {"error": "Not found"})
-            else:
-                self._send_json(200, data)
-            return
-
-        if path.endswith("/detail") and path.startswith("/api/targets/"):
-            target = path.split("/api/targets/", 1)[1].replace("/detail", "")
-            data = api.get_target_detail(target)
-            if data is None:
-                self._send_json(404, {"error": "Not found"})
-            elif is_htmx:
-                html = render("partials/target_detail.html", detail=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path == "/api/targets":
-            data = api.get_targets()
-            if is_htmx:
-                phases = api.PHASES
-                html = render("partials/target_cards.html", targets=data, phases=phases)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path.endswith("/detail") and path.startswith("/api/agents/"):
-            executor_id = path.split("/api/agents/", 1)[1].replace("/detail", "")
-            history = agents_mod.get_agent_history()
-            agent = next((a for a in history if a["executor_id"] == executor_id), None)
-            if agent is None:
-                self._send_json(404, {"error": "Not found"})
-            elif is_htmx:
-                html = render("partials/agent_detail.html", agent=agent)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, agent)
-            return
-
-        if path == "/api/agents/history":
-            data = agents_mod.get_agent_history()
-            if is_htmx:
-                html = render("partials/agent_list.html", agents=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path == "/api/agents":
-            data = agents_mod.get_agents()
-            if is_htmx:
-                html = render("partials/agent_list.html", agents=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path in ("/api/observations", "/api/findings"):
-            data = api.get_observations(engagement_id=scope)
-            if is_htmx:
-                html = render("partials/observations_detail.html", observations=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path == "/api/reporting/findings":
-            data = api.get_report_findings(
-                engagement_id=params.get("engagement_id"),
-                status=params.get("status"),
-                severity=params.get("severity"),
-                query=params.get("q"),
-            )
-            if is_htmx:
-                html = render("partials/report_findings_list.html", findings=data)
-                self._send_html(200, html)
-            else:
-                self._send_json(200, data)
-            return
-
-        if path.startswith("/api/reporting/engagements/") and path.endswith("/findings"):
-            engagement_id = path[len("/api/reporting/engagements/") : -len("/findings")]
-            findings = api.get_engagement_findings(
-                engagement_id,
-                status=params.get("status"),
-                severity=params.get("severity"),
-                query=params.get("q"),
-            )
-            options = api.get_report_finding_options()
-            if is_htmx:
-                html = render(
-                    "partials/engagement_findings_list.html",
-                    findings=findings,
-                    options=options,
-                    engagement_id=engagement_id,
-                )
-                self._send_html(200, html)
-            else:
-                self._send_json(200, findings)
-            return
-
-        # --- Dashboard pages ---
-        stats = api.get_stats(engagement_id=scope)
-
-        if path in ("/", "/executions"):
-            execs = api.get_executions(
-                status=params.get("status"),
-                target=params.get("target"),
-                phase=params.get("phase"),
-                engagement_id=scope,
-            )
-            html = render(
-                "executions.html",
-                page="executions",
-                stats=stats,
-                executions=execs,
-                filters=params,
-            )
-            self._send_html(200, html)
-            return
-
-        if path == "/targets":
-            targets = api.get_targets()
-            html = render(
-                "targets.html",
-                page="targets",
-                stats=stats,
-                targets=targets,
-                phases=api.PHASES,
-            )
-            self._send_html(200, html)
-            return
-
-        if path == "/findings":
-            self.send_response(302)
-            self.send_header("Location", "/observations")
-            self.end_headers()
-            return
-
-        if path == "/observations":
-            observations = api.get_observations(engagement_id=scope)
-            html = render(
-                "observations.html",
-                page="observations",
-                stats=stats,
-                observations=observations,
-            )
-            self._send_html(200, html)
-            return
-
-        if path == "/reporting/engagements":
-            html = render(
-                "engagements.html",
-                page="engagements",
-                stats=stats,
-                engagements=api.get_engagements_overview(),
-                message=params.get("message"),
-                error=params.get("error"),
-            )
-            self._send_html(200, html)
-            return
-
-        if path.startswith("/reporting/engagements/"):
-            engagement_id = path[len("/reporting/engagements/") :]
-            filters = {
-                "status": params.get("status"),
-                "severity": params.get("severity"),
-                "q": params.get("q"),
-            }
-            workspace = api.get_engagement_workspace(
-                engagement_id,
-                status=filters["status"],
-                severity=filters["severity"],
-                query=filters["q"],
-            )
-            if not workspace:
-                self._send_html(404, "<h1>Engagement not found</h1>")
-                return
-            html = render(
-                "engagement_workspace.html",
-                page="engagements",
-                stats=stats,
-                workspace=workspace,
-                options=api.get_report_finding_options(),
-                filters=filters,
-                message=params.get("message"),
-                error=params.get("error"),
-            )
-            self._send_html(200, html)
-            return
-
-        if path == "/reporting/findings":
-            filters = {
-                "engagement_id": params.get("engagement_id"),
-                "status": params.get("status"),
-                "severity": params.get("severity"),
-                "q": params.get("q"),
-            }
-            findings = api.get_report_findings(
-                engagement_id=filters["engagement_id"],
-                status=filters["status"],
-                severity=filters["severity"],
-                query=filters["q"],
-            )
-            html = render(
-                "report_findings.html",
-                page="report_findings",
-                stats=stats,
-                findings=findings,
-                options=api.get_report_finding_options(),
-                filters=filters,
-                message=params.get("message"),
-                error=params.get("error"),
-            )
-            self._send_html(200, html)
-            return
-
-        if path == "/reporting/findings/new":
-            html = render(
-                "report_finding_form.html",
-                page="report_findings",
-                stats=stats,
-                mode="new",
-                finding=None,
-                preset_engagement_id=params.get("engagement_id"),
-                options=api.get_report_finding_options(),
-                message=params.get("message"),
-                error=params.get("error"),
-            )
-            self._send_html(200, html)
-            return
-
-        if path.endswith("/edit") and path.startswith("/reporting/findings/"):
-            finding_id = path.split("/reporting/findings/", 1)[1].replace("/edit", "")
-            finding = api.get_report_finding_detail(finding_id)
-            if not finding:
-                self._send_html(404, "<h1>Finding not found</h1>")
-                return
-            html = render(
-                "report_finding_form.html",
-                page="report_findings",
-                stats=stats,
-                mode="edit",
-                finding=finding,
-                options=api.get_report_finding_options(),
-                message=params.get("message"),
-                error=params.get("error"),
-            )
-            self._send_html(200, html)
-            return
-
-        if path == "/agents":
-            agent_list = agents_mod.get_agent_history()
-            html = render(
-                "agents.html",
-                page="agents",
-                stats=stats,
-                agents=agent_list,
-            )
-            self._send_html(200, html)
-            return
-
-        self._send_html(404, "<h1>404 Not Found</h1>")
-
-    def _serve_static(self, path):
-        """Serve files from dashboard/static/."""
-        static_dir = os.path.join(config.PROJECT_DIR, "dashboard", "static")
-        filename = path.replace("/static/", "", 1)
-        filepath = os.path.normpath(os.path.join(static_dir, filename))
-        # Prevent path traversal
-        if not filepath.startswith(static_dir):
-            self._send_html(403, "Forbidden")
-            return
-        if not os.path.isfile(filepath):
-            self._send_html(404, "Not found")
-            return
-        content_type = mimetypes.guess_type(filepath)[0] or "application/octet-stream"
-        with open(filepath, "rb") as f:
-            data = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _scope_id(self, api):
-        """Current engagement scope from the tm_scope cookie, validated.
-
-        Returns the engagement_id when the cookie names a real engagement, else
-        None (an unknown/stale id would otherwise scope every metric to zero).
-        """
-        cookie = self.headers.get("Cookie", "")
-        for part in cookie.split(";"):
-            key, _, value = part.strip().partition("=")
-            if key == "tm_scope" and value:
-                engagement_id = unquote(value)
-                if engagement_id and api.get_engagement(engagement_id):
-                    return engagement_id
-                return None
-        return None
-
-    def _send_download(self, filepath):
-        """Stream a file as an attachment download."""
-        content_type = mimetypes.guess_type(filepath)[0] or "application/octet-stream"
-        with open(filepath, "rb") as f:
-            data = f.read()
-        filename = os.path.basename(filepath)
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _send_html(self, status, html):
-        payload = html.encode() if isinstance(html, str) else html
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        self._send_json(404, {"error": "Not found"})
 
     def do_POST(self):
-        parsed = urlparse(self.path)
-        path = parsed.path.rstrip("/") or "/"
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
-
-        if path.startswith("/reporting/"):
-            form = self._parse_form(body)
-            self._handle_reporting_post(path, form)
-            return
-
-        if path.startswith("/executions/") and path.endswith("/engagement"):
-            form = self._parse_form(body)
-            self._handle_execution_engagement_post(path, form)
-            return
-
         try:
             message = json.loads(body)
         except (json.JSONDecodeError, ValueError) as e:
@@ -1507,265 +1150,12 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
 
         logging.debug(f"HTTP received: {message}")
         response = dispatch(message)
-
         if response is None:
-            # Notification — no response body expected, send 204
+            # Notification — no response body expected.
             self.send_response(204)
             self.end_headers()
         else:
             self._send_json(200, response)
-
-    def _parse_form(self, body):
-        parsed = parse_qs(body.decode("utf-8"), keep_blank_values=True)
-        form = {}
-        for key, values in parsed.items():
-            form[key] = values if len(values) > 1 else values[0]
-        return form
-
-    def _redirect(self, location):
-        self.send_response(303)
-        self.send_header("Location", location)
-        self.end_headers()
-
-    def _redirect_with_message(self, location, *, message=None, error=None):
-        if not location.startswith("/"):
-            location = "/reporting/findings"
-        params = {}
-        if message:
-            params["message"] = message
-        if error:
-            params["error"] = error
-        if params:
-            separator = "&" if "?" in location else "?"
-            location = f"{location}{separator}{urlencode(params)}"
-        self._redirect(location)
-
-    @staticmethod
-    def _blank_to_none(value):
-        if isinstance(value, list):
-            value = value[0] if value else ""
-        return value if value != "" else None
-
-    def _finding_payload_from_form(self, form):
-        return {
-            "engagement_id": self._blank_to_none(form.get("engagement_id")),
-            "title": form.get("title", ""),
-            "severity": form.get("severity", "Info"),
-            "category": self._blank_to_none(form.get("category")),
-            "status": form.get("status", "draft"),
-            "affected": form.get("affected", ""),
-            "description": form.get("description", ""),
-            "impact": form.get("impact", ""),
-            "proof_of_concept": form.get("proof_of_concept", ""),
-            "remediation": form.get("remediation", ""),
-            "cvss_score": self._blank_to_none(form.get("cvss_score")),
-            "cvss_vector": self._blank_to_none(form.get("cvss_vector")),
-            "source_execution_id": self._blank_to_none(form.get("source_execution_id")),
-        }
-
-    def _handle_execution_engagement_post(self, path, form):
-        """Assign or clear an execution's engagement, then re-render its detail."""
-        self._ensure_dashboard()
-        api = self._dash_api
-        render = self._dashboard.render
-
-        execution_id = path[len("/executions/") : -len("/engagement")]
-        engagement_id = self._blank_to_none(form.get("engagement_id"))
-        # Ignore an unknown engagement rather than tagging with a dangling id.
-        if engagement_id and not api.get_engagement(engagement_id):
-            engagement_id = None
-
-        from state.storage import update_execution
-
-        update_execution(execution_id, {"engagement_id": engagement_id})
-
-        detail = api.get_execution_detail(execution_id)
-        if detail is None:
-            self._send_html(404, "<h1>Execution not found</h1>")
-            return
-        self._send_html(200, render("partials/execution_detail.html", e=detail))
-
-    def _handle_reporting_post(self, path, form):
-        self._ensure_dashboard()
-        api = self._dash_api
-        render = self._dashboard.render
-
-        if path == "/reporting/engagements":
-            result = handle_create_reporting_engagement(
-                {
-                    "name": form.get("name", ""),
-                    "client_name": self._blank_to_none(form.get("client_name")),
-                    "summary": self._blank_to_none(form.get("summary")),
-                }
-            )
-            if "error" in result:
-                self._redirect_with_message(
-                    self.headers.get("Referer", "/reporting/findings"),
-                    error=result["error"],
-                )
-            else:
-                self._redirect_with_message(
-                    self.headers.get("Referer", "/reporting/findings"),
-                    message="Engagement created",
-                )
-            return
-
-        if path == "/reporting/findings":
-            payload = self._finding_payload_from_form(form)
-            payload["created_by"] = "dashboard"
-            result = handle_create_reporting_finding(payload)
-            if "error" in result:
-                self._redirect_with_message("/reporting/findings/new", error=result["error"])
-            else:
-                finding_id = result["finding"]["finding_id"]
-                self._redirect_with_message(
-                    f"/reporting/findings/{finding_id}/edit",
-                    message="Finding created",
-                )
-            return
-
-        if path == "/reporting/reports/docx":
-            finding_id = self._blank_to_none(form.get("finding_id"))
-            args = {
-                "engagement_id": self._blank_to_none(form.get("engagement_id")),
-                "status": self._blank_to_none(form.get("status")),
-                "target": self._blank_to_none(form.get("target")),
-            }
-            if finding_id:
-                args["finding_ids"] = [finding_id]
-                args.pop("engagement_id", None)
-                args.pop("status", None)
-            result = handle_request_reporting_docx(args)
-            if "error" in result:
-                self._redirect_with_message(
-                    self.headers.get("Referer", "/reporting/findings"),
-                    error=result["error"],
-                )
-            else:
-                self._redirect(f"/executions#exec:{result['execution_id']}")
-            return
-
-        parts = path.strip("/").split("/")
-
-        # Engagement scope: add / delete assets.
-        if len(parts) >= 4 and parts[0] == "reporting" and parts[1] == "engagements":
-            engagement_id = parts[2]
-            workspace_url = f"/reporting/engagements/{engagement_id}"
-            if parts[3] == "assets" and len(parts) == 4:
-                value = self._blank_to_none(form.get("value"))
-                if not value:
-                    self._redirect_with_message(workspace_url, error="Asset value is required")
-                    return
-                try:
-                    create_asset(
-                        value,
-                        engagement_id=engagement_id,
-                        kind=form.get("kind", "host"),
-                        description=self._blank_to_none(form.get("description")),
-                    )
-                    self._redirect_with_message(workspace_url, message="Scope asset added")
-                except (sqlite3.IntegrityError, ValueError) as exc:
-                    self._redirect_with_message(workspace_url, error=str(exc))
-                return
-            if len(parts) == 6 and parts[3] == "assets" and parts[5] == "delete":
-                delete_asset(parts[4])
-                self._redirect_with_message(workspace_url, message="Scope asset removed")
-                return
-
-        if len(parts) >= 3 and parts[0] == "reporting" and parts[1] == "findings":
-            finding_id = parts[2]
-
-            # Inline status change from the engagement workspace — htmx swaps the
-            # findings list, so return the re-rendered partial rather than redirect.
-            if len(parts) == 4 and parts[3] == "status":
-                result = handle_update_reporting_finding(
-                    {
-                        "finding_id": finding_id,
-                        "status": form.get("new_status", ""),
-                        "updated_by": "dashboard",
-                    }
-                )
-                engagement_id = None
-                if "finding" in result:
-                    engagement_id = result["finding"].get("engagement_id")
-                findings = api.get_engagement_findings(
-                    engagement_id,
-                    status=self._blank_to_none(form.get("status")),
-                    severity=self._blank_to_none(form.get("severity")),
-                    query=self._blank_to_none(form.get("q")),
-                )
-                html = render(
-                    "partials/engagement_findings_list.html",
-                    findings=findings,
-                    options=api.get_report_finding_options(),
-                    engagement_id=engagement_id,
-                )
-                self._send_html(200, html)
-                return
-
-            if len(parts) == 3:
-                payload = self._finding_payload_from_form(form)
-                payload["finding_id"] = finding_id
-                payload["updated_by"] = "dashboard"
-                result = handle_update_reporting_finding(payload)
-                if "error" in result:
-                    self._redirect_with_message(
-                        f"/reporting/findings/{finding_id}/edit",
-                        error=result["error"],
-                    )
-                else:
-                    self._redirect_with_message(
-                        f"/reporting/findings/{finding_id}/edit",
-                        message="Finding updated",
-                    )
-                return
-
-            if len(parts) == 4 and parts[3] == "evidence":
-                result = handle_add_reporting_finding_evidence(
-                    {
-                        "finding_id": finding_id,
-                        "kind": form.get("kind", "note"),
-                        "title": self._blank_to_none(form.get("title")),
-                        "body": self._blank_to_none(form.get("body")),
-                        "artifact_path": self._blank_to_none(form.get("artifact_path")),
-                        "url": self._blank_to_none(form.get("url")),
-                        "source_execution_id": self._blank_to_none(form.get("source_execution_id")),
-                        "created_by": "dashboard",
-                    }
-                )
-                if "error" in result:
-                    self._redirect_with_message(
-                        f"/reporting/findings/{finding_id}/edit",
-                        error=result["error"],
-                    )
-                else:
-                    self._redirect_with_message(
-                        f"/reporting/findings/{finding_id}/edit",
-                        message="Evidence added",
-                    )
-                return
-
-            if len(parts) == 4 and parts[3] == "references":
-                result = handle_add_reporting_finding_reference(
-                    {
-                        "finding_id": finding_id,
-                        "label": self._blank_to_none(form.get("label")),
-                        "url": form.get("url", ""),
-                    }
-                )
-                if "error" in result:
-                    self._redirect_with_message(
-                        f"/reporting/findings/{finding_id}/edit",
-                        error=result["error"],
-                    )
-                else:
-                    self._redirect_with_message(
-                        f"/reporting/findings/{finding_id}/edit",
-                        message="Reference added",
-                    )
-                return
-
-        self._send_html(404, "<h1>404 Not Found</h1>")
 
     def _send_json(self, status, data):
         payload = json.dumps(data).encode()
@@ -1780,16 +1170,48 @@ class TaskmasterHTTPHandler(BaseHTTPRequestHandler):
         logging.info(format % args)
 
 
-def run_http(host, port):
-    """Start a persistent HTTP server."""
-    server = ThreadingHTTPServer((host, port), TaskmasterHTTPHandler)
-    logging.info(f"Taskmaster HTTP server listening on {host}:{port}")
-    print(f"Taskmaster HTTP server listening on {host}:{port}", file=sys.stderr)
+def run_http(host, port, dashboard_host, dashboard_port):
+    """Start the MCP endpoint and the dashboard on separate listeners.
+
+    The MCP server binds ``host`` (default 0.0.0.0) so agent containers can
+    reach it via host.docker.internal. The dashboard binds ``dashboard_host``
+    (default 127.0.0.1) so it is not exposed beyond the local machine. Both shut
+    down gracefully on SIGTERM (how Docker/systemd stop the process) and SIGINT.
+    """
+    from dashboard.webapp import DashboardHandler
+
+    mcp_server = ThreadingHTTPServer((host, port), MCPHandler)
+    dash_server = ThreadingHTTPServer((dashboard_host, dashboard_port), DashboardHandler)
+
+    logging.info("Taskmaster MCP endpoint listening on %s:%s", host, port)
+    logging.info("Taskmaster dashboard listening on %s:%s", dashboard_host, dashboard_port)
+    print(f"Taskmaster MCP endpoint listening on {host}:{port}", file=sys.stderr)
+    print(
+        f"Taskmaster dashboard listening on http://{dashboard_host}:{dashboard_port}",
+        file=sys.stderr,
+    )
+
+    dash_thread = threading.Thread(
+        target=dash_server.serve_forever, name="taskmaster-dashboard", daemon=True
+    )
+    dash_thread.start()
+
+    def _shutdown(signum, _frame):
+        # serve_forever() runs in this (main) thread and shutdown() blocks until
+        # it returns, so each shutdown must run on its own thread.
+        logging.info("Received signal %s — shutting down", signum)
+        threading.Thread(target=mcp_server.shutdown, daemon=True).start()
+        threading.Thread(target=dash_server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        logging.info("Shutting down HTTP server")
-        server.server_close()
+        mcp_server.serve_forever()
+    finally:
+        mcp_server.server_close()
+        dash_server.server_close()
+        logging.info("HTTP servers stopped")
 
 
 # ---------------------------------------------------------------------------
@@ -1852,14 +1274,28 @@ def main():
         "--port",
         type=int,
         default=int(os.environ.get("TASKMASTER_PORT", "5000")),
-        help="HTTP server port (default: $TASKMASTER_PORT or 5000)",
+        help="MCP endpoint port (default: $TASKMASTER_PORT or 5000)",
+    )
+    parser.add_argument(
+        "--dashboard-host",
+        default=os.environ.get("TASKMASTER_DASHBOARD_HOST", "127.0.0.1"),
+        help=(
+            "Dashboard bind address (default: $TASKMASTER_DASHBOARD_HOST or "
+            "127.0.0.1 — loopback only, not exposed beyond this machine)"
+        ),
+    )
+    parser.add_argument(
+        "--dashboard-port",
+        type=int,
+        default=int(os.environ.get("TASKMASTER_DASHBOARD_PORT", "5001")),
+        help="Dashboard port (default: $TASKMASTER_DASHBOARD_PORT or 5001)",
     )
     args = parser.parse_args()
 
     start_reaper_thread()
 
     if args.http:
-        run_http(args.host, args.port)
+        run_http(args.host, args.port, args.dashboard_host, args.dashboard_port)
     else:
         run_stdio()
 

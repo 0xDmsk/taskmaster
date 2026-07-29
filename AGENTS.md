@@ -1,140 +1,34 @@
 # AGENTS.md
 
-Repository-local instructions for agentic coding assistants working in this codebase. This file applies to **any orchestrating LLM** (Codex, Claude, Gemini, etc.). Sister files `CLAUDE.md` and `GEMINI.md` mirror this guidance for tools that auto-load their own filename — keep them in sync when changing the workflow.
+Repository-local guidance for agentic coding assistants (Codex and others) **developing** the Taskmaster codebase.
 
-## Taskmaster Execution Workflow
+Taskmaster is a stateful MCP server that orchestrates security assessments across Kali / Playwright / Reporting containers. This file is a short dev entry point; the two authoritative documents are:
 
-`request_security_action` only queues work. A `QUEUED` execution does not provision a worker by itself.
+- **`CLAUDE.md`** — the full development guide: architecture, key concepts, execution pathways, the runtime layout, and the complete MCP tool map. Read it before making non-trivial changes.
+- **`OPERATIONAL_GUIDE.md`** — how to *drive* Taskmaster during an assessment (the queue → provision → monitor → finalize loop, playbooks and dependencies, session material, reporting database, threat modeling). This is the single source of truth for operator workflow, and it is served to any MCP client over the `initialize` handshake and the `get_operational_guide` tool — so it applies even when this repo isn't checked out. When operator workflow changes, edit **that** file, not this one.
 
-Default workflow:
-1. **Queue** — call `request_security_action`. When the work belongs to a known reporting engagement, pass its `engagement_id` (create it first with `create_reporting_engagement`) so the execution is scoped to that engagement in the dashboard.
-2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
-3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
-4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable observations, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. The interpretation should match what you would tell the user in the CLI when reviewing the result.
-5. **Record notes** — append novel captures to `recon-data.md` and promote anything worth triage to `Findings.md` (see Note-Taking Discipline below).
-6. **Cleanup** — once a target assessment or phase is finalized, use `cleanup_agents` to decommission the worker fleet.
+## Commands
 
-Use `query_execution_status` mainly for debugging, recovery, or explicit spot-checks. Do not use it as the default next step after queuing work.
+```bash
+make dev          # Set up the development environment
+make install      # uv sync
+make start        # Start the MCP server (+ dashboard on 127.0.0.1:5001)
+make test         # pytest with coverage
+make lint         # ruff
+make format       # black
+uv run pytest tests/path/to/test_file.py::test_name   # Run a single test
+```
 
-### Passing session material to agents (cookies, tokens, browser state)
+Code style: Black with a 100-char line length, Ruff linting, Python 3.12+.
 
-When a spawned agent needs user-supplied session material, **never paste its contents** into the mission, arguments, or any tool call — that leaks it into the execution request, audit log, and dashboard. Instead:
+## Where things live
 
-1. Keep the file in a folder inside the current engagement directory, e.g. `./session/` (for a browser login, name it `storage_state.json`; otherwise `cookies.json`, a token file, etc.).
-2. On `spawn_agent`, set `session_dir` to the **absolute** path of that folder — resolve `./session` to an absolute path first, because the Taskmaster server's working directory is not the same as yours. It is mounted read-only at `/session`.
-3. Point the skill/mission at the container path (`/session/cookies.json`), never the host path or the contents.
+- `server.py` — MCP JSON-RPC server + dual HTTP listeners (agent-facing MCP endpoint; loopback dashboard).
+- `tools/` — one module per MCP tool handler.
+- `state/` — execution lifecycle (`state.py`), SQLite persistence (`storage.py`).
+- `policies/` — phase-transition policy, playbooks, mission/note-taking templates.
+- `dashboard/` — web UI (`webapp.py` router, `api.py`, `agents.py`, Jinja2 `templates/`, `static/`).
+- `skills/` — `base.py` (CLI skills), `browser.py` (Playwright), `reporting.py` (docx).
+- `executors/` — Dockerfiles + operator scripts for the Kali / Playwright / Reporting agents.
 
-Playwright agents auto-load `/session/storage_state.json` into every browser context, so for a browser session steps 1–2 are all you need.
-
-### Interpretation field — required for good UX
-
-Every finalization call should include `interpretation`. Without it, the dashboard's observations panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. With it, the user sees:
-
-- An **Analysis** card at the top of each execution and observation card containing your prose summary.
-- The raw agent output collapsed under a `See agent output` toggle.
-
-Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs — same level of detail you would surface to a human reviewer.
-
-**Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
-
-## Executor Selection
-
-- Use `agent_type: "kali"` for CLI-based `skill` and `python` actions.
-- Use `agent_type: "playwright"` for `playwright` and `playwright_skill` actions.
-- Use `agent_type: "reporting"` for `report_skill` actions — producing the final docx deliverables from settled findings, late in the engagement.
-
-### Reporting database workflow
-
-Taskmaster separates execution results from client-facing report findings:
-
-- Execution observations are raw worker results attached to executions. The dashboard's **Observations** tab shows these legacy execution-derived results.
-- Report findings are curated records stored in Taskmaster's reporting tables. They are the source of truth for client deliverables and can be managed through MCP tools or the dashboard's **Engagements** hub / **Report Findings** page.
-
-Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings. Taskmaster's reporting database is the reporting source of truth.
-
-Preferred flow for final reporting:
-
-1. Create an engagement with `create_reporting_engagement`.
-2. Add a settled client-facing finding with `create_reporting_finding`. Include `source_execution_id` when the report finding is based on a Taskmaster execution.
-3. Use `update_reporting_finding` for scalar edits. Use `add_reporting_finding_evidence` and `add_reporting_finding_reference` for proof material so the evidence trail is append-only by default.
-4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; each response includes `report_shape` for the docx renderer.
-5. Queue the document with `request_reporting_docx`, then spawn a `reporting` agent and call `wait_for_completion`.
-
-Dashboard equivalent: the **Engagements** hub (`/reporting/engagements`) is the primary surface — per-engagement severity/status rollups, an editable scope panel, a filtered findings list with inline status transitions, and a render-history panel where finished DOCX deliverables download. The flat **Report Findings** page (`/reporting/findings`) covers cross-engagement create/edit, evidence and references, filtering, and queuing DOCX renders. The dashboard queue action still creates a normal Taskmaster execution; provision a `reporting` worker and wait for completion. A global **scope selector** (top of the dashboard, cookie-persisted) filters the stats bar plus the Executions and Observations lists to one engagement. Executions are bound to an engagement by an explicit `engagement_id`: create the engagement first with `create_reporting_engagement`, then pass its `engagement_id` to `request_security_action` when queuing work so per-engagement metrics and lists are accurate. Reporting renders inherit the engagement automatically. Untagged or legacy executions can be assigned from the execution detail panel in the dashboard.
-
-`request_reporting_docx` rejects findings that are missing report-required fields (`affected`, `description`, `impact`, `proof_of_concept`, `remediation`, etc.). Fill the database record instead of bypassing validation with a direct `report_skill` call.
-
-Current DOCX output renders the finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code. Markdown pipe tables are not converted into Word tables yet, and stored evidence records are not rendered into a separate evidence section.
-
-### Writing report content
-
-When you create or update a report finding, write for the **client**, not the internal team:
-
-- Plain, succinct language; a few short paragraphs per field at most.
-- **Never reference** `Findings.md`, `recon-data.md`, `F-NNN` IDs, or `§N.M` recon section markers — those are internal working files that are not shared with the client. Ground claims in URLs, parameters, response headers, or `/loot` artifacts the client can verify.
-- `description` = what was found (concrete). `impact` = why it matters in plain consequences (not "severe security impact"). `proof_of_concept` = a self-contained, copy-pasteable reproduction. `remediation` = specific actions, not generic platitudes.
-- Severity is a final value — strip "(pending triage)" qualifiers before rendering.
-- `category` is a fixed set mirrored from the internal tracker (pwndoc) — pick the closest match from the enum in the tool schema; use `TBD` when uncategorized. An off-list value is coerced to `Other`, so don't invent categories.
-
-The full style contract is documented in the module docstring of `skills/reporting.py` and in `templates/README.md`.
-
-### Threat modeling (evidence-grounded, two-pass)
-
-A threat model is a per-engagement artifact you synthesize — Taskmaster stores, renders, and exports it, but the reasoning is yours.
-
-**First pass:**
-1. `assemble_threat_model_context(engagement_id)` gathers DB-side evidence: scoped assets, recon/enumeration observations (executions tagged to the engagement), findings, existing models, and unresolved assumptions/open questions.
-2. Read the engagement's `Findings.md` / `recon-data.md` in your working directory for context the DB doesn't hold.
-3. `create_threat_model` (title, `scope`, `out_of_scope`, `review_date`), then build it with `add_threat_model_entry` one entity at a time: `role`, `asset`, `terminal_goal`, `attack_surface`, `trust_boundary`, a **small set of high-quality** `attack_path` entries (threat category, impacted assets, abused surface/boundary, preconditions, existing controls, gaps, likelihood, impact, priority), a `test_objective` for every High/Critical path, split `existing_mitigation` vs `recommended_mitigation`, plus `assumption` and `open_question` entries.
-4. **Evidence rule:** tag every element `EVIDENCED` (link an `execution_id`/`finding_id` or cite an artifact), `USER-CONFIRMED`, `ASSUMED`, or `OUT-OF-SCOPE` — never present an assumption as fact. Author cross-references as ref strings (`impacted_assets` = "CA-1, CA-4"); supply explicit `ref`s so they stay stable.
-
-**Validation pass:** ask the material open questions one at a time, then `update_threat_model_entry` to propagate each answer into the affected attack paths (likelihood/impact/priority, controls, mitigations) — not just a summary. Promote `draft → in_review → final`.
-
-Export with `export_threat_model_markdown` (save `<name>-threat-model.md` in the engagement dir). Don't invent threats the evidence doesn't support; keep the set small. Renders as tables in the engagement workspace.
-
-## Bot-Protected Targets (Akamai, Cloudflare, Datadome…)
-
-When a target sits behind fingerprint-based bot defenses, plain headless Chromium and Burp's outbound Java TLS stack both get blocked **below** the HTTP layer — you see `ERR_HTTP2_PROTOCOL_ERROR`, silent 403s, challenge pages, or a "Burp Suite" upstream-failure page rendered by Burp itself. Burp cannot fix this; its own outbound fingerprint is part of what's being detected. Skip the proxy for these targets and lean on the agent's own logging instead.
-
-Pick the **lowest tier** that produces the data you need:
-
-1. **`curl_cffi`** — Kali agent, `action_type: "python"`. Use when you do not need JavaScript execution: API probes, OAuth/redirect chasing, raw endpoint enumeration, sitemap/robots fetches. Wraps a real Chrome/Firefox/Safari TLS + HTTP/2 fingerprint around a `requests`-like API. Fastest by far.
-
-   ```python
-   from curl_cffi import requests
-   r = requests.get("https://target", impersonate="chrome124")
-   ```
-
-2. **Patchright** — Playwright agent, `browser_engine: "patchright"` on `spawn_agent`. Drop-in Playwright replacement with anti-detection patches on Chromium. Default for `agent_type: "playwright"` — pick this first when JS is required.
-
-3. **Camoufox** — Playwright agent, `browser_engine: "camoufox"`. Custom-built Firefox tuned for fingerprint resistance. Escalate to it when Patchright still gets flagged (HTTP/2 protocol errors, persistent challenge pages, silent 403s). Slower cold start and narrower site-compat surface than Patchright, so don't reach for it first.
-
-`BaseBrowserSkill` reads the engine from kwargs / the `BROWSER_ENGINE` env var (set by `spawn_agent`), so a skill written for vanilla Playwright works unchanged across all three engines.
-
-## Executor Languages
-
-- `action_type: "python"` — Python only (sandboxed `exec()` on the Kali agent).
-- `action_type: "playwright"` — **Python only**. The Playwright operator invokes the container's Python interpreter and the `playwright.sync_api`/`async_api` bindings. JavaScript/Node scripts will fail. The script must print a single JSON envelope to stdout.
-- `action_type: "skill"` / `"playwright_skill"` / `"report_skill"` — invokes a Python skill class on the matching agent (`BaseSkill` / `BaseBrowserSkill` / `BaseReportSkill` respectively).
-
-## Mission Briefings
-
-When spawning a worker, use the structure in `policies/agent_mission_template.md`.
-
-## Note-Taking Discipline
-
-Every engagement should produce two living files in the **current working directory** (the assessment folder you were launched from — not `audit/`):
-
-- `Findings.md` — numbered `F-NNN` triage log. Every entry: **Where / Observation / Why it matters / Reproduction (when actionable) / Status / Recommendation**. Include informational and positive observations, not just defects. Severity is a working estimate pending triage.
-- `recon-data.md` — the raw data dossier underlying the findings. Observations only, no exploitation. Numbered sections that `Findings.md` cites via `§{section}`.
-
-Create both files on first observation; do not wait for the user to ask. Append after every execution that produced novel data. Do not rewrite history when a hypothesis flips — add a dated follow-up paragraph instead. Full structure and worked examples in `policies/note_taking_template.md`.
-
-## Reference Docs
-
-- `GEMINI.md`: fuller worker-queue operational guide (mirrored model-specific copy)
-- `CLAUDE.md`: Claude-specific repository guidance (mirrored copy)
-- `policies/agent_mission_template.md`: mission briefing template + interpretation wrap-up
-- `policies/note_taking_template.md`: `Findings.md` / `recon-data.md` structure and conventions
-- `policies/platform_constraints.md`: macOS VM networking limitations
-- `templates/README.md`: how to turn an example docx into a docxtpl template the reporting executor can render
+Keep tests green (`make test`) and lint clean (`make lint`) before finishing. When you add or change a tool, update its schema in `server.py` and the tool map in `CLAUDE.md`.

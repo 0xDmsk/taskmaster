@@ -23,12 +23,13 @@
     </div>
     <div style="margin-top:0.75rem">
         <button class="expand-btn"
-                hx-get="/api/targets/{{ t.target }}/detail"
+                hx-get="/api/targets/detail?target={{ t.target|urlencode }}"
                 hx-target="#target-detail-{{ loop.index }}"
                 hx-swap="innerHTML"
-                onclick="this.style.display='none'">Show Details</button>
+                hx-trigger="click once"
+                onclick="toggleDetail(this, 'target-detail-{{ loop.index }}')">Show Details</button>
     </div>
-    <div id="target-detail-{{ loop.index }}"></div>
+    <div id="target-detail-{{ loop.index }}" class="detail-slot collapsed"></div>
 </div>
 {% endfor %}
 </div>

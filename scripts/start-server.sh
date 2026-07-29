@@ -17,11 +17,13 @@ fi
 
 PORT="${TASKMASTER_PORT:-5000}"
 HOST="${TASKMASTER_HOST:-0.0.0.0}"
+DASHBOARD_HOST="${TASKMASTER_DASHBOARD_HOST:-127.0.0.1}"
+DASHBOARD_PORT="${TASKMASTER_DASHBOARD_PORT:-5001}"
 
 echo "🚀 Starting Taskmaster MCP Server"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Host: $HOST"
-echo "Port: $PORT"
+echo "MCP endpoint:  http://$HOST:$PORT  (reachable by agent containers)"
+echo "Dashboard:     http://$DASHBOARD_HOST:$DASHBOARD_PORT  (loopback only)"
 echo "Server: server.py --http"
 echo ""
 
@@ -50,4 +52,5 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Start the persistent HTTP server
-uv run python server.py --http --host "$HOST" --port "$PORT"
+uv run python server.py --http --host "$HOST" --port "$PORT" \
+    --dashboard-host "$DASHBOARD_HOST" --dashboard-port "$DASHBOARD_PORT"

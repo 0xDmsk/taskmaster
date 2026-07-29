@@ -2,8 +2,8 @@
 
 Complete overview of what has been implemented and what remains to be done.
 
-**Last Updated**: 2026-04-23
-**Current Version**: 0.5.0
+**Last Updated**: 2026-07-28
+**Current Version**: 0.5.0 (unreleased work toward 0.6.0)
 
 ## ✅ Completed Features
 
@@ -41,6 +41,10 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] `list_queued_executions` - List pending tasks
 - [x] `cleanup_agents` - Stop/remove agent containers
 - [x] `recover_execution` - Recover stuck executions
+- [x] `request_playbook` - Expand a named/inline step sequence into a dependency chain
+- [x] `suggest_next_action` - Read-only advisor returning the prioritized state gaps
+- [x] `get_operational_guide` - Serve the canonical operational guide to any MCP client
+- [x] Task dependencies via `depends_on` (dependency-gated queue + recursive cascade-cancel, terminal `CANCELLED` state)
 
 ### Skills Library
 - [x] Structured `BaseSkill` framework with `build_command()` + `parse_output()` + JSON envelope
@@ -57,7 +61,11 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] `BaseBrowserSkill` ABC (`skills/browser.py`) — Playwright-native counterpart to `BaseSkill` for browser automation skills
 
 ### Web Dashboard
+- [x] Served on its own loopback-only listener (default `127.0.0.1:5001`), separate from the agent-facing MCP endpoint; table-driven router (`dashboard/webapp.py`)
+- [x] Overview landing page — findings-by-severity chart, phase-coverage meters, recent activity + latest findings (engagement-scoped)
+- [x] Grouped, icon-based navigation (Operations / Reporting)
 - [x] Executions table with clickable row detail expansion (request, result, findings, artifacts, errors)
+- [x] Dependency chip (`⛓`) + cascade-cancel reason surfaced; `CANCELLED` as a first-class status/filter
 - [x] Targets cards with phase progress bars and expandable phase-grouped execution tables
 - [x] Agents view with execution history per agent, merged with container data
 - [x] Observations view with severity badges, CVSS, risk, remediation, and references
@@ -67,14 +75,14 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] Findings rollup in the stats bar; markdown-rendered finding bodies
 - [x] Executions bound to an engagement via an explicit `engagement_id` (set by `request_security_action` / reporting renders, or reassigned from the execution detail panel)
 - [x] Evidence-grounded threat model per engagement (`threat_models` + twelve `tm_*` entity tables, ref-string cross-references, evidence tags, two-pass workflow; `assemble_threat_model_context` / `create_threat_model` / `add_threat_model_entry` / `export_threat_model_markdown` MCP tools; dashboard tables + `.md` export)
-- [x] Global engagement scope selector (cookie-persisted) scoping the stats bar + Executions/Observations lists by `engagement_id`
+- [x] Global engagement scope selector (cookie-persisted) scoping the stats bar + Executions/Observations/Targets/Agents lists by `engagement_id`; hidden on the Engagements/Report Findings pages, which carry their own filters
 - [x] Deep-linking across views (click target/agent/execution to navigate and auto-expand)
 - [x] HTMX auto-refresh with pause-on-expand to prevent content loss
 - [x] Dark theme, responsive layout
 
 ### Documentation
 - [x] README.md with architecture, dashboard section, and `make` commands
-- [x] GEMINI.md operational guide with skill table, JSON envelope docs, and `wait_for_completion` workflow
+- [x] OPERATIONAL_GUIDE.md — canonical operator workflow, served to any MCP client via the `initialize` handshake and the `get_operational_guide` tool (CLAUDE.md is the separate codebase-development guide; AGENTS.md/GEMINI.md are thin pointers)
 - [x] QUICKSTART.md with onboarding
 - [x] Detailed setup and contributing guides
 - [x] CHANGELOG.md with v0.5.0 entries
@@ -107,19 +115,19 @@ Complete overview of what has been implemented and what remains to be done.
 #### Observability
 - [ ] Structured logging framework
 - [ ] Metrics collection (success rates, duration)
-- [ ] Health check endpoint
+- [x] Health check endpoint (`GET /healthz` on both listeners)
 
 ### Low Priority
 
 #### Advanced Features
 - [x] Web UI for monitoring and control
-- [ ] Task dependencies and workflows
+- [x] Task dependencies and workflows (`depends_on` + `request_playbook` chains)
 - [ ] AI-powered finding correlation
 
 ## 📊 Metrics
 
 ### Code Coverage
-- **Current**: ~80% (101 tests — unit + integration; +35 for Playwright executor and browser skills)
+- **Current**: ~71% (225 tests — unit + integration; recent additions cover dependencies, playbooks, the router, `suggest_next_action`, and the operational guide)
 - **Target**: >80% for critical paths
 
 ### Documentation
@@ -145,7 +153,7 @@ Complete overview of what has been implemented and what remains to be done.
 ## 🐛 Known Issues
 
 ### High
-- [ ] No graceful shutdown handling
+- [x] Graceful shutdown handling (SIGTERM/SIGINT shut down both listeners cleanly)
 - [ ] Limited error context in some failures
 - [ ] No execution timeout enforcement
 

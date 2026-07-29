@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Taskmaster is a stateful MCP (Model Context Protocol) server that orchestrates autonomous security assessments using specialized Kali Linux containers. AI agents (e.g., Gemini) call MCP tools via JSON-RPC to queue tasks, spawn containers, and execute security skills.
+Taskmaster is a stateful MCP (Model Context Protocol) server that orchestrates autonomous security assessments using specialized Kali Linux containers. AI agents (Claude Code, Codex, and other MCP clients) call MCP tools via JSON-RPC to queue tasks, spawn containers, and execute security skills.
 
 ## Commands
 
@@ -44,7 +44,7 @@ AI Agent (Gemini)
     │  JSON-RPC (MCP protocol, STDIO)
     ▼
 server.py  ──► tools/           # MCP tool handlers
-               dashboard/       # Web UI (api.py, agents.py, templates/, static/)
+               dashboard/       # Web UI (api.py, agents.py, webapp.py, templates/, static/)
                state/state.py   # Execution lifecycle (QUEUED→CLAIMED→RUNNING→COMPLETED/FAILED)
                state/storage.py # SQLite persistence with WAL mode
                policies/state_policy.py  # Phase transition enforcement
@@ -83,7 +83,9 @@ Playwright/patchright/camoufox agents auto-load `/session/storage_state.json` in
 
 ## Key Concepts
 
-**State Machine:** Executions move through QUEUED → CLAIMED → RUNNING → COMPLETED/FAILED. Only one RUNNING execution per target (target locking via `state/storage.py`).
+**State Machine:** Executions move through QUEUED → CLAIMED → RUNNING → COMPLETED/FAILED, with CANCELLED as a terminal state for work whose dependency failed. Only one RUNNING execution per target (target locking via `state/storage.py`).
+
+**Task dependencies:** `request_security_action` accepts `depends_on` (a list of prerequisite execution ids); a queued execution is withheld from the ready set until every prerequisite is COMPLETED, and a failed/cancelled prerequisite recursively cancels everything blocked on it. `request_playbook` expands a named or inline step sequence into such a chain. See `state/state.py` (`dependencies_satisfied`, `cancel_blocked_dependents`) and `policies/playbooks.py`.
 
 **Security Phases:** Policy enforces ordering: `reconnaissance → enumeration → exploitation → post_exploitation → reporting`. See `policies/state_policy.py`.
 
@@ -95,100 +97,24 @@ Playwright/patchright/camoufox agents auto-load `/session/storage_state.json` in
 
 **Reporting database:** Execution results are an event log; client-facing report findings are curated records in Taskmaster's reporting tables (`engagements`, `report_assets`, `findings`, `finding_evidence`, `finding_references`). The dashboard's Observations tab shows execution-derived results only. Manage report findings through MCP tools or the dashboard's **Engagements** hub / **Report Findings** page, then render from stored findings with `request_reporting_docx` or the dashboard's queue action (rendered DOCX deliverables are downloadable from an engagement's render-history panel). Do not build a pwndoc sync path or carry pwndoc-specific IDs into Taskmaster report findings.
 
-**Threat model:** A per-engagement, evidence-grounded model in the reporting tables (`threat_models` + twelve `tm_*` entity tables: assumptions, roles, assets, terminal goals, attack surface, trust boundaries, attack paths, test objectives, existing/recommended mitigations, open questions, evidence notes). The orchestrating LLM synthesizes it from recon/enumeration data and findings; Taskmaster stores and displays it. Cross-references are ref strings the LLM authors (`AP-1` impacts `CA-1, CA-4`); every element is evidence-tagged (`EVIDENCED`/`USER-CONFIRMED`/`ASSUMED`/`OUT-OF-SCOPE`). Assemble inputs with `assemble_threat_model_context`, build with `create_threat_model` + `add_threat_model_entry`, export with `export_threat_model_markdown`. Rendered as tables in the engagement workspace. See the Threat modeling workflow below.
+**Threat model:** A per-engagement, evidence-grounded model in the reporting tables (`threat_models` + twelve `tm_*` entity tables: assumptions, roles, assets, terminal goals, attack surface, trust boundaries, attack paths, test objectives, existing/recommended mitigations, open questions, evidence notes). The orchestrating LLM synthesizes it from recon/enumeration data and findings; Taskmaster stores and displays it. Cross-references are ref strings the LLM authors (`AP-1` impacts `CA-1, CA-4`); every element is evidence-tagged (`EVIDENCED`/`USER-CONFIRMED`/`ASSUMED`/`OUT-OF-SCOPE`). Assemble inputs with `assemble_threat_model_context`, build with `create_threat_model` + `add_threat_model_entry`, export with `export_threat_model_markdown`. Rendered as tables in the engagement workspace. See the Threat modeling workflow in `OPERATIONAL_GUIDE.md`.
 
 **Audit:** Every state transition is logged to `runtime/audit/audit_log.jsonl`. Final report at `runtime/audit/session_report.md`.
 
-**MCP Tools (in `tools/`):** Core orchestration: `request_security_action`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`. Reporting: `create_reporting_engagement`, `list_reporting_engagements`, `create_reporting_finding`, `get_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, `add_reporting_finding_reference`, `list_reporting_findings`, `request_reporting_docx`. Threat modeling: `assemble_threat_model_context`, `create_threat_model`, `list_threat_models`, `get_threat_model`, `update_threat_model`, `add_threat_model_entry`, `update_threat_model_entry`, `delete_threat_model_entry`, `export_threat_model_markdown`.
+**Dashboard:** Served on its own loopback-only listener (default `127.0.0.1:5001`), separate from the agent-facing MCP endpoint; both answer `GET /healthz`. Request routing is table-driven in `dashboard/webapp.py` (`Router` + `DashboardHandler`). The **Overview** page is the landing view; the sidebar groups Operations and Reporting; the engagement scope selector filters the Overview/Executions/Observations/Targets/Agents views.
+
+**MCP Tools (in `tools/`):** Core orchestration: `request_security_action`, `request_playbook`, `spawn_agent`, `query_execution_status`, `fetch_execution_result`, `wait_for_completion`, `mark_execution_complete`, `claim_execution`, `start_execution`, `complete_execution`, `fail_execution`, `list_queued_executions`, `cleanup_agents`, `recover_execution`. Planning: `suggest_next_action` (read-only prioritized gaps), `get_operational_guide` (serves the operating manual). Reporting: `create_reporting_engagement`, `list_reporting_engagements`, `create_reporting_finding`, `get_reporting_finding`, `update_reporting_finding`, `add_reporting_finding_evidence`, `add_reporting_finding_reference`, `list_reporting_findings`, `request_reporting_docx`. Threat modeling: `assemble_threat_model_context`, `create_threat_model`, `list_threat_models`, `get_threat_model`, `update_threat_model`, `add_threat_model_entry`, `update_threat_model_entry`, `delete_threat_model_entry`, `export_threat_model_markdown`.
 
 ## Environment
 
-Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `HTTP_PROXY`, `SECLISTS_PATH`. Default `TASKMASTER_HOST` is `host.docker.internal` (Docker Desktop on macOS/Windows); Linux users should set it to the `docker0` bridge IP. See `.env.example` for the full list.
+Copy `.env.example` to `.env`. Key vars: `TASKMASTER_HOST`, `TASKMASTER_PORT`, `TASKMASTER_DASHBOARD_HOST`, `TASKMASTER_DASHBOARD_PORT`, `HTTP_PROXY`, `SECLISTS_PATH`. Default `TASKMASTER_HOST` is `host.docker.internal` (Docker Desktop on macOS/Windows); Linux users should set it to the `docker0` bridge IP. See `.env.example` for the full list.
 
-## Agent Operational Guide
+## Operating Taskmaster (driving the server)
 
-This section applies whenever Claude is the orchestrating LLM driving Taskmaster (not just when editing source code in this repo). Sister files `AGENTS.md` (Codex) and `GEMINI.md` carry the same workflow — keep them in sync when changing it.
+The workflow for *driving* Taskmaster during an assessment — the queue → provision → monitor → finalize loop, playbooks and dependencies, session material, the reporting database, and threat modeling — lives in one canonical guide: **`OPERATIONAL_GUIDE.md`**.
 
-Standard workflow:
-1. **Queue** — call `request_security_action`. When the work belongs to a known reporting engagement, pass its `engagement_id` so the execution is scoped to that engagement in the dashboard (create it first with `create_reporting_engagement`).
-2. **Provision** — call `spawn_agent` unless you have already verified that a compatible live worker is running for the same target and executor type.
-3. **Monitor** — call `wait_for_completion` to block until the execution reaches `COMPLETED` or `FAILED`.
-4. **Finalize with analysis** — when the executor returns, call `mark_execution_complete` (or `complete_execution` / `fail_execution`) with an `interpretation` argument. This is a **markdown summary of what the raw output means** — notable observations, suspected misconfigurations, and the next investigative step. The dashboard renders it as the primary "Analysis" panel; the raw agent stdout sits behind a "See agent output" toggle. Match the level of detail you would surface to a human reviewer in the CLI.
-5. **Record notes** — append novel captures to `recon-data.md` and promote anything worth triage to `Findings.md` in the current working directory (see Note-Taking Discipline below).
-6. **Cleanup** — once a target assessment or phase is finalized, use `cleanup_agents` to decommission the worker fleet.
+That guide is served to the orchestrating LLM over MCP (the `initialize` handshake surfaces its "Core loop"; the `get_operational_guide` tool returns the whole file), so it applies from any working directory and any MCP client — you do not need this repo checked out to receive it. Call `suggest_next_action` at session start (or whenever unsure) to orient.
 
-Do not assume that a `QUEUED` execution provisions a worker by itself. Use `query_execution_status` mainly for debugging, recovery, or explicit spot-checks — not as the default next step after queuing work.
+This file (`CLAUDE.md`) is the **development** guide for editing the Taskmaster codebase. When changing operator workflow, edit `OPERATIONAL_GUIDE.md` — it is the single source of truth. `AGENTS.md` (Codex) and `GEMINI.md` are thin pointers to it, not copies to keep in sync.
 
-### Bot-Protected Targets (Akamai, Cloudflare, Datadome…)
-
-Fingerprint-based bot defenses block below the HTTP layer — `ERR_HTTP2_PROTOCOL_ERROR`, silent 403s, challenge pages, or a "Burp Suite" upstream-failure page rendered by Burp itself. Burp cannot help here: its own Java TLS stack is part of what's detected. Skip the proxy for these targets and lean on the agent's own logging.
-
-Three-tier ladder — pick the **lowest tier** that yields the data you need:
-
-1. **`curl_cffi`** — Kali agent, `action_type: "python"`. JS not needed (API probes, OAuth/redirect chasing, sitemap/robots, raw endpoint enum). Wraps a real Chrome/Firefox/Safari TLS+HTTP2 fingerprint around a `requests`-like API.
-   ```python
-   from curl_cffi import requests
-   r = requests.get("https://target", impersonate="chrome124")
-   ```
-2. **Patchright** — Playwright agent with `browser_engine: "patchright"` (default). Anti-detection Chromium drop-in. First choice when JS is required.
-3. **Camoufox** — Playwright agent with `browser_engine: "camoufox"`. Fingerprint-hardened custom Firefox. Escalate to it when Patchright is still getting flagged.
-
-### Note-Taking Discipline
-
-Every engagement should produce two living files in the **current working directory** (the assessment folder, not `audit/`):
-
-- `Findings.md` — numbered `F-NNN` triage log. Each entry: **Where / Observation / Why it matters / Reproduction (when actionable) / Status / Recommendation**. Include informational and positive observations (e.g. "PII filter confirmed working against canary input"). Severity is a working estimate pending triage.
-- `recon-data.md` — the raw data dossier behind the findings. Captures, tables, request/response shapes. Numbered sections that `Findings.md` cites via `§{section}`.
-
-Create both files on first observation; do not wait for the user to ask. Append after every execution that produced novel data. When a hypothesis flips, add a dated follow-up paragraph rather than rewriting history. Full structure and worked examples in `policies/note_taking_template.md`.
-
-### Interpretation field — required for good UX
-
-Every finalization call should include `interpretation`. Without it the dashboard's observations panel only shows the raw executor stdout, which is often dense JSON or wall-of-text output. Markdown is supported (headers, `**bold**`, bullet lists, fenced code blocks, inline `code`, links). Aim for a few sentences to a few short paragraphs.
-
-**Voice for `interpretation`, `Findings.md`, and `recon-data.md` prose:** pentester drafting working notes. Plain and concrete — cite the URL, header, parameter, or payload that proves the claim instead of abstract risk language. No scaremongering ("catastrophic", "trivially exploitable"), no marketing tone ("robust", "world-class"), no hedging fluff. Length follows the observation. Full tone contract in `policies/note_taking_template.md`.
-
-### Reporting database workflow
-
-Use the database-backed reporting tools for normal engagements:
-
-1. Create an engagement with `create_reporting_engagement`.
-2. Add settled report findings with `create_reporting_finding`; include `source_execution_id` when the finding is based on a Taskmaster execution.
-3. Use `update_reporting_finding` for scalar edits. Use `add_reporting_finding_evidence` and `add_reporting_finding_reference` for proof material so edits do not silently replace the evidence trail.
-4. Review stored findings with `get_reporting_finding` or `list_reporting_findings`; responses include `report_shape`.
-5. Queue rendering with `request_reporting_docx`, then spawn `agent_type: "reporting"` and call `wait_for_completion`.
-
-Dashboard equivalent: the **Engagements** hub (`/reporting/engagements`) is the primary surface — per-engagement severity/status rollups, an editable scope panel, a filtered findings list with inline status transitions, and a render-history panel with DOCX download links. The flat **Report Findings** page (`/reporting/findings`) covers cross-engagement create/edit, evidence and references, filtering, and queuing DOCX renders. The queue action still creates a normal Taskmaster execution; a `reporting` worker must claim it. A global **scope selector** (top of the dashboard, cookie-persisted) filters the stats bar plus the Executions and Observations lists to one engagement. Executions are bound to an engagement by an explicit `engagement_id`: pass `engagement_id` to `request_security_action` when queuing work for a known engagement (create the engagement first with `create_reporting_engagement`) so its metrics and lists are accurate. Reporting renders inherit the engagement automatically. Untagged or legacy executions can be assigned from the execution detail panel in the dashboard.
-
-`request_reporting_docx` validates report-readiness and returns `not_ready` when required client-facing fields are missing. Fill the stored finding instead of bypassing that validation with a direct `report_skill` payload.
-
-Current DOCX output renders the finding body fields plus references. Inline backticks and fenced code blocks are formatted as Word code. Markdown pipe tables are not converted into Word tables yet, and stored evidence records are not rendered into a separate evidence section.
-
-### Threat modeling workflow (evidence-grounded, two-pass)
-
-A threat model is a per-engagement artifact you (the orchestrating LLM) synthesize — Taskmaster stores, renders, and exports it, but the reasoning is yours. Work in two passes.
-
-**First pass:**
-1. Call `assemble_threat_model_context(engagement_id)` for the DB-side evidence: scoped assets, recon/enumeration observations (executions tagged with `engagement_id` at queue time), curated findings, existing models, and any unresolved assumptions/open questions.
-2. Read the engagement's `Findings.md` and `recon-data.md` in your working directory — context the server can't see.
-3. `create_threat_model` (title, `scope`, `out_of_scope`, `review_date`). Then build the model with `add_threat_model_entry`, one entity at a time: `role`, `asset`, `terminal_goal`, `attack_surface`, `trust_boundary`, then a **small set of high-quality** `attack_path` entries (threat category, impacted assets, abused surface/boundary, preconditions, existing controls, gaps, likelihood, impact, priority). For every High/Critical attack path add at least one `test_objective` mapped to it. Split `existing_mitigation` from `recommended_mitigation`. Record `assumption` and `open_question` entries.
-4. **Evidence rule:** tag every element `EVIDENCED` (link a Taskmaster `execution_id`/`finding_id`, or cite an artifact), `USER-CONFIRMED`, `ASSUMED`, or `OUT-OF-SCOPE`. Never present an assumption as fact.
-5. Supply explicit `ref`s (e.g. `AP-1`) so cross-references stay stable; author cross-refs as ref strings (`impacted_assets` = "CA-1, CA-4").
-
-**Validation pass:** ask the material open questions one at a time (see `unresolved_for_validation`), then **propagate** each answer with `update_threat_model_entry` into the affected attack paths' likelihood/impact/priority, controls, and mitigations — not just a summary. Resolve the open question and promote the model `draft → in_review → final` with `update_threat_model`.
-
-Export the deliverable with `export_threat_model_markdown` (save as `<name>-threat-model.md` in the engagement directory). The model also renders as tables in the engagement workspace. Keep the set of threats small and high-quality; do not invent threats the evidence doesn't support.
-
-### Writing report content (`report_skill` deliverables)
-
-When creating or updating report findings, the stored fields become the **client-facing deliverable**. Translate, do not transcribe:
-
-- Never carry over `F-NNN` triage IDs, `§N.M` recon section markers, or "(pending triage)" qualifiers from `Findings.md` / `recon-data.md`. Those files are internal working artifacts and are not shared with the client; referencing them in the deliverable creates confusion.
-- Each field has one job: `description` = what was found (concrete), `impact` = why it matters in plain consequences, `proof_of_concept` = self-contained reproduction, `remediation` = specific actions.
-- Plain, succinct language — a few short paragraphs per field, not pages of prose.
-- Severity is a final value; strip working-estimate qualifiers.
-- `category` is a **fixed set** mirrored from the internal tracker (pwndoc) — pick the closest match from the enum shown in the tool schema; use `TBD` when not yet categorized. Do not invent a category: an off-list value is silently coerced to `Other`.
-
-Full style contract lives in the `skills/reporting.py` module docstring and `templates/README.md`.
-
-See `AGENTS.md` for the canonical model-agnostic guide, `GEMINI.md` for the fuller worker-queue context, `policies/agent_mission_template.md` for mission briefing structure plus the interpretation wrap-up, and `policies/note_taking_template.md` for the `Findings.md` / `recon-data.md` structure.
+See also `policies/agent_mission_template.md` (mission briefing structure) and `policies/note_taking_template.md` (`Findings.md` / `recon-data.md` structure).

@@ -30,9 +30,10 @@
                 hx-get="/api/agents/{{ a.executor_id }}/detail"
                 hx-target="#agent-detail-{{ loop.index }}"
                 hx-swap="innerHTML"
-                onclick="this.style.display='none'">Show Details</button>
+                hx-trigger="click once"
+                onclick="toggleDetail(this, 'agent-detail-{{ loop.index }}')">Show Details</button>
     </div>
-    <div id="agent-detail-{{ loop.index }}"></div>
+    <div id="agent-detail-{{ loop.index }}" class="detail-slot collapsed"></div>
 </div>
 {% endfor %}
 </div>

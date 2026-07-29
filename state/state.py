@@ -18,6 +18,7 @@ def create_execution(
     request_payload: dict,
     created_by: str = "system",
     engagement_id: str | None = None,
+    depends_on: list | None = None,
 ) -> dict:
     """
     Create a new execution in QUEUED status.
@@ -25,6 +26,10 @@ def create_execution(
     ``engagement_id`` optionally binds the execution to a reporting engagement so
     the dashboard can scope metrics and lists to it unambiguously (executions on
     shared scope no longer collide across engagements).
+
+    ``depends_on`` is an optional list of prerequisite execution_ids. The
+    execution is withheld from workers until every prerequisite has COMPLETED,
+    and is CANCELLED if any prerequisite fails (see cancel_blocked_dependents).
     """
     record = {
         "execution_id": execution_id,
@@ -39,10 +44,48 @@ def create_execution(
         "request": request_payload,
         "result": None,
         "engagement_id": engagement_id,
+        "depends_on": list(depends_on) if depends_on else None,
     }
 
     append_execution(record)
     return record
+
+
+def dependencies_satisfied(execution: dict) -> bool:
+    """True when every prerequisite of ``execution`` has COMPLETED (or it has none)."""
+    deps = execution.get("depends_on") or []
+    if not deps:
+        return True
+    by_id = {e["execution_id"]: e for e in load_executions()}
+    return all(by_id.get(dep, {}).get("status") == "COMPLETED" for dep in deps)
+
+
+def cancel_blocked_dependents(execution_id: str, reason: str | None = None) -> list:
+    """Recursively CANCEL QUEUED/CLAIMED executions blocked by a dead prerequisite.
+
+    When an execution can no longer reach COMPLETED (it FAILED or was CANCELLED),
+    anything depending on it can never run. Marking those dependents CANCELLED
+    keeps dead work out of the queue and off the target lock, and recursion
+    handles multi-step chains. Returns the cancelled execution_ids.
+    """
+    reason = reason or f"Cancelled: dependency {execution_id} did not complete"
+    now = datetime.now(timezone.utc).isoformat()
+    cancelled = []
+    for e in load_executions():
+        deps = e.get("depends_on") or []
+        if execution_id in deps and e.get("status") in ("QUEUED", "CLAIMED"):
+            update_execution(
+                e["execution_id"],
+                {
+                    "status": "CANCELLED",
+                    "updated_at": now,
+                    "updated_by": "dependency",
+                    "result": reason,
+                },
+            )
+            cancelled.append(e["execution_id"])
+            cancelled.extend(cancel_blocked_dependents(e["execution_id"], reason))
+    return cancelled
 
 
 def is_target_busy(target: str) -> bool:
@@ -78,6 +121,15 @@ def transition_execution(
     if not is_lifecycle_allowed(current_status, requested_status):
         raise ValueError(f"Illegal transition {current_status} -> {requested_status}")
 
+    # Dependency gate: a QUEUED execution cannot be claimed until every
+    # prerequisite has COMPLETED. Workers only see ready tasks via
+    # get_queued_executions, but a direct claim must not bypass the gate.
+    if current_status == "QUEUED" and requested_status == "CLAIMED":
+        if not dependencies_satisfied(execution):
+            raise ValueError(
+                f"Execution {execution_id} has unmet dependencies; not ready to claim"
+            )
+
     # Executor ownership verification:
     # CLAIMED→RUNNING and RUNNING→COMPLETED/FAILED must match the executor who claimed/started.
     if current_status in ("CLAIMED", "RUNNING"):
@@ -111,7 +163,15 @@ def transition_execution(
             raise ValueError(f"Target {target} is currently busy with another execution.")
         return updated
 
-    return update_execution(execution_id, updates)
+    updated = update_execution(execution_id, updates)
+    # A dead execution can never satisfy its dependents — cancel them so the
+    # chain doesn't hang QUEUED forever.
+    if updated and requested_status in ("FAILED", "CANCELLED"):
+        cancel_blocked_dependents(
+            execution_id,
+            f"Cancelled: dependency {execution_id} {requested_status.lower()}",
+        )
+    return updated
 
 
 def get_execution_state(execution_id: str) -> Optional[dict]:
@@ -140,8 +200,20 @@ def get_target_state(target: str) -> Dict[str, Optional[str]]:
 
 
 def get_queued_executions():
-    """
-    Returns a list of all executions currently in QUEUED status.
+    """Return QUEUED executions that are ready to run (all dependencies COMPLETED).
+
+    Executions still waiting on an unfinished prerequisite are withheld from
+    workers until it completes. A dependent whose prerequisite fails is
+    CANCELLED elsewhere (see cancel_blocked_dependents), so it never lingers
+    here as permanently-blocked QUEUED work.
     """
     executions = load_executions()
-    return [e for e in executions if e.get("status") == "QUEUED"]
+    by_id = {e["execution_id"]: e for e in executions}
+    ready = []
+    for e in executions:
+        if e.get("status") != "QUEUED":
+            continue
+        deps = e.get("depends_on") or []
+        if all(by_id.get(dep, {}).get("status") == "COMPLETED" for dep in deps):
+            ready.append(e)
+    return ready

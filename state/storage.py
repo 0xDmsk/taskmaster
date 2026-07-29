@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS executions (
     request TEXT NOT NULL DEFAULT '{}',
     result TEXT,
     interpretation TEXT,
-    engagement_id TEXT
+    engagement_id TEXT,
+    depends_on TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_target_status ON executions (target, status);
 CREATE INDEX IF NOT EXISTS idx_status ON executions (status);
@@ -369,6 +370,29 @@ CREATE TABLE IF NOT EXISTS tm_evidence_notes (
     updated_by TEXT,
     FOREIGN KEY (threat_model_id) REFERENCES threat_models (threat_model_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS finding_templates (
+    template_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'Info',
+    category TEXT NOT NULL DEFAULT 'TBD',
+    description TEXT NOT NULL DEFAULT '',
+    impact TEXT NOT NULL DEFAULT '',
+    proof_of_concept TEXT NOT NULL DEFAULT '',
+    remediation TEXT NOT NULL DEFAULT '',
+    references_json TEXT NOT NULL DEFAULT '[]',
+    cvss_score TEXT,
+    cvss_vector TEXT,
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_finding_templates_category
+    ON finding_templates (category);
+CREATE INDEX IF NOT EXISTS idx_finding_templates_severity
+    ON finding_templates (severity);
 """
 
 # Online-migration columns, keyed by table. Adding a column to an existing table
@@ -378,6 +402,7 @@ _REQUIRED_COLUMNS = {
     "executions": {
         "interpretation": "TEXT",
         "engagement_id": "TEXT",
+        "depends_on": "TEXT",
     },
     "threat_models": {
         "review_date": "TEXT",
@@ -509,6 +534,17 @@ def _row_to_dict(row):
             d["request"] = json.loads(d["request"])
         except (json.JSONDecodeError, TypeError):
             d["request"] = {}
+    # Deserialize depends_on (JSON list of prerequisite execution_ids) → list.
+    if "depends_on" in d:
+        raw = d["depends_on"]
+        if isinstance(raw, str) and raw:
+            try:
+                parsed = json.loads(raw)
+                d["depends_on"] = parsed if isinstance(parsed, list) else []
+            except (json.JSONDecodeError, TypeError):
+                d["depends_on"] = []
+        elif not raw:
+            d["depends_on"] = []
     return d
 
 
@@ -522,12 +558,13 @@ def load_executions():
 def append_execution(record):
     """Insert a new execution record."""
     with _connect() as conn:
+        depends_on = record.get("depends_on")
         conn.execute(
             """INSERT INTO executions
                (execution_id, target, security_phase, status,
                 created_at, created_by, updated_at, updated_by,
-                executor_id, request, result, engagement_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                executor_id, request, result, engagement_id, depends_on)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 record["execution_id"],
                 record["target"],
@@ -541,6 +578,7 @@ def append_execution(record):
                 json.dumps(record.get("request", {})),
                 record.get("result"),
                 record.get("engagement_id"),
+                json.dumps(depends_on) if depends_on else None,
             ),
         )
 

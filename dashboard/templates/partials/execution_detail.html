@@ -12,6 +12,19 @@
                     <dd><a href="/targets#target:{{ e.target }}" onclick="event.stopPropagation()">{{ e.target }}</a></dd>
                     <dt>Phase</dt>
                     <dd>{{ e.security_phase }}</dd>
+                    {% if e.depends_on %}
+                    <dt>Depends on</dt>
+                    <dd class="dep-list">
+                        {% for dep in e.depends_on %}
+                        <a href="/executions#exec:{{ dep }}" onclick="event.stopPropagation()"
+                           title="{{ dep }}">{{ dep[:12] }}</a>
+                        {% endfor %}
+                    </dd>
+                    {% endif %}
+                    {% if e.status == 'CANCELLED' and e.result %}
+                    <dt>Cancel reason</dt>
+                    <dd style="font-family:var(--sans);word-break:normal">{{ e.result }}</dd>
+                    {% endif %}
                     <dt>Engagement</dt>
                     <dd>
                         <form class="assign-engagement"

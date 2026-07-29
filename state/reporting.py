@@ -7,6 +7,7 @@ templates, and report artifacts.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from datetime import datetime, timezone
@@ -484,6 +485,226 @@ def finding_to_report_dict(finding: dict) -> dict:
         "remediation": finding.get("remediation") or "",
         "references": refs,
     }
+
+
+# --------------------------------------------------------------------------- #
+# Finding templates (reusable vulnerability library)                           #
+# --------------------------------------------------------------------------- #
+#
+# A finding template is a reusable, engagement-agnostic write-up — the pwndoc
+# "vulnerability template" concept, native to Taskmaster. It carries only the
+# content fields of a finding (title, severity, category, the four body fields,
+# references, CVSS); the instance-specific bits (engagement, affected target,
+# status, evidence, source execution) are filled in when a template is
+# instantiated into a real finding.
+
+_TEMPLATE_CONTENT_FIELDS = (
+    "title",
+    "severity",
+    "category",
+    "description",
+    "impact",
+    "proof_of_concept",
+    "remediation",
+    "cvss_score",
+    "cvss_vector",
+)
+
+
+def _normalize_template_references(references: list[str | dict] | None) -> list[dict]:
+    """Coerce references to a list of {label, url} dicts (label optional)."""
+    normalized = []
+    for ref in references or []:
+        if isinstance(ref, dict):
+            url = _clean_text(ref.get("url")).strip()
+            label = _clean_text(ref.get("label")).strip() or None
+        else:
+            url = _clean_text(ref).strip()
+            label = None
+        if url:
+            normalized.append({"label": label, "url": url})
+    return normalized
+
+
+def _row_to_template(row) -> dict:
+    template = dict(row)
+    try:
+        template["references"] = json.loads(template.pop("references_json", "[]") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        template["references"] = []
+    return template
+
+
+def create_finding_template(
+    *,
+    title: str,
+    template_id: str | None = None,
+    severity: str = "Info",
+    category: str | None = None,
+    description: str = "",
+    impact: str = "",
+    proof_of_concept: str = "",
+    remediation: str = "",
+    cvss_score: str | None = None,
+    cvss_vector: str | None = None,
+    references: list[str | dict] | None = None,
+    source: str = "manual",
+    created_by: str = "system",
+) -> dict:
+    """Create a reusable finding template."""
+    if not title or not title.strip():
+        raise ValueError("title is required")
+    _validate_choice(severity, SEVERITIES, "severity")
+    category = normalize_category(category)
+    refs_json = json.dumps(_normalize_template_references(references))
+
+    now = _now()
+    template_id = template_id or _new_id("ftpl")
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO finding_templates
+               (template_id, title, severity, category, description, impact,
+                proof_of_concept, remediation, references_json, cvss_score,
+                cvss_vector, source, created_at, created_by, updated_at, updated_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                template_id,
+                title.strip(),
+                severity,
+                category,
+                _clean_text(description),
+                _clean_text(impact),
+                _clean_text(proof_of_concept),
+                _clean_text(remediation),
+                refs_json,
+                cvss_score,
+                cvss_vector,
+                source,
+                now,
+                created_by,
+                now,
+                created_by,
+            ),
+        )
+    return get_finding_template(template_id)
+
+
+def get_finding_template(template_id: str) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM finding_templates WHERE template_id = ?", (template_id,)
+        ).fetchone()
+        return _row_to_template(row) if row else None
+
+
+def list_finding_templates(
+    *,
+    severity: str | None = None,
+    category: str | None = None,
+    query: str | None = None,
+) -> list[dict]:
+    sql = "SELECT * FROM finding_templates"
+    clauses = []
+    values: list[str] = []
+    if severity:
+        clauses.append("severity = ?")
+        values.append(severity)
+    if category:
+        clauses.append("category = ?")
+        values.append(category)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY title COLLATE NOCASE ASC"
+
+    with _connect() as conn:
+        rows = conn.execute(sql, values).fetchall()
+    templates = [_row_to_template(r) for r in rows]
+
+    if query:
+        needle = query.lower()
+        templates = [
+            t
+            for t in templates
+            if needle in (t.get("title") or "").lower()
+            or needle in (t.get("description") or "").lower()
+            or needle in (t.get("remediation") or "").lower()
+        ]
+    return templates
+
+
+def update_finding_template(
+    template_id: str, *, updated_by: str = "system", **updates
+) -> dict | None:
+    """Update scalar fields / references on a template."""
+    existing = get_finding_template(template_id)
+    if not existing:
+        return None
+
+    if "severity" in updates:
+        _validate_choice(updates["severity"], SEVERITIES, "severity")
+    if "category" in updates:
+        updates["category"] = normalize_category(updates["category"])
+
+    columns = []
+    values: list[Any] = []
+    for field in ("title", "severity", "category", "description", "impact",
+                  "proof_of_concept", "remediation", "cvss_score", "cvss_vector", "source"):
+        if field in updates:
+            columns.append(f"{field} = ?")
+            values.append(updates[field])
+    if "references" in updates:
+        columns.append("references_json = ?")
+        values.append(json.dumps(_normalize_template_references(updates["references"])))
+
+    if not columns:
+        return existing
+
+    columns.append("updated_at = ?")
+    values.append(_now())
+    columns.append("updated_by = ?")
+    values.append(updated_by)
+    values.append(template_id)
+
+    with _connect() as conn:
+        conn.execute(
+            f"UPDATE finding_templates SET {', '.join(columns)} WHERE template_id = ?",
+            values,
+        )
+    return get_finding_template(template_id)
+
+
+def delete_finding_template(template_id: str) -> bool:
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM finding_templates WHERE template_id = ?", (template_id,)
+        )
+        return cur.rowcount > 0
+
+
+def template_to_finding_payload(template: dict) -> dict:
+    """Prefill payload for creating a finding from a template.
+
+    Copies the content fields; leaves engagement/affected/status/evidence for the
+    caller to supply. References are passed through in {label, url} form.
+    """
+    payload = {field: template.get(field) for field in _TEMPLATE_CONTENT_FIELDS}
+    payload["references"] = template.get("references", [])
+    return payload
+
+
+def finding_to_template_payload(finding: dict) -> dict:
+    """Extract the reusable content of a finding as a template payload.
+
+    Drops the instance-specific fields (engagement, affected, status, evidence,
+    source execution) so a good finding can be promoted into the library.
+    """
+    payload = {field: finding.get(field) for field in _TEMPLATE_CONTENT_FIELDS}
+    payload["references"] = [
+        {"label": r.get("label"), "url": r.get("url")}
+        for r in finding.get("references", [])
+        if r.get("url")
+    ]
+    return payload
 
 
 def _insert_reference(conn, finding_id: str, ref: str | dict, sort_order: int) -> dict:

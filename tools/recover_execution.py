@@ -72,6 +72,12 @@ def _recover_single(execution_id, reason):
     if not updated:
         return {"error": f"Failed to update execution {execution_id}"}
 
+    from state.state import cancel_blocked_dependents
+
+    cancel_blocked_dependents(
+        execution_id, f"Cancelled: dependency {execution_id} recovered to FAILED"
+    )
+
     log_event(
         "execution_recovered",
         {

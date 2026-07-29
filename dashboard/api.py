@@ -12,9 +12,11 @@ from state.reporting import (
     SEVERITIES,
     get_engagement,
     get_finding,
+    get_finding_template,
     get_threat_model,
     list_assets,
     list_engagements,
+    list_finding_templates,
     list_findings,
     list_threat_models,
     threat_model_detail_paths,
@@ -64,6 +66,7 @@ def get_stats(engagement_id=None):
         "RUNNING": 0,
         "COMPLETED": 0,
         "FAILED": 0,
+        "CANCELLED": 0,
     }
     for e in execs:
         s = e.get("status", "QUEUED")
@@ -137,9 +140,9 @@ def get_execution(execution_id):
     return get_execution_by_id(execution_id)
 
 
-def get_targets():
-    """Per-target aggregated stats with phase progress."""
-    execs = load_executions()
+def get_targets(engagement_id=None):
+    """Per-target aggregated stats with phase progress, optionally engagement-scoped."""
+    execs = _scope_executions(load_executions(), engagement_id)
     targets = {}
     for e in execs:
         t = e.get("target", "unknown")
@@ -349,8 +352,80 @@ def get_report_finding_detail(finding_id):
 
 
 # --------------------------------------------------------------------------- #
+# Finding templates (reusable vulnerability library)                           #
+# --------------------------------------------------------------------------- #
+
+
+def get_finding_templates(severity=None, category=None, query=None):
+    """List reusable finding templates for the dashboard."""
+    return list_finding_templates(
+        severity=severity or None, category=category or None, query=query or None
+    )
+
+
+def get_finding_template_detail(template_id):
+    """Return one finding template."""
+    return get_finding_template(template_id)
+
+
+def get_finding_template_options():
+    """Dropdown values for the finding-template UI (no engagement/status)."""
+    return {
+        "severities": [severity for severity in SEVERITY_ORDER if severity in SEVERITIES],
+        "categories": list(FINDING_CATEGORY_ORDER),
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Engagement workspace                                                         #
 # --------------------------------------------------------------------------- #
+
+
+def get_overview(engagement_id=None):
+    """At-a-glance payload for the Overview landing page.
+
+    Complements the always-present stats bar (which carries the raw counters) with
+    the things it can't show: a severity distribution, phase-coverage progress, and
+    the most recent executions and findings. Scoped by the engagement selector.
+    """
+    execs = _scope_executions(load_executions(), engagement_id)
+    stats = get_stats(engagement_id=engagement_id)
+
+    phase_progress = []
+    for phase in PHASES:
+        phase_execs = [e for e in execs if e.get("security_phase") == phase]
+        total = len(phase_execs)
+        completed = sum(1 for e in phase_execs if e.get("status") == "COMPLETED")
+        phase_progress.append(
+            {
+                "phase": phase,
+                "total": total,
+                "completed": completed,
+                "pct": round(100 * completed / total) if total else 0,
+            }
+        )
+
+    severity = stats["findings"]["severity"]
+    severity_max = max(severity.values()) if severity else 0
+
+    findings = list_findings(engagement_id=engagement_id or None, include_evidence=False)
+    latest_findings = sorted(
+        findings, key=lambda f: f.get("created_at") or "", reverse=True
+    )[:6]
+
+    engagement = get_engagement(engagement_id) if engagement_id else None
+
+    return {
+        "engagement_id": engagement_id,
+        "engagement": engagement,
+        "stats": stats,
+        "severity": severity,
+        "severity_max": severity_max,
+        "phase_progress": phase_progress,
+        "recent_executions": list(reversed(execs))[:8],
+        "latest_findings": latest_findings,
+        "target_count": len({e.get("target") for e in execs if e.get("target")}),
+    }
 
 
 def get_engagements_overview():

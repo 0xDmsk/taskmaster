@@ -263,7 +263,7 @@ source ~/.zshrc  # or ~/.bashrc
 
 ## 📚 Additional Resources
 
-- **Gemini CLI**: Share `GEMINI.md` as context
+- **Gemini CLI**: Point it at `OPERATIONAL_GUIDE.md`
 - **Tool Schemas**: See `tools/*.json` for detailed schemas
 - **MCP Protocol**: https://modelcontextprotocol.io
 - **Taskmaster Docs**: See `README.md` and `SETUP.md`
@@ -274,7 +274,7 @@ source ~/.zshrc  # or ~/.bashrc
 2. **Development**: Use STDIO mode for debugging (easier to see errors)
 3. **Production**: Use HTTP mode for stability
 4. **Security**: Only bind to localhost unless you need network access
-5. **Context**: Always provide `GEMINI.md` to AI agents for best results
+5. **Context**: The operator workflow (`OPERATIONAL_GUIDE.md`) reaches MCP clients automatically via the `initialize` handshake and the `get_operational_guide` tool
 
 ## 🔐 Security Notes
 

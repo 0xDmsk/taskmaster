@@ -11,7 +11,7 @@ from dashboard.api import (
     get_report_finding_options,
     get_report_findings,
 )
-from server import TaskmasterHTTPHandler
+from dashboard.webapp import DashboardHandler
 from state.reporting import create_engagement, create_finding
 
 
@@ -58,39 +58,15 @@ def test_report_findings_api_filters_and_enriches_rows():
     assert get_report_findings(query="does-not-match") == []
 
 
-def test_report_findings_templates_render_list_and_edit_form():
-    engagement, finding = _seed_report_finding()
+def test_report_finding_edit_form_still_renders():
+    """The finding create/edit form survives the flat-list removal (engagement flow)."""
+    _engagement, finding = _seed_report_finding()
     options = get_report_finding_options()
-    rows = get_report_findings(engagement_id=engagement["engagement_id"])
-
-    list_html = render(
-        "report_findings.html",
-        page="report_findings",
-        stats={},
-        findings=rows,
-        options=options,
-        filters={
-            "engagement_id": engagement["engagement_id"],
-            "status": "",
-            "severity": "",
-            "q": "",
-        },
-        message=None,
-        error=None,
-    )
-
-    assert "Report Findings" in list_html
-    assert "Missing authorization on export endpoint" in list_html
-    assert "/reporting/findings/new" in list_html
-    assert "Queue DOCX" in list_html
-    assert '<div id="report-findings-list">' in list_html
-    assert '<div id="report-findings-list"\n     hx-get=' not in list_html
-    assert 'hx-target="#report-findings-list"' in list_html
 
     detail = get_report_finding_detail(finding["finding_id"])
     form_html = render(
         "report_finding_form.html",
-        page="report_findings",
+        page="engagements",
         stats={},
         mode="edit",
         finding=detail,
@@ -103,22 +79,21 @@ def test_report_findings_templates_render_list_and_edit_form():
     assert "Replay response" in form_html
     assert "CWE-639" in form_html
     assert f"/reporting/findings/{finding['finding_id']}/evidence" in form_html
+    # Save-as-template action is available on the edit page.
+    assert f"/reporting/findings/{finding['finding_id']}/save-as-template" in form_html
 
 
-def test_report_findings_page_route_renders_query_filter():
-    engagement, _finding = _seed_report_finding()
-    handler = object.__new__(TaskmasterHTTPHandler)
-    handler.path = (
-        "/reporting/findings?"
-        f"engagement_id={engagement['engagement_id']}&status=confirmed&q=export"
-    )
+def test_findings_flat_route_redirects_to_engagements():
+    """The removed flat findings list redirects rather than 404s."""
+    handler = object.__new__(DashboardHandler)
+    handler.path = "/reporting/findings"
     handler.headers = {}
-    response = {}
+    calls = []
+    handler.send_response = lambda status: calls.append(("status", status))
+    handler.send_header = lambda k, v: calls.append(("header", k, v))
+    handler.end_headers = lambda: calls.append(("end",))
 
-    handler._send_html = lambda status, html: response.update({"status": status, "html": html})
+    DashboardHandler.do_GET(handler)
 
-    TaskmasterHTTPHandler.do_GET(handler)
-
-    assert response["status"] == 200
-    assert "Report Findings" in response["html"]
-    assert "Missing authorization on export endpoint" in response["html"]
+    assert ("status", 302) in calls
+    assert ("header", "Location", "/reporting/engagements") in calls

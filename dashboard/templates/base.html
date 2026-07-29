@@ -16,27 +16,40 @@
                 <span>Security Dashboard</span>
             </div>
             <nav>
+                <div class="nav-section-label">Operations</div>
+                <a href="/overview" class="{% if page == 'overview' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                    Overview
+                </a>
                 <a href="/executions" class="{% if page == 'executions' %}active{% endif %}">
-                    <span class="icon">&#9654;</span> Executions
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Executions
                 </a>
                 <a href="/targets" class="{% if page == 'targets' %}active{% endif %}">
-                    <span class="icon">&#9678;</span> Targets
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    Targets
                 </a>
                 <a href="/agents" class="{% if page == 'agents' %}active{% endif %}">
-                    <span class="icon">&#9881;</span> Agents
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1"/><rect x="3" y="13" width="18" height="7" rx="1"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/></svg>
+                    Agents
                 </a>
                 <a href="/observations" class="{% if page == 'observations' %}active{% endif %}">
-                    <span class="icon">&#9733;</span> Observations
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Observations
                 </a>
+                <div class="nav-section-label">Reporting</div>
                 <a href="/reporting/engagements" class="{% if page == 'engagements' %}active{% endif %}">
-                    <span class="icon">&#9707;</span> Engagements
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                    Engagements
                 </a>
-                <a href="/reporting/findings" class="{% if page == 'report_findings' %}active{% endif %}">
-                    <span class="icon">&#9635;</span> Report Findings
+                <a href="/reporting/templates" class="{% if page == 'finding_templates' %}active{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Finding Templates
                 </a>
             </nav>
         </aside>
         <main class="main">
+            {% if page not in ['engagements', 'finding_templates'] %}
             <div class="scope-bar">
                 <label for="engagement-scope">Scope</label>
                 <select id="engagement-scope" onchange="setEngagementScope(this.value)">
@@ -46,9 +59,12 @@
                     {% endfor %}
                 </select>
             </div>
+            {% endif %}
+            {% if page == 'overview' %}
             <div hx-get="/api/stats" hx-trigger="load, every 5s" hx-swap="innerHTML">
                 {% include "partials/stats_bar.html" %}
             </div>
+            {% endif %}
             {% block content %}{% endblock %}
         </main>
     </div>
@@ -77,14 +93,24 @@
     })();
     </script>
     <script>
+    /* --- Lazy-load + show/hide toggle for Targets & Agents detail slots ---
+       The slot starts `.collapsed` (hidden); htmx fills it once on first click
+       (hx-trigger="click once"), and each click flips visibility + button label. */
+    window.toggleDetail = function(btn, id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        var collapsed = el.classList.toggle('collapsed');
+        btn.textContent = collapsed ? 'Show Details' : 'Hide Details';
+    };
+    </script>
+    <script>
     (function() {
         /* --- Pause polling when any detail is expanded --- */
         function hasOpenDetail() {
             return document.querySelector('.detail-row.expanded') ||
                    document.querySelector('.observation-card[open]') ||
                    document.querySelector('.report-finding-card[open]') ||
-                   document.querySelector('.target-detail-container') ||
-                   document.querySelector('.agent-card .detail-panel');
+                   document.querySelector('.detail-slot:not(.collapsed)');
         }
 
         document.body.addEventListener('htmx:beforeRequest', function(evt) {

@@ -12,6 +12,7 @@
         <option value="RUNNING" {% if filters.status == 'RUNNING' %}selected{% endif %}>Running</option>
         <option value="COMPLETED" {% if filters.status == 'COMPLETED' %}selected{% endif %}>Completed</option>
         <option value="FAILED" {% if filters.status == 'FAILED' %}selected{% endif %}>Failed</option>
+        <option value="CANCELLED" {% if filters.status == 'CANCELLED' %}selected{% endif %}>Cancelled</option>
     </select>
     <input type="text" name="target" placeholder="Filter by target..."
            hx-get="/api/executions" hx-target="#exec-table" hx-swap="innerHTML"
@@ -33,7 +34,6 @@
     <table>
         <thead>
             <tr>
-                <th>ID</th>
                 <th>Target</th>
                 <th>Phase</th>
                 <th>Status</th>
