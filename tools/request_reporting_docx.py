@@ -20,6 +20,12 @@ _REQUIRED_REPORT_FIELDS = (
     "remediation",
 )
 
+# Fields that are not hard-required for the template engine but must be present
+# for a complete, client-facing report. When any are missing the tool returns the
+# finding context so the orchestrating LLM can derive appropriate values and fill
+# them in before retrying.
+_ENRICHMENT_FIELDS = ("cvss_score", "cvss_vector", "references")
+
 
 def handle_request_reporting_docx(args):
     finding_ids = args.get("finding_ids") or []
@@ -62,6 +68,47 @@ def handle_request_reporting_docx(args):
         return {
             "error": "Some findings are not report-ready",
             "not_ready": not_ready,
+        }
+
+    # Enrichment gate: CVSS score, CVSS vector, and at least one reference must
+    # be present for every finding before it goes to the client. Return the
+    # finding content (title, severity, category, description) alongside the gap
+    # list so the orchestrating LLM has enough context to decide appropriate
+    # values, update the finding via update_reporting_finding /
+    # add_reporting_finding_reference, then retry.
+    needs_enrichment = []
+    for finding, stored in zip(report_findings, stored_findings):
+        gaps = []
+        if not finding.get("cvss", {}).get("score"):
+            gaps.append("cvss_score")
+        if not finding.get("cvss", {}).get("vector"):
+            gaps.append("cvss_vector")
+        if not finding.get("references"):
+            gaps.append("references")
+        if gaps:
+            needs_enrichment.append(
+                {
+                    "finding_id": finding["id"],
+                    "missing": gaps,
+                    # Provide enough context for the LLM to derive values.
+                    "context": {
+                        "title": finding["title"],
+                        "severity": finding["severity"],
+                        "category": finding["category"],
+                        "description": (finding.get("description") or "")[:800],
+                    },
+                }
+            )
+    if needs_enrichment:
+        return {
+            "error": "Some findings are missing CVSS metadata or references",
+            "needs_enrichment": needs_enrichment,
+            "instructions": (
+                "For each finding above, determine appropriate values based on the "
+                "provided context, then call update_reporting_finding (cvss_score, "
+                "cvss_vector) and add_reporting_finding_reference (at least one "
+                "authoritative reference URL) before retrying request_reporting_docx."
+            ),
         }
 
     engagement = get_engagement(engagement_id) if engagement_id else None

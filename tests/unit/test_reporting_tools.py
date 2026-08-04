@@ -98,6 +98,9 @@ def test_request_reporting_docx_queues_report_skill_from_stored_findings():
             "impact": "The path disclosure gives attackers implementation detail.",
             "proof_of_concept": "GET /debug/error returned /srv/app/current/app.py.",
             "remediation": "Return generic errors and log detailed traces server-side.",
+            "cvss_score": "5.3",
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+            "references": ["https://owasp.org/www-community/attacks/Full_Path_Disclosure"],
         }
     )["finding"]
 
@@ -184,3 +187,55 @@ def test_request_reporting_docx_rejects_incomplete_findings():
     assert result["error"] == "Some findings are not report-ready"
     assert result["not_ready"][0]["finding_id"] == finding["finding_id"]
     assert "affected" in result["not_ready"][0]["missing"]
+
+
+def test_request_reporting_docx_requires_cvss_and_references():
+    finding = handle_create_reporting_finding(
+        {
+            "title": "SQL injection in login form",
+            "severity": "Critical",
+            "category": "Web",
+            "status": "confirmed",
+            "affected": "POST /auth/login",
+            "description": "The username parameter is not parameterized.",
+            "impact": "Full database read/write access.",
+            "proof_of_concept": "' OR 1=1--",
+            "remediation": "Use parameterized queries.",
+        }
+    )["finding"]
+
+    result = handle_request_reporting_docx({"finding_ids": finding["finding_id"]})
+
+    assert result["error"] == "Some findings are missing CVSS metadata or references"
+    entry = result["needs_enrichment"][0]
+    assert entry["finding_id"] == finding["finding_id"]
+    assert "cvss_score" in entry["missing"]
+    assert "cvss_vector" in entry["missing"]
+    assert "references" in entry["missing"]
+    # Context fields must be present so the LLM can derive values.
+    assert entry["context"]["title"] == "SQL injection in login form"
+    assert entry["context"]["severity"] == "Critical"
+    assert "instructions" in result
+
+
+def test_request_reporting_docx_passes_when_cvss_and_references_present():
+    finding = handle_create_reporting_finding(
+        {
+            "title": "Reflected XSS in search",
+            "severity": "Medium",
+            "category": "Web",
+            "status": "confirmed",
+            "affected": "GET /search?q=",
+            "description": "The q parameter is reflected without encoding.",
+            "impact": "Session hijacking via crafted link.",
+            "proof_of_concept": "<script>alert(1)</script>",
+            "remediation": "HTML-encode all reflected user input.",
+            "cvss_score": "6.1",
+            "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+            "references": ["https://owasp.org/www-community/attacks/xss/"],
+        }
+    )["finding"]
+
+    result = handle_request_reporting_docx({"finding_ids": finding["finding_id"]})
+
+    assert result["status"] == "QUEUED"
