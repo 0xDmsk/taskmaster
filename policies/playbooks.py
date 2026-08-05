@@ -55,6 +55,51 @@ PLAYBOOKS = {
             },
         ],
     },
+    "aws-privesc-recon": {
+        "description": (
+            "AWS identity attack-surface map from a set of credentials: account "
+            "audit + loot sweep (recon) then IAM privilege-escalation path finding "
+            "(enumeration). Read-only — it maps the privesc paths; it does not walk "
+            "them. Pass the profile/region via each step's arguments, or rely on the "
+            "worker's ambient credentials. Target is a nominal label (account id/ARN)."
+        ),
+        "steps": [
+            {
+                "phase": "reconnaissance",
+                "agent_role": "recon",
+                "action_type": "skill",
+                "skill": "cloud.AwsCliAudit",
+                "arguments": {},
+                "justification": (
+                    "Baseline the compromised AWS identity: resolve the caller with STS, "
+                    "then inventory S3 (recursing buckets to flag keys, .env, tfstate and "
+                    "other loot), IAM users, Secrets Manager, and DynamoDB tables to scope "
+                    "what this principal can already reach."
+                ),
+                "expected_output": (
+                    "Caller identity/ARN, bucket list with flagged interesting object keys, "
+                    "IAM user names, Secrets Manager secret names, and DynamoDB table names."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "skill",
+                "skill": "cloud.IamPrivescFinder",
+                "arguments": {},
+                "justification": (
+                    "Walk the caller's attached and inline IAM policies (every policy "
+                    "version, not just the default) and flag known privilege-escalation "
+                    "primitives — SetDefaultPolicyVersion, PassRole+CreateFunction, "
+                    "AttachUserPolicy and the rest — to identify a path to higher privilege."
+                ),
+                "expected_output": (
+                    "List of flagged privesc primitives, each with the enabling action, the "
+                    "technique it unlocks, and the source policy/version it came from."
+                ),
+            },
+        ],
+    },
     "subdomain-recon": {
         "description": (
             "Domain attack-surface mapping: passive subdomain enumeration (recon) then "

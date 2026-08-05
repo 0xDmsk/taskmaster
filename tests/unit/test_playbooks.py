@@ -30,6 +30,35 @@ def test_registry_lists_builtins():
     assert get_playbook("does-not-exist") is None
 
 
+def test_aws_privesc_recon_registered_and_phase_ordered():
+    pb = get_playbook("aws-privesc-recon")
+    assert pb is not None
+    phases = [s["phase"] for s in pb["steps"]]
+    assert phases == ["reconnaissance", "enumeration"]
+    skills = [s["skill"] for s in pb["steps"]]
+    assert skills == ["cloud.AwsCliAudit", "cloud.IamPrivescFinder"]
+
+
+def test_aws_privesc_recon_expands_into_a_dependency_chain():
+    result = handle_request_playbook(
+        {"target": "509399602200", "playbook": "aws-privesc-recon"}
+    )
+    assert result["status"] == "QUEUED"
+    ids = result["execution_ids"]
+    assert len(ids) == 2
+
+    execs = {e["execution_id"]: e for e in load_executions()}
+    step1, step2 = ids
+    assert not execs[step1].get("depends_on")
+    assert execs[step2]["depends_on"] == [step1]
+    assert execs[step1]["security_phase"] == "reconnaissance"
+    assert execs[step2]["security_phase"] == "enumeration"
+
+    # Only the first step is offered to workers; the second is gated.
+    queued_ids = {e["execution_id"] for e in get_queued_executions()}
+    assert queued_ids == {step1}
+
+
 def test_no_args_lists_available_playbooks():
     result = handle_request_playbook({})
     assert "available_playbooks" in result

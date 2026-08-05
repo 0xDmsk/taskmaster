@@ -15,7 +15,13 @@ from skills.network import FpingSweep, NmapScan
 from skills.web import FfufFuzz, HttpxDetect
 from skills.subdomain import GobusterDns, SubfinderEnum
 from skills.takeover import NucleiTakeover
-from skills.cloud import AwsCliAudit, GcloudAudit
+from skills.cloud import (
+    AwsCliAudit,
+    GcloudAudit,
+    IamPrivescFinder,
+    _action_matches,
+    _flatten_actions,
+)
 from skills.base import BaseSkill
 
 # --- Network Skills ---
@@ -322,6 +328,12 @@ class TestAwsCliAudit:
         cmd = skill.build_command(profile="prod")
         assert "--profile prod" in cmd
 
+    def test_build_command_includes_secrets_and_dynamodb(self):
+        skill = AwsCliAudit(target="aws-account")
+        cmd = skill.build_command()
+        assert "aws secretsmanager list-secrets" in cmd
+        assert "aws dynamodb list-tables" in cmd
+
     def test_parse_output(self, tmp_path):
         skill = AwsCliAudit(target="aws-account")
         skill.loot_path = str(tmp_path)
@@ -331,14 +343,148 @@ class TestAwsCliAudit:
         identity = json.dumps({"Account": "123456", "Arn": "arn:aws:iam::root"})
         buckets = json.dumps({"Buckets": [{"Name": "my-bucket"}]})
         users = json.dumps({"Users": [{"UserName": "admin"}]})
+        secrets = json.dumps({"SecretList": [{"Name": "db-creds"}]})
+        tables = json.dumps({"TableNames": ["Users"]})
 
-        stdout = f"{identity}\n---SECTION---\n{buckets}\n---SECTION---\n{users}"
-        result = skill.parse_output(stdout, "", 0)
+        stdout = "\n---SECTION---\n".join([identity, buckets, users, secrets, tables])
+        # Flag an interesting key; keep the bucket scan hermetic (no real aws call).
+        listing = "2025-01-01 00:00:00  573 webadmin/id_rsa\n2025-01-01 00:00:00 120 css/app.css\n"
+        with patch.object(skill, "execute_shell", return_value={"stdout": listing}):
+            result = skill.parse_output(stdout, "", 0)
 
         assert result["buckets_count"] == 1
         assert result["users_count"] == 1
         assert "my-bucket" in result["buckets"]
         assert "admin" in result["users"]
+        assert result["secrets"] == ["db-creds"]
+        assert result["dynamodb_tables"] == ["Users"]
+        # Only the loot-shaped key is flagged, not the stylesheet.
+        keys = [o["key"] for o in result["interesting_objects"]]
+        assert keys == ["webadmin/id_rsa"]
+
+
+# --- IAM privesc helpers + finder (from the BlackSky-Hailstorm plays) ---
+
+
+class TestIamPrivescHelpers:
+    def test_flatten_actions_allow_only_and_lowercased(self):
+        doc = {
+            "Statement": [
+                {"Effect": "Allow", "Action": ["iam:PassRole", "S3:GetObject"]},
+                {"Effect": "Deny", "Action": "iam:DeleteRole"},
+                {"Effect": "Allow", "Action": "lambda:CreateFunction"},
+            ]
+        }
+        actions = _flatten_actions(doc)
+        assert "iam:passrole" in actions
+        assert "s3:getobject" in actions
+        assert "lambda:createfunction" in actions
+        assert "iam:deleterole" not in actions  # Deny is ignored
+
+    def test_action_matches_exact_service_and_star_wildcards(self):
+        assert _action_matches("iam:passrole", ["iam:passrole"])
+        assert _action_matches("iam:setdefaultpolicyversion", ["iam:*"])
+        assert _action_matches("iam:passrole", ["*"])
+        assert _action_matches("iam:createaccesskey", ["iam:Create*".lower()])
+        assert not _action_matches("iam:passrole", ["s3:getobject"])
+
+
+class TestIamPrivescFinder:
+    def _finder(self, tmp_path):
+        skill = IamPrivescFinder(target="aws-account")
+        skill.loot_path = str(tmp_path)
+        skill._artifacts = []
+        skill._errors = []
+        skill._flags = ""
+        skill._user = ""
+        skill._role = ""
+        return skill
+
+    def test_attach_user_policy_flagged(self, tmp_path):
+        """amelia_lambda_policy from the lab -> iam:AttachUserPolicy path."""
+        skill = self._finder(tmp_path)
+        amelia_doc = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "dynamodb:GetShardIterator",
+                        "iam:AttachUserPolicy",
+                        "dynamodb:DescribeStream",
+                    ],
+                },
+            ],
+        }
+
+        def fake_run_json(cmd):
+            if cmd.startswith("aws iam list-attached-user-policies"):
+                return {"AttachedPolicies": [{"PolicyArn": "arn:pol/amelia"}]}
+            if cmd.startswith("aws iam list-policy-versions"):
+                return {"Versions": [{"VersionId": "v1"}]}
+            if cmd.startswith("aws iam get-policy-version"):
+                return {"PolicyVersion": {"Document": amelia_doc}}
+            return None
+
+        stdout = json.dumps({"Account": "1", "Arn": "arn:aws:iam::1:user/amelia"})
+        with patch.object(skill, "_run_json", side_effect=fake_run_json):
+            result = skill.parse_output(stdout, "", 0)
+
+        assert skill._user == "amelia"
+        actions = {p["action"] for p in result["privesc_paths"]}
+        assert "iam:attachuserpolicy" in actions
+
+    def test_passrole_and_createfunction_flagged(self, tmp_path):
+        """terraform main.tf resource_access policy -> PassRole + CreateFunction."""
+        skill = self._finder(tmp_path)
+        tf_doc = {
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["lambda:CreateFunction", "iam:PassRole"],
+                }
+            ]
+        }
+
+        def fake_run_json(cmd):
+            if cmd.startswith("aws iam list-attached-user-policies"):
+                return {"AttachedPolicies": [{"PolicyArn": "arn:pol/tf"}]}
+            if cmd.startswith("aws iam list-policy-versions"):
+                return {"Versions": [{"VersionId": "v1"}]}
+            if cmd.startswith("aws iam get-policy-version"):
+                return {"PolicyVersion": {"Document": tf_doc}}
+            return None
+
+        stdout = json.dumps({"Account": "1", "Arn": "arn:aws:iam::1:user/deployer"})
+        with patch.object(skill, "_run_json", side_effect=fake_run_json):
+            result = skill.parse_output(stdout, "", 0)
+
+        actions = {p["action"] for p in result["privesc_paths"]}
+        assert {"iam:passrole", "lambda:createfunction"} <= actions
+
+    def test_no_paths_when_policies_benign(self, tmp_path):
+        skill = self._finder(tmp_path)
+        benign = {"Statement": [{"Effect": "Allow", "Action": ["s3:GetObject"]}]}
+
+        def fake_run_json(cmd):
+            if cmd.startswith("aws iam list-attached-user-policies"):
+                return {"AttachedPolicies": [{"PolicyArn": "arn:pol/ro"}]}
+            if cmd.startswith("aws iam list-policy-versions"):
+                return {"Versions": [{"VersionId": "v1"}]}
+            if cmd.startswith("aws iam get-policy-version"):
+                return {"PolicyVersion": {"Document": benign}}
+            return None
+
+        stdout = json.dumps({"Account": "1", "Arn": "arn:aws:iam::1:user/reader"})
+        with patch.object(skill, "_run_json", side_effect=fake_run_json):
+            result = skill.parse_output(stdout, "", 0)
+
+        assert result["privesc_count"] == 0
+
+    def test_bad_identity_returns_error(self, tmp_path):
+        skill = self._finder(tmp_path)
+        result = skill.parse_output("not json", "denied", 1)
+        assert "error" in result
 
 
 class TestGcloudAudit:
