@@ -48,6 +48,16 @@ and the chain is cancelled if a step fails. For manual control, pass `depends_on
 
 **Phase order is enforced** per target: reconnaissance → enumeration → exploitation
 → post_exploitation → reporting. Only one RUNNING execution per target.
+**Before queuing for a target that already has executions:** check its current phase
+first — call `suggest_next_action` or look at the last completed execution for that
+target. You can only advance one step at a time; `request_security_action` rejects
+out-of-sequence phases at queue time (not run time), so the failure is immediate.
+A brand-new target always starts at `reconnaissance`.
+If the requested phase is ahead of the target's current phase, **stop and tell the
+user**: state the target's current phase, what was requested, and ask whether to
+(a) queue the missing intermediate phases first to advance the target's phase state,
+or (b) abandon the out-of-sequence action. Do not attempt to queue it — there is no
+bypass mechanism and the call will fail regardless of user intent.
 
 **Bot-protected targets** (Akamai/Cloudflare/Datadome — `ERR_HTTP2_PROTOCOL_ERROR`,
 silent 403, challenge pages): skip any intercepting proxy and climb the *lowest tier
