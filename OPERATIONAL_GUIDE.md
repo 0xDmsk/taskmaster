@@ -92,6 +92,12 @@ browser context.
   Engines per-spawn via `browser_engine`: `patchright` (default), `playwright`, `camoufox`.
 - **Reporting** operator: `"report_skill"` (a `BaseReportSkill` subclass, e.g.
   `reporting.FindingDocxReport`) to render branded DOCX.
+- **Mobile** operator: `"mobile_skill"` (a `BaseMobileSkill` subclass, e.g.
+  `mobile.ManifestScan`) for headless Android APK static analysis (apktool/jadx/
+  nuclei). Phase 1 — no device/emulator. Pass the APK by container path: drop it
+  in the `session_dir` (mounts read-only at `/session`) and pass
+  `arguments.apk="/session/<file>.apk"`. Skills: `mobile.ApkDecompile`,
+  `mobile.ManifestScan`, `mobile.SecretScan`, `mobile.MobileNucleiScan`.
 
 Every pathway emits a JSON envelope: `skill`, `target`, `status`, `findings`,
 `artifacts`, `errors`. (`findings` is the legacy wire key; user-facing these are

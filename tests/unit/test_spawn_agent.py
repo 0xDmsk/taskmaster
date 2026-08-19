@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 from unittest.mock import Mock, patch
@@ -72,6 +71,24 @@ def test_playwright_agent_can_disable_interactive_browser():
     assert "PLAYWRIGHT_HEADLESS=true" in cmd
     assert "PLAYWRIGHT_DEVTOOLS=false" in cmd
     assert "127.0.0.1:6080:6080" not in cmd
+
+
+def test_mobile_agent_uses_mobile_operator_image_and_command():
+    completed = Mock(returncode=0, stdout="container-id\n", stderr="")
+
+    with patch("tools.spawn_agent.subprocess.run", return_value=completed) as mock_run:
+        result = handle_spawn_agent(
+            {
+                "agent_type": "mobile",
+                "agent_id": "mobile-agent",
+            }
+        )
+
+    assert result["status"] == "success"
+    cmd = mock_run.call_args.args[0]
+    assert "mobile-operator" in cmd  # image name
+    assert cmd[-1] == "mobile-operator"  # operator command
+    assert "taskmaster.agent_type=mobile" in cmd
 
 
 def test_playwright_agent_uses_image_default_command():

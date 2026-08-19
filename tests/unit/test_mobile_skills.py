@@ -1,0 +1,117 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+import skills.mobile as mobile
+
+MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.example.vuln">
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.READ_SMS"/>
+  <permission android:name="com.example.vuln.CUSTOM" android:protectionLevel="normal"/>
+  <application android:debuggable="true" android:allowBackup="true" android:usesCleartextTraffic="true">
+    <activity android:name=".MainActivity">
+      <intent-filter><action android:name="android.intent.action.MAIN"/></intent-filter>
+    </activity>
+    <activity android:name=".DeepLinkActivity" android:exported="true">
+      <intent-filter android:autoVerify="true">
+        <data android:scheme="myapp" android:host="open" android:pathPrefix="/pay"/>
+      </intent-filter>
+    </activity>
+    <service android:name=".SecretService" android:exported="true"/>
+    <provider android:name=".DataProvider" android:exported="true" android:permission="com.example.vuln.CUSTOM"/>
+    <receiver android:name=".InternalReceiver" android:exported="false"/>
+  </application>
+</manifest>"""
+
+
+def _fake_decompiled_manifest(loot_dir):
+    """Lay out a manifest dir the way apktool would, under <loot>/app-manifest."""
+    out_dir = os.path.join(loot_dir, "app-manifest")
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "AndroidManifest.xml"), "w") as f:
+        f.write(MANIFEST)
+    with open(os.path.join(out_dir, "apktool.yml"), "w") as f:
+        f.write("sdkInfo:\n  minSdkVersion: '21'\n  targetSdkVersion: '33'\n")
+
+
+def test_manifest_scan_flags_misconfigurations(tmp_path):
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    _fake_decompiled_manifest(str(loot))
+    apk = loot / "app.apk"
+    apk.write_bytes(b"")
+
+    skill = mobile.ManifestScan(target=None)
+    skill.loot_path = str(loot)
+    # apktool is not installed on the test host; stub the decode + version probe.
+    skill.run_tool = lambda *a, **k: {"stdout": "", "stderr": "", "exit_code": 0}
+    skill._ensure_tool_available = lambda: None
+    skill._detect_tool_version = lambda: "apktool (stub)"
+
+    env = skill.run(apk=str(apk))
+    assert env["status"] == "success", env["errors"]
+    f = env["findings"]
+
+    assert f["package"] == "com.example.vuln"
+    assert f["sdk"] == {"min": 21, "target": 33}
+    assert f["application_flags"]["debuggable"] is True
+    assert f["application_flags"]["allow_backup"] is True
+    assert f["application_flags"]["uses_cleartext_traffic"] is True
+
+    # MainActivity (intent-filter, no explicit exported), DeepLinkActivity,
+    # SecretService, DataProvider are exported; InternalReceiver is not.
+    assert f["exported_component_count"] == 4
+    exported_names = {c["name"] for bucket in f["exported_components"].values() for c in bucket}
+    assert ".InternalReceiver" not in exported_names
+    assert ".DataProvider" in exported_names
+
+    # The permission-guarded provider must not appear in the "unprotected" note.
+    unprotected_note = next(n for n in f["risk_notes"] if "without a permission guard" in n)
+    assert ".DataProvider" not in unprotected_note
+    assert ".SecretService" in unprotected_note
+
+    assert "myapp://open/pay" in f["deeplinks"]
+
+
+def test_secret_scan_finds_and_redacts(tmp_path):
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    src = tmp_path / "decompiled" / "smali"
+    src.mkdir(parents=True)
+    (src / "Config.smali").write_text(
+        'const-string v0, "AKIAIOSFODNN7EXAMPLE"\n'
+        'const-string v1, "https://api.example.com/v1/login"\n'
+        'const-string v2, "AIzaSyA1234567890abcdefghijklmnopqrstuvw"\n'
+        'password = "supersecret123"\n'
+        'const-string v3, "https://myproj.firebaseio.com"\n'
+    )
+
+    skill = mobile.SecretScan(target=None)
+    skill.loot_path = str(loot)
+    env = skill.run(source_dir=str(tmp_path / "decompiled"))
+
+    assert env["status"] == "success", env["errors"]
+    f = env["findings"]
+    types = {m["type"] for m in f["secret_matches"]}
+    assert {"aws_access_key", "google_api_key", "firebase_db_url"} <= types
+
+    # AWS keys are not redacted (the prefix is not sensitive); Google keys are.
+    aws = next(m for m in f["secret_matches"] if m["type"] == "aws_access_key")
+    assert aws["match"] == "AKIAIOSFODNN7EXAMPLE"
+    google = next(m for m in f["secret_matches"] if m["type"] == "google_api_key")
+    assert "…" in google["match"]
+
+    assert "https://api.example.com/v1/login" in f["endpoints"]
+
+
+def test_manifest_scan_requires_apk(tmp_path):
+    skill = mobile.ManifestScan(target=None)
+    skill.loot_path = str(tmp_path)
+    skill._ensure_tool_available = lambda: None
+    skill._detect_tool_version = lambda: ""
+
+    env = skill.run()  # no apk / target
+    assert env["status"] == "error"
+    assert any("apk" in e.lower() for e in env["errors"])

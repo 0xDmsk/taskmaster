@@ -1,4 +1,4 @@
-.PHONY: help install build build-kali build-playwright build-reporting start test clean lint format dev
+.PHONY: help install build build-kali build-playwright build-reporting build-mobile start test clean lint format dev
 
 # Default target
 help:
@@ -6,10 +6,11 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make install         - Install dependencies with UV"
-	@echo "  make build           - Build all agent containers (Kali + Playwright + Reporting)"
+	@echo "  make build           - Build all agent containers (Kali + Playwright + Reporting + Mobile)"
 	@echo "  make build-kali      - Build only the Kali agent container"
 	@echo "  make build-playwright- Build only the Playwright agent container"
 	@echo "  make build-reporting - Build only the Reporting agent container"
+	@echo "  make build-mobile    - Build only the Mobile agent container"
 	@echo "  make start           - Start the MCP server"
 	@echo "  make test       - Run the test suite"
 	@echo "  make lint       - Run code linters (ruff)"
@@ -26,7 +27,7 @@ install:
 	@echo "✅ Dependencies installed"
 
 # Build all agent containers
-build: build-kali build-playwright build-reporting
+build: build-kali build-playwright build-reporting build-mobile
 
 # Build kali agent container
 build-kali:
@@ -42,6 +43,11 @@ build-playwright:
 build-reporting:
 	@echo "🏗️  Building Reporting executor container..."
 	AGENT_IMAGE_NAME=report-operator DOCKERFILE=Dockerfile.reporting ./scripts/build.sh
+
+# Build mobile (static-analysis) executor container
+build-mobile:
+	@echo "🏗️  Building Mobile executor container..."
+	AGENT_IMAGE_NAME=mobile-operator DOCKERFILE=Dockerfile.mobile ./scripts/build.sh
 
 # Start MCP server
 start:

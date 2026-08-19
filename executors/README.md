@@ -1,6 +1,6 @@
 # Taskmaster Executors
 
-Taskmaster ships three executor containers. Each claims a distinct subset of task `action_type` values — they coexist on the same queue without conflict.
+Taskmaster ships four executor containers. Each claims a distinct subset of task `action_type` values — they coexist on the same queue without conflict.
 
 ---
 
@@ -11,7 +11,7 @@ A **minimal, macOS-friendly, Apple Silicon–native Kali Linux container** desig
 *   **Taskmaster Integration**: Ships with `kali-operator`, a Python-based agent that connects to the Taskmaster MCP server to claim and execute tasks.
 *   **Two-Pathway Execution**: Supports `action_type: "skill"` (one-tool-per-class with JSON envelope output) and `action_type: "python"` (Python sandbox for custom analysis). Raw shell execution has been removed.
 *   **Modern Tooling**: Includes `uv`, `pipx`, `proxychains4`, and the full `impacket` script suite.
-*   **Skips**: tasks with `action_type` of `"playwright"`, `"playwright_skill"`, or `"report_skill"` — those are left for their dedicated executors.
+*   **Skips**: tasks with `action_type` of `"playwright"`, `"playwright_skill"`, `"report_skill"`, or `"mobile_skill"` — those are left for their dedicated executors.
 
 ## 🎭 Playwright Executor (`Dockerfile.playwright` + `playwright_operator.py`)
 
@@ -30,6 +30,18 @@ A **slim `python:3.12` container** with `docxtpl`, `python-docx`, `jinja2`, and 
 *   **One-Pathway Execution**: `action_type: "report_skill"` imports a `BaseReportSkill` subclass (e.g. `reporting.FindingDocxReport`) and calls `run()`. The skill renders templates from `/app/templates` and writes documents to `/reports/` (host `runtime/reports/`) by default. Multi-finding renders produce a single combined docx with one finding per page.
 *   **Template provenance**: Templates are produced from a hand-formatted example docx by `scripts/build_finding_template.py`. The builder preserves the source's table layout, fonts, and headers/footers; only the placeholder text in specific cells/paragraphs is rewritten with Jinja tags. See `templates/README.md` for the layout contract and how to adapt the builder for a new template variant.
 *   **Output safety**: docxtpl renders run through a Jinja env with `autoescape=True`, so finding content containing `<`, `>`, or `&` (typical XSS PoCs) survives intact instead of breaking the document XML.
+
+## 📱 Mobile Executor (`Dockerfile.mobile` + `mobile_operator.py`)
+
+A **slim `python:3.12-slim` container** with a headless JRE, `apktool`, `jadx`, `nuclei`, and the [optiv/mobile-nuclei-templates](https://github.com/optiv/mobile-nuclei-templates) set. **Phase 1: static analysis of Android APKs only** — no device, no emulator, no frida-server. This is the buildable-today worker; on Docker Desktop for macOS a self-contained dynamic (device-backed) worker is not possible (no nested KVM, no USB passthrough), so dynamic instrumentation is a planned Phase 2 that connects to a device *over the network*.
+
+*   **Taskmaster Integration**: Ships with `mobile-operator`, which polls Taskmaster and exclusively claims tasks with `action_type: "mobile_skill"`. Everything else is left for the Kali / Playwright / Reporting operators.
+*   **One-Pathway Execution**: `action_type: "mobile_skill"` imports a `BaseMobileSkill` subclass (`skills/mobile.py`) and calls `run()`. Skills take an APK by **container path** (drop it in the read-only `/session` mount via `session_dir`, or under `/loot`) and write artifacts to `/loot`.
+*   **Skills**:
+    *   `mobile.ApkDecompile` — `apktool` decode (manifest + resources + smali) into `/loot`.
+    *   `mobile.ManifestScan` — parse `AndroidManifest.xml`: package, min/target SDK, `debuggable` / `allowBackup` / `usesCleartextTraffic`, exported components (with permission-guard detection), custom permissions, and declared deeplinks.
+    *   `mobile.SecretScan` — regex sweep of a decompiled tree for hardcoded secrets (AWS/Google keys, private keys, JWTs, Firebase URLs) and HTTP endpoints; sensitive matches are redacted.
+    *   `mobile.MobileNucleiScan` — run the mobile nuclei template set (file-protocol, `-file` mode) over a decompiled tree.
 
 ---
 
@@ -100,6 +112,40 @@ Or via the `spawn_agent` MCP tool with `agent_type: "reporting"`:
 ```
 
 The agent will claim any queued `report_skill` execution against the configured target and write the rendered docx into `runtime/reports/` on the host.
+
+### Mobile Operator
+
+Build via Makefile:
+```bash
+make build-mobile    # builds mobile-operator image
+```
+
+Or via the `spawn_agent` MCP tool with `agent_type: "mobile"`:
+```json
+{
+  "tool": "spawn_agent",
+  "arguments": {
+    "agent_type": "mobile",
+    "target": "com.example.app",
+    "mission": "Static analysis of the example.app APK.",
+    "session_dir": "/abs/path/to/engagement/session"
+  }
+}
+```
+
+Drop the APK in the `session_dir` folder (mounted read-only at `/session`), then queue mobile skills against it, e.g.:
+```json
+{
+  "tool": "request_security_action",
+  "arguments": {
+    "target": "com.example.app",
+    "phase": "enumeration",
+    "action_type": "mobile_skill",
+    "skill": "mobile.ManifestScan",
+    "arguments": { "apk": "/session/example.apk" }
+  }
+}
+```
 
 
 Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:

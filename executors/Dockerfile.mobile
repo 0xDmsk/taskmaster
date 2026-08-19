@@ -1,0 +1,65 @@
+FROM --platform=linux/arm64 python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System deps: a JRE for apktool/jadx, tooling to fetch release binaries, and
+# git for the mobile nuclei template set. Deliberately NO Android emulator and
+# NO frida-server — this is the Phase 1 static-analysis worker. Dynamic
+# instrumentation (frida/objection against a device reached over the network)
+# is Phase 2 and layers onto this image; on Docker Desktop for macOS the device
+# must live outside the container (no KVM, no USB passthrough).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      openssl \
+      curl \
+      unzip \
+      git \
+      default-jre-headless && \
+    rm -rf /var/lib/apt/lists/*
+
+# ---- apktool (APK decode: manifest + resources + smali) ----
+ARG APKTOOL_VERSION=2.9.3
+RUN curl -fsSL -o /usr/local/bin/apktool \
+      "https://raw.githubusercontent.com/iBotPeaches/Apktool/v${APKTOOL_VERSION}/scripts/linux/apktool" && \
+    curl -fsSL -o /usr/local/bin/apktool.jar \
+      "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" && \
+    chmod +x /usr/local/bin/apktool /usr/local/bin/apktool.jar
+
+# ---- jadx (DEX -> Java decompiler, for source-level review) ----
+ARG JADX_VERSION=1.5.0
+RUN curl -fsSL -o /tmp/jadx.zip \
+      "https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip" && \
+    mkdir -p /opt/jadx && \
+    unzip -q /tmp/jadx.zip -d /opt/jadx && \
+    ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx && \
+    ln -s /opt/jadx/bin/jadx-gui /usr/local/bin/jadx-gui && \
+    rm /tmp/jadx.zip
+
+# ---- nuclei (file-protocol templates for mobile) ----
+# Resolve the latest linux/arm64 asset from the GitHub API so a bumped patch
+# release doesn't break the build on a pinned URL.
+RUN set -eux; \
+    url="$(curl -fsSL https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
+      | grep -oE 'https://[^"]*nuclei_[0-9.]+_linux_arm64\.zip' | head -n1)"; \
+    curl -fsSL -o /tmp/nuclei.zip "$url"; \
+    unzip -q /tmp/nuclei.zip -d /usr/local/bin nuclei; \
+    chmod +x /usr/local/bin/nuclei; \
+    rm /tmp/nuclei.zip
+
+# ---- mobile nuclei templates (file-protocol rules for decompiled APKs) ----
+RUN git clone --depth 1 https://github.com/optiv/mobile-nuclei-templates.git \
+      /opt/mobile-nuclei-templates
+ENV MOBILE_NUCLEI_TEMPLATES=/opt/mobile-nuclei-templates
+
+# -------- Taskmaster Integration --------
+COPY skills /app/skills
+COPY targeting.py /app/targeting.py
+ENV PYTHONPATH=/app:$PYTHONPATH
+
+COPY executors/mobile_operator.py /usr/local/bin/mobile-operator
+RUN chmod +x /usr/local/bin/mobile-operator
+
+WORKDIR /work
+CMD ["/usr/local/bin/mobile-operator"]

@@ -54,6 +54,13 @@ graph TD
     *   **Template-driven**: Renders a docxtpl template (`templates/finding_template.docx`) produced from a hand-formatted example via `scripts/build_finding_template.py`. Source-document layout (fonts, table widths, headers/footers) is preserved, so the output opens cleanly in Word and Google Docs.
     *   **Database-backed**: Report findings are stored in Taskmaster's SQLite state as first-class reporting records. Execution results remain an event log; report findings are the curated client-facing source of truth. Manage them through the reporting MCP tools or the dashboard's **Report Findings** page.
 
+5.  **Mobile Executor**:
+    *   **Android static analysis**: A slim `python:3.12-slim` container with a headless JRE, `apktool`, `jadx`, `nuclei`, and the mobile nuclei template set. **Phase 1 — static only; no device, emulator, or frida.**
+    *   **One Pathway**: `mobile_skill` (imports a `BaseMobileSkill` subclass — see `skills/mobile.py`). Skills take an APK by container path (`/session/app.apk`) and write artifacts to `/loot`.
+    *   **Skills**: `mobile.ApkDecompile`, `mobile.ManifestScan`, `mobile.SecretScan`, `mobile.MobileNucleiScan`.
+    *   **Selective claiming**: Only picks up tasks with `action_type: "mobile_skill"`; everything else is left for the other operators.
+    *   **Scope note**: Dynamic (device-backed) testing is a planned Phase 2 that connects to a device *over the network* — a self-contained dynamic worker is not possible on Docker Desktop for macOS (no nested KVM, no USB passthrough). See `docs/mobile-worker.md`.
+
 ### Planning Guidance
 
 When choosing how to execute a task:

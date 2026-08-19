@@ -236,8 +236,13 @@ def main_loop():
             target = task.get("target")
             action_type = task.get("request", {}).get("action_type")
 
-            # Leave playwright / reporting tasks for their dedicated operators
-            if action_type in ("playwright", "playwright_skill", "report_skill"):
+            # Leave playwright / reporting / mobile tasks for their dedicated operators
+            if action_type in (
+                "playwright",
+                "playwright_skill",
+                "report_skill",
+                "mobile_skill",
+            ):
                 continue
 
             # Filter by TARGET_SCOPE if set

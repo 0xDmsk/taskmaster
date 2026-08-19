@@ -18,10 +18,11 @@ make start        # Start MCP server
 make spawn        # Spawn interactive agent
 
 # Build
-make build              # Build all three agent containers (Kali + Playwright + Reporting)
+make build              # Build all four agent containers (Kali + Playwright + Reporting + Mobile)
 make build-kali         # Build only the Kali agent container (executors/Dockerfile)
 make build-playwright   # Build only the Playwright agent container (executors/Dockerfile.playwright)
 make build-reporting    # Build only the Reporting agent container (executors/Dockerfile.reporting)
+make build-mobile       # Build only the Mobile agent container (executors/Dockerfile.mobile)
 
 # Test & Lint
 make test         # Run pytest with coverage
@@ -91,7 +92,7 @@ Playwright/patchright/camoufox agents auto-load `/session/storage_state.json` in
 
 **Skills:** Each skill extends `skills/base.py:BaseSkill` with one tool per class. Subclasses implement `build_command(**kwargs) -> str` and `parse_output(stdout, stderr, exit_code) -> dict`. The concrete `run()` orchestrator produces a JSON envelope with `skill`, `target`, `status`, `findings`, `artifacts`, `errors`. The `findings` key is legacy wire format; in user-facing language these are execution observations. See `skills/TEMPLATE.md` for creating new skills.
 
-**Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). The Playwright operator (`executors/playwright_operator.py`) supports `"playwright_skill"` (imports a `BaseBrowserSkill` subclass) and `"playwright"` (raw script run via the container's Python interpreter using `playwright.sync_api`/`async_api` — **Python only, not JavaScript**). The Reporting operator (`executors/report_operator.py`) supports `"report_skill"` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport` — to render branded deliverables via docxtpl). All five pathways produce JSON envelope output.
+**Execution Pathways:** The Kali operator (`executors/kali_operator.py`) supports exactly two `action_type` values: `"skill"` (imports and runs a skill class) and `"python"` (sandboxed `exec()`). The Playwright operator (`executors/playwright_operator.py`) supports `"playwright_skill"` (imports a `BaseBrowserSkill` subclass) and `"playwright"` (raw script run via the container's Python interpreter using `playwright.sync_api`/`async_api` — **Python only, not JavaScript**). The Reporting operator (`executors/report_operator.py`) supports `"report_skill"` (imports a `BaseReportSkill` subclass — e.g. `reporting.FindingDocxReport` — to render branded deliverables via docxtpl). The Mobile operator (`executors/mobile_operator.py`) supports `"mobile_skill"` (imports a `BaseMobileSkill` subclass — see `skills/mobile.py` — for headless static analysis of Android APKs via apktool/jadx/nuclei; Phase 1, no device required). All six pathways produce JSON envelope output.
 
 **Browser engines:** The Playwright agent ships three engines selectable per-spawn via `browser_engine` on `spawn_agent`: `playwright` (vanilla Chromium), `patchright` (anti-detection Chromium drop-in, **default**), `camoufox` (fingerprint-hardened Firefox). `BaseBrowserSkill` dispatches at run time on the engine; skills written for vanilla Playwright work unchanged across all three.
 
