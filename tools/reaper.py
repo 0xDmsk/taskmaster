@@ -52,13 +52,18 @@ logger = logging.getLogger(__name__)
 
 def _config():
     enabled = os.environ.get("TASKMASTER_REAPER_ENABLED", "true").lower() in (
-        "true", "1", "yes", "on",
+        "true",
+        "1",
+        "yes",
+        "on",
     )
     return {
         "enabled": enabled,
         "interval": int(os.environ.get("TASKMASTER_REAPER_INTERVAL", DEFAULT_INTERVAL)),
         "idle_timeout": int(os.environ.get("TASKMASTER_REAPER_IDLE_TIMEOUT", DEFAULT_IDLE_TIMEOUT)),
-        "stale_timeout": int(os.environ.get("TASKMASTER_REAPER_STALE_TIMEOUT", DEFAULT_STALE_TIMEOUT)),
+        "stale_timeout": int(
+            os.environ.get("TASKMASTER_REAPER_STALE_TIMEOUT", DEFAULT_STALE_TIMEOUT)
+        ),
         "max_age": int(os.environ.get("TASKMASTER_REAPER_MAX_AGE", DEFAULT_MAX_AGE)),
         "orphan_timeout": int(
             os.environ.get("TASKMASTER_REAPER_ORPHAN_TIMEOUT", DEFAULT_ORPHAN_TIMEOUT)
@@ -86,7 +91,9 @@ def _list_running_taskmaster_containers():
     try:
         result = subprocess.run(
             ["docker", "ps", "--format", "{{json .}}"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
         logger.warning("Reaper: docker ps failed: %s", exc)
@@ -124,19 +131,44 @@ def _stop_container(name):
 def _fail_execution_for_reap(execution_id, reason):
     from state.state import cancel_blocked_dependents
 
-    update_execution(execution_id, {
-        "status": "FAILED",
-        "updated_at": datetime.utcnow().isoformat(),
-        "updated_by": "reaper",
-        "result": reason,
-    })
-    log_event("execution_recovered", {
-        "execution_id": execution_id,
-        "reason": reason,
-        "source": "reaper",
-    })
+    update_execution(
+        execution_id,
+        {
+            "status": "FAILED",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": "reaper",
+            "result": reason,
+        },
+    )
+    log_event(
+        "execution_recovered",
+        {
+            "execution_id": execution_id,
+            "reason": reason,
+            "source": "reaper",
+        },
+    )
     # A failed execution can never satisfy its dependents — cancel the chain.
     cancel_blocked_dependents(execution_id, f"Cancelled: dependency {execution_id} failed (reaper)")
+
+
+def _parse_ts(value):
+    """Parse an ISO timestamp into an aware UTC datetime, or None.
+
+    Timestamps in the store are mixed: state transitions write timezone-aware
+    values (``datetime.now(timezone.utc)``) while some paths historically wrote
+    naive ones (``datetime.utcnow()``). Normalize everything to aware-UTC so
+    comparisons never mix naive and aware datetimes (which raises TypeError).
+    """
+    if not value:
+        return None
+    try:
+        ts = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts
 
 
 def _classify(active, age_seconds, cfg):
@@ -145,17 +177,14 @@ def _classify(active, age_seconds, cfg):
         return f"hard_age_cap:{int(age_seconds)}s", active
 
     if active:
-        cutoff = datetime.utcnow() - timedelta(seconds=cfg["stale_timeout"])
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=cfg["stale_timeout"])
         stale = []
         for e in active:
-            updated = e.get("updated_at")
-            if not updated:
+            ts = _parse_ts(e.get("updated_at"))
+            if ts is None:
                 continue
-            try:
-                if datetime.fromisoformat(updated) < cutoff:
-                    stale.append(e)
-            except ValueError:
-                continue
+            if ts < cutoff:
+                stale.append(e)
         if stale:
             return f"stale_heartbeat:{cfg['stale_timeout']}s", stale
         return None, []
@@ -202,13 +231,16 @@ def reap_once(cfg=None):
             )
 
         _stop_container(name)
-        log_event("agent_reaped", {
-            "container": name,
-            "executor_id": executor_id,
-            "reason": reason,
-            "age_seconds": int(age_seconds),
-            "affected_executions": [e["execution_id"] for e in affected],
-        })
+        log_event(
+            "agent_reaped",
+            {
+                "container": name,
+                "executor_id": executor_id,
+                "reason": reason,
+                "age_seconds": int(age_seconds),
+                "affected_executions": [e["execution_id"] for e in affected],
+            },
+        )
         logger.info("Reaper stopped %s (%s)", name, reason)
         reaped.append({"container": name, "reason": reason})
 
@@ -225,7 +257,7 @@ def _sweep_orphans(executions, live_executors, cfg):
     container isn't mistaken for a dead one). Force-failing releases the
     per-target lock that a vanished container would otherwise hold forever.
     """
-    cutoff = datetime.utcnow() - timedelta(seconds=cfg["orphan_timeout"])
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=cfg["orphan_timeout"])
     recovered = []
     for e in executions:
         if e.get("status") not in ("CLAIMED", "RUNNING"):
@@ -233,13 +265,10 @@ def _sweep_orphans(executions, live_executors, cfg):
         executor_id = e.get("executor_id")
         if not executor_id or executor_id in live_executors:
             continue
-        updated = e.get("updated_at")
-        if not updated:
+        ts = _parse_ts(e.get("updated_at"))
+        if ts is None:
             continue
-        try:
-            if datetime.fromisoformat(updated) >= cutoff:
-                continue
-        except ValueError:
+        if ts >= cutoff:
             continue
 
         eid = e["execution_id"]
@@ -272,6 +301,9 @@ def start_reaper_thread():
     thread.start()
     logger.info(
         "Reaper started (interval=%ss, idle=%ss, stale=%ss, max_age=%ss)",
-        cfg["interval"], cfg["idle_timeout"], cfg["stale_timeout"], cfg["max_age"],
+        cfg["interval"],
+        cfg["idle_timeout"],
+        cfg["stale_timeout"],
+        cfg["max_age"],
     )
     return thread

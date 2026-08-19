@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from tools import reaper
 
-
 CFG = {
     "enabled": True,
     "interval": 60,
@@ -47,10 +46,12 @@ def _inspect(name, started_ago_s, executor_id=None):
 
 
 def test_idle_container_past_grace_is_reaped():
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=[]), \
-         patch("tools.reaper._inspect_container", return_value=_inspect("kali-agent-aaa", 1200)[0]), \
-         patch("tools.reaper.log_event"):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=[]),
+        patch("tools.reaper._inspect_container", return_value=_inspect("kali-agent-aaa", 1200)[0]),
+        patch("tools.reaper.log_event"),
+    ):
         run.side_effect = [
             _completed(_ps_listing("kali-agent-aaa")),
             _completed(),  # docker stop
@@ -64,9 +65,11 @@ def test_idle_container_past_grace_is_reaped():
 
 
 def test_idle_container_inside_grace_is_kept():
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=[]), \
-         patch("tools.reaper._inspect_container", return_value=_inspect("kali-agent-young", 60)[0]):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=[]),
+        patch("tools.reaper._inspect_container", return_value=_inspect("kali-agent-young", 60)[0]),
+    ):
         run.side_effect = [_completed(_ps_listing("kali-agent-young"))]
         result = reaper.reap_once(CFG)
 
@@ -85,11 +88,13 @@ def test_stale_execution_reaps_and_fails_execution():
         }
     ]
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=executions), \
-         patch("tools.reaper._inspect_container", return_value=_inspect(name, 9000)[0]), \
-         patch("tools.reaper.update_execution") as upd, \
-         patch("tools.reaper.log_event") as log:
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper._inspect_container", return_value=_inspect(name, 9000)[0]),
+        patch("tools.reaper.update_execution") as upd,
+        patch("tools.reaper.log_event") as log,
+    ):
         run.side_effect = [
             _completed(_ps_listing(name)),
             _completed(),
@@ -109,6 +114,36 @@ def test_stale_execution_reaps_and_fails_execution():
     assert "agent_reaped" in event_types
 
 
+def test_stale_execution_with_timezone_aware_updated_at():
+    # Regression: production writes timezone-AWARE updated_at
+    # (datetime.now(timezone.utc)), but the reaper compared it against a naive
+    # cutoff — raising "can't compare offset-naive and offset-aware datetimes"
+    # on every pass while a long execution stayed RUNNING. The reaper must
+    # classify aware timestamps without crashing.
+    name = "kali-agent-aware"
+    stale_updated = (datetime.now(timezone.utc) - timedelta(seconds=8000)).isoformat()
+    executions = [
+        {
+            "execution_id": "e-aware",
+            "executor_id": name,
+            "status": "RUNNING",
+            "updated_at": stale_updated,
+        }
+    ]
+
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper._inspect_container", return_value=_inspect(name, 9000)[0]),
+        patch("tools.reaper.update_execution"),
+        patch("tools.reaper.log_event"),
+    ):
+        run.side_effect = [_completed(_ps_listing(name)), _completed(), _completed()]
+        result = reaper.reap_once(CFG)
+
+    assert result["reaped"][0]["reason"].startswith("stale_heartbeat:")
+
+
 def test_active_execution_with_fresh_updated_at_is_kept():
     name = "kali-agent-busy"
     fresh_updated = datetime.utcnow().isoformat()
@@ -121,9 +156,11 @@ def test_active_execution_with_fresh_updated_at_is_kept():
         }
     ]
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=executions), \
-         patch("tools.reaper._inspect_container", return_value=_inspect(name, 1800)[0]):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper._inspect_container", return_value=_inspect(name, 1800)[0]),
+    ):
         run.side_effect = [_completed(_ps_listing(name))]
         result = reaper.reap_once(CFG)
 
@@ -142,11 +179,13 @@ def test_hard_age_cap_overrides_active_work():
         }
     ]
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=executions), \
-         patch("tools.reaper._inspect_container", return_value=_inspect(name, 20000)[0]), \
-         patch("tools.reaper.update_execution") as upd, \
-         patch("tools.reaper.log_event"):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper._inspect_container", return_value=_inspect(name, 20000)[0]),
+        patch("tools.reaper.update_execution") as upd,
+        patch("tools.reaper.log_event"),
+    ):
         run.side_effect = [
             _completed(_ps_listing(name)),
             _completed(),
@@ -178,9 +217,11 @@ def test_non_taskmaster_container_is_ignored():
     }
     listing = json.dumps({"Names": "some-redis", "State": "running"}) + "\n"
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=[]), \
-         patch("tools.reaper._inspect_container", return_value=inspect):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=[]),
+        patch("tools.reaper._inspect_container", return_value=inspect),
+    ):
         run.side_effect = [_completed(listing)]
         result = reaper.reap_once(CFG)
 
@@ -199,10 +240,12 @@ def test_orphan_execution_with_no_live_container_is_recovered():
         }
     ]
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=executions), \
-         patch("tools.reaper.update_execution") as upd, \
-         patch("tools.reaper.log_event") as log:
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper.update_execution") as upd,
+        patch("tools.reaper.log_event") as log,
+    ):
         # docker ps reports no running containers.
         run.side_effect = [_completed("")]
         result = reaper.reap_once(CFG)
@@ -229,10 +272,12 @@ def test_orphan_within_grace_window_is_kept():
         }
     ]
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=executions), \
-         patch("tools.reaper.update_execution") as upd, \
-         patch("tools.reaper.log_event"):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper.update_execution") as upd,
+        patch("tools.reaper.log_event"),
+    ):
         run.side_effect = [_completed("")]
         result = reaper.reap_once(CFG)
 
@@ -253,11 +298,13 @@ def test_execution_with_live_container_is_not_treated_as_orphan():
         }
     ]
 
-    with patch("tools.reaper.subprocess.run") as run, \
-         patch("tools.reaper.load_executions", return_value=executions), \
-         patch("tools.reaper._inspect_container", return_value=_inspect(name, 120)[0]), \
-         patch("tools.reaper.update_execution") as upd, \
-         patch("tools.reaper.log_event"):
+    with (
+        patch("tools.reaper.subprocess.run") as run,
+        patch("tools.reaper.load_executions", return_value=executions),
+        patch("tools.reaper._inspect_container", return_value=_inspect(name, 120)[0]),
+        patch("tools.reaper.update_execution") as upd,
+        patch("tools.reaper.log_event"),
+    ):
         # Container is present and young; neither stale nor orphan rules fire.
         run.side_effect = [_completed(_ps_listing(name))]
         result = reaper.reap_once(CFG)
