@@ -3,10 +3,16 @@ import time
 
 from state.state import get_execution_state
 
-
 TERMINAL_STATES = {"COMPLETED", "FAILED"}
 
-DEFAULT_TIMEOUT = int(os.environ.get("WAIT_DEFAULT_TIMEOUT", "600"))
+# Keep the default below the MCP client's transport timeout (~300s). A longer
+# server-side wait outlives the client call: the transport dies before this
+# returns, the client can't issue follow-up control requests on that connection,
+# and the execution keeps running with no way to observe it. Returning a
+# re-invokable TIMEOUT well inside the window hands control back cleanly — the
+# caller just calls wait_for_completion again. Override with WAIT_DEFAULT_TIMEOUT
+# (and timeout_seconds per-call) only if your client's transport window differs.
+DEFAULT_TIMEOUT = int(os.environ.get("WAIT_DEFAULT_TIMEOUT", "240"))
 POLL_INTERVAL = int(os.environ.get("WAIT_POLL_INTERVAL", "2"))
 
 
