@@ -45,7 +45,7 @@ All skills take the APK by **container path** and write artifacts to `/loot`.
 | `mobile.ApkDecompile` | `apk`, `resources_only=false`, `output_dir?` | `output_dir`, `file_count` |
 | `mobile.ManifestScan` | `apk` | `package`, `sdk{min,target}`, `application_flags`, `permissions`, `custom_permissions`, `exported_components`, `deeplinks`, `risk_notes` |
 | `mobile.SecretScan` | `source_dir?` **or** `apk` | `secret_matches[]` (redacted), `endpoints[]`, `files_scanned` |
-| `mobile.MobileNucleiScan` | `source_dir`, `templates?`, `extra_args?` | `results[]` (template_id, severity, matched) |
+| `mobile.MobileNucleiScan` | `source_dir?` **or** `apk`, `timeout?`, `concurrency?`, `severity?`, `template_timeout?`, `templates?`, `extra_args?` | `results[]` (template_id, severity, matched), `timed_out` |
 
 Notes on behavior:
 
@@ -58,9 +58,42 @@ Notes on behavior:
   output of `ApkDecompile`) or decodes the APK itself when given `apk`. Sensitive
   matches (Google keys, JWTs, generic secret assignments) are redacted in output;
   low-sensitivity prefixes (AWS access-key IDs, Firebase URLs) are shown in full.
-- **`MobileNucleiScan`** runs nuclei in **file mode (`-file`)** — mandatory for
+- **`MobileNucleiScan`** takes the same `source_dir`-or-`apk` input as
+  `SecretScan`, and runs nuclei in **file mode (`-file`)** — mandatory for
   file-protocol templates over a source tree; without it nuclei aborts with
   "no templates provided for scan". Verified against nuclei v3.11.
+
+### Long-running nuclei scans
+
+A decompiled app is thousands of text files, and nuclei's cost scales with
+(files × templates), so a large app can run for many minutes. The scan is
+**bounded and never open-ended**:
+
+- `timeout` (default **300s**) is a hard wall-clock. nuclei streams matches to
+  its JSONL output as it runs, so on timeout the skill returns the **partial
+  results found so far** with `findings.timed_out = true` and a note — it does
+  not hang or discard work.
+- To complete a large sweep, raise `timeout`, narrow the `source_dir` (e.g. scan
+  `smali*` only), or cut template volume with a `severity` filter
+  (`"medium,high,critical"`) — the single biggest lever on a big app, since it
+  loads fewer templates.
+- `concurrency` (default 50) and `template_timeout` (default 5s) are also
+  tunable; on small/medium apps concurrency makes little difference.
+
+**Interaction with `wait_for_completion`:** its default timeout is deliberately
+below the MCP client's transport window, so a scan longer than that returns a
+re-invokable `TIMEOUT` rather than killing the client connection. Just call
+`wait_for_completion` again to keep waiting — the execution keeps running in the
+worker. After it completes, attach your analysis with `mark_execution_complete`
+(`interpretation=...`); that now works even though the worker already moved the
+execution to COMPLETED.
+
+**Input contract (uniform across all four skills):** every skill accepts `apk`
+(a container path). The tree-scanning skills — `SecretScan` and
+`MobileNucleiScan` — additionally accept `source_dir` to reuse an existing
+decompiled tree (e.g. `ApkDecompile`'s `output_dir`); `source_dir` wins when
+both are given, otherwise they decode the `apk` themselves. Passing `source_dir`
+avoids decompiling twice when you've already run `ApkDecompile`.
 
 ### Getting an APK to the worker
 

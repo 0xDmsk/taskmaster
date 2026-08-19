@@ -18,11 +18,19 @@ Phase 2 and will add a `BaseMobileDynamicSkill` alongside this one.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+
+
+def _safe_stem(path: str) -> str:
+    """Filesystem-safe stem of a path's basename (for naming loot artifacts)."""
+    base = os.path.basename(path)
+    stem = os.path.splitext(base)[0]
+    return re.sub(r"[^A-Za-z0-9._-]", "_", stem) or "app"
 
 
 class BaseMobileSkill(ABC):
@@ -89,7 +97,9 @@ class BaseMobileSkill(ABC):
         status = "success"
         try:
             findings = self.analyze(**kwargs) or {}
-        except FileNotFoundError as e:
+        except (FileNotFoundError, ValueError) as e:
+            # Bad/missing arguments and missing inputs are user errors — surface
+            # a clean one-line message, not a stack trace.
             self._errors.append(str(e))
             status = "error"
         except Exception:
@@ -156,8 +166,16 @@ class BaseMobileSkill(ABC):
                 "stderr": result.stderr,
                 "exit_code": result.returncode,
             }
-        except subprocess.TimeoutExpired:
-            return {"error": f"Command timed out after {timeout}s"}
+        except subprocess.TimeoutExpired as e:
+            # Flag timeouts distinctly so callers can salvage partial output a
+            # tool streamed to disk before the deadline killed it.
+            return {
+                "error": f"Command timed out after {timeout}s",
+                "timed_out": True,
+                "timeout": timeout,
+                "stdout": (e.stdout or "") if isinstance(e.stdout, str) else "",
+                "stderr": (e.stderr or "") if isinstance(e.stderr, str) else "",
+            }
         except Exception as e:
             return {"error": str(e)}
 
@@ -176,6 +194,34 @@ class BaseMobileSkill(ABC):
                 "(spawn with session_dir) or under /loot, and pass the container path."
             )
         return candidate
+
+    def resolve_source_dir(self, kwargs: dict, suffix: str) -> str:
+        """Resolve a decompiled source tree for skills that scan one.
+
+        Uniform contract across the tree-consuming skills: pass `source_dir` to
+        reuse an existing decompiled tree (e.g. the `output_dir` from
+        `ApkDecompile`), or pass `apk` to have this skill decode it first with
+        apktool into `/loot/<apk>-<suffix>`. `source_dir` wins when both given.
+        """
+        source_dir = kwargs.get("source_dir")
+        if source_dir:
+            if not os.path.isdir(source_dir):
+                raise FileNotFoundError(f"source_dir not found: {source_dir!r}")
+            return source_dir
+
+        apk = self.resolve_apk(kwargs.get("apk"))
+        source_dir = os.path.join(self.loot_path, f"{_safe_stem(apk)}-{suffix}")
+        if not shutil.which("apktool"):
+            raise RuntimeError(
+                "No source_dir given and apktool is unavailable to decompile the APK."
+            )
+        result = self.run_tool(f"apktool d -f -o {source_dir!r} {apk!r}")
+        if not os.path.isdir(source_dir):
+            raise RuntimeError(
+                f"apktool decode failed: {result.get('stderr') or result.get('error')}"
+            )
+        self.track_artifact(source_dir)
+        return source_dir
 
     # ------------------------------------------------------------------ #
     # Artifact helpers                                                     #

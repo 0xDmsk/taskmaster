@@ -106,6 +106,66 @@ def test_secret_scan_finds_and_redacts(tmp_path):
     assert "https://api.example.com/v1/login" in f["endpoints"]
 
 
+def test_nuclei_scan_accepts_source_dir(tmp_path):
+    # Uniform contract: MobileNucleiScan takes source_dir (like SecretScan),
+    # not only apk. This is the interface-consistency regression.
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    src = tmp_path / "decompiled"
+    src.mkdir()
+
+    skill = mobile.MobileNucleiScan(target=None)
+    skill.loot_path = str(loot)
+    skill._ensure_tool_available = lambda: None  # nuclei not required on test host
+    skill._detect_tool_version = lambda: "nuclei (stub)"
+    # Stub the scan itself; we're testing argument handling, not nuclei.
+    skill.run_tool = lambda *a, **k: {"stdout": "", "stderr": "", "exit_code": 0}
+
+    env = skill.run(source_dir=str(src))
+    assert env["status"] == "success", env["errors"]
+    assert env["findings"]["source_dir"] == str(src)
+
+
+def test_nuclei_scan_returns_partial_results_on_timeout(tmp_path):
+    # A long scan that hits the wall-clock should return whatever nuclei already
+    # streamed to the JSONL file, not fail or discard everything.
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    src = tmp_path / "decompiled"
+    src.mkdir()
+    out_file = loot / f"{src.name}-nuclei.jsonl"
+    out_file.write_text(
+        '{"template-id": "android-debug-enabled", "info": {"name": "Debug", '
+        '"severity": "low"}, "matched-at": "AndroidManifest.xml"}\n'
+    )
+
+    skill = mobile.MobileNucleiScan(target=None)
+    skill.loot_path = str(loot)
+    skill._ensure_tool_available = lambda: None
+    skill._detect_tool_version = lambda: "nuclei (stub)"
+    # Simulate a run that timed out after writing one partial result.
+    skill.run_tool = lambda *a, **k: {"error": "Command timed out after 8s", "timed_out": True}
+
+    env = skill.run(source_dir=str(src), timeout=8)
+    assert env["status"] == "success", env["errors"]
+    assert env["findings"]["timed_out"] is True
+    assert env["findings"]["result_count"] == 1
+    assert any("wall-clock" in e for e in env["errors"])
+
+
+def test_nuclei_scan_missing_input_is_clean_error(tmp_path):
+    skill = mobile.MobileNucleiScan(target=None)
+    skill.loot_path = str(tmp_path)
+    skill._ensure_tool_available = lambda: None
+    skill._detect_tool_version = lambda: ""
+
+    env = skill.run()  # neither source_dir nor apk
+    assert env["status"] == "error"
+    assert any("apk" in e.lower() for e in env["errors"])
+    # A missing-argument error must be a clean message, not a stack trace.
+    assert not any("Traceback" in e for e in env["errors"])
+
+
 def test_manifest_scan_requires_apk(tmp_path):
     skill = mobile.ManifestScan(target=None)
     skill.loot_path = str(tmp_path)

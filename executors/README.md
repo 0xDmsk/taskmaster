@@ -41,7 +41,7 @@ A **slim `python:3.12-slim` container** with a headless JRE, `apktool`, `jadx`, 
     *   `mobile.ApkDecompile` — `apktool` decode (manifest + resources + smali) into `/loot`.
     *   `mobile.ManifestScan` — parse `AndroidManifest.xml`: package, min/target SDK, `debuggable` / `allowBackup` / `usesCleartextTraffic`, exported components (with permission-guard detection), custom permissions, and declared deeplinks.
     *   `mobile.SecretScan` — regex sweep of a decompiled tree for hardcoded secrets (AWS/Google keys, private keys, JWTs, Firebase URLs) and HTTP endpoints; sensitive matches are redacted.
-    *   `mobile.MobileNucleiScan` — run the mobile nuclei template set (file-protocol, `-file` mode) over a decompiled tree.
+    *   `mobile.MobileNucleiScan` — run the mobile nuclei template set (file-protocol, `-file` mode) over a decompiled tree (accepts `source_dir` or `apk`).
 
 ---
 

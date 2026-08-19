@@ -18,19 +18,13 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
-from skills.mobile_base import BaseMobileSkill
+from skills.mobile_base import BaseMobileSkill, _safe_stem
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
 
 def _android_attr(elem, name):
     return elem.get(f"{{{ANDROID_NS}}}{name}")
-
-
-def _safe_stem(path: str) -> str:
-    base = os.path.basename(path)
-    stem = os.path.splitext(base)[0]
-    return re.sub(r"[^A-Za-z0-9._-]", "_", stem) or "app"
 
 
 class ApkDecompile(BaseMobileSkill):
@@ -285,24 +279,9 @@ class SecretScan(BaseMobileSkill):
     MAX_FILE_BYTES = 2_000_000
 
     def analyze(self, **kwargs) -> dict:
-        source_dir = kwargs.get("source_dir")
-        if not source_dir:
-            apk = self.resolve_apk(kwargs.get("apk"))
-            source_dir = os.path.join(self.loot_path, f"{_safe_stem(apk)}-secretscan")
-            import shutil  # noqa: PLC0415
-
-            if not shutil.which("apktool"):
-                raise RuntimeError(
-                    "No source_dir given and apktool is unavailable to decompile the APK."
-                )
-            result = self.run_tool(f"apktool d -f -o {source_dir!r} {apk!r}")
-            if not os.path.isdir(source_dir):
-                raise RuntimeError(
-                    f"apktool decode failed: {result.get('stderr') or result.get('error')}"
-                )
-            self.track_artifact(source_dir)
-        if not os.path.isdir(source_dir):
-            raise FileNotFoundError(f"source_dir not found: {source_dir!r}")
+        # Accepts either `source_dir` (reuse a decompiled tree) or `apk` (decode
+        # it first) — the shared contract across tree-scanning skills.
+        source_dir = self.resolve_source_dir(kwargs, "secretscan")
 
         matches = []
         endpoints = set()
@@ -361,46 +340,75 @@ class SecretScan(BaseMobileSkill):
 class MobileNucleiScan(BaseMobileSkill):
     """Run the mobile nuclei template set over a decompiled APK tree.
 
+    Accepts either `source_dir` (reuse a decompiled tree, e.g. `ApkDecompile`'s
+    `output_dir`) or `apk` (decode it first) — the same contract as the other
+    tree-scanning skills.
+
     Uses the optiv/mobile-nuclei-templates set baked into the image
     (MOBILE_NUCLEI_TEMPLATES). These are file-protocol templates, so the target
     is a directory of decompiled sources, not a URL, and nuclei must run in file
     mode (`-file`) — without it nuclei aborts with "no templates provided for
     scan". Verified against nuclei v3.11.
+
+    Bounded by design: a decompiled app is thousands of files, so the scan runs
+    with tunable concurrency and a hard wall-clock (`timeout`, default 300s).
+    nuclei streams matches to the JSONL output file as it goes, so if the
+    deadline hits we return the partial results found so far (status success,
+    with a `timed_out` note) instead of hanging or discarding everything.
+    Tune via kwargs: `timeout`, `concurrency`, `template_timeout`, `severity`.
     """
 
     tool = "nuclei"
     tool_version_command = "nuclei -version 2>&1"
 
+    DEFAULT_TIMEOUT = 300
+    DEFAULT_CONCURRENCY = 50
+    DEFAULT_TEMPLATE_TIMEOUT = 5
+
     def analyze(self, **kwargs) -> dict:
-        source_dir = kwargs.get("source_dir")
-        if not source_dir:
-            raise ValueError(
-                "MobileNucleiScan needs a 'source_dir' (a decompiled tree from ApkDecompile)."
-            )
-        if not os.path.isdir(source_dir):
-            raise FileNotFoundError(f"source_dir not found: {source_dir!r}")
+        source_dir = self.resolve_source_dir(kwargs, "nuclei-src")
 
         templates = kwargs.get("templates") or os.environ.get(
             "MOBILE_NUCLEI_TEMPLATES", "/opt/mobile-nuclei-templates"
         )
+        timeout = int(kwargs.get("timeout", self.DEFAULT_TIMEOUT))
+        concurrency = int(kwargs.get("concurrency", self.DEFAULT_CONCURRENCY))
+        template_timeout = int(kwargs.get("template_timeout", self.DEFAULT_TEMPLATE_TIMEOUT))
+        severity = kwargs.get("severity")  # e.g. "medium,high,critical" to cut noise
         extra_args = kwargs.get("extra_args", "")
         out_file = os.path.join(self.loot_path, f"{_safe_stem(source_dir)}-nuclei.jsonl")
 
         # -file is mandatory for file-protocol templates over a source tree.
+        # -c raises concurrency; -timeout bounds each template so one slow file
+        # can't stall the whole run.
         cmd = (
             f"nuclei -disable-update-check -no-color -silent -file "
-            f"-jsonl -o {out_file!r} -target {source_dir!r} -t {templates!r} {extra_args}".strip()
+            f"-c {concurrency} -timeout {template_timeout} "
+            f"-jsonl -o {out_file!r} -target {source_dir!r} -t {templates!r}"
         )
-        result = self.run_tool(cmd)
-        if "error" in result:
+        if severity:
+            cmd += f" -severity {severity!r}"
+        if extra_args:
+            cmd += f" {extra_args}"
+
+        result = self.run_tool(cmd, timeout=timeout)
+
+        timed_out = bool(result.get("timed_out"))
+        if "error" in result and not timed_out:
             raise RuntimeError(result["error"])
         # A fatal nuclei error (bad flags, unreadable templates) exits non-zero
         # and writes no output. Don't mask that as a clean "0 results" scan.
-        if result.get("exit_code", 0) != 0 and not os.path.isfile(out_file):
+        if not timed_out and result.get("exit_code", 0) != 0 and not os.path.isfile(out_file):
             detail = (result.get("stderr") or result.get("stdout") or "").strip()
             raise RuntimeError(f"nuclei exited {result['exit_code']}: {detail[-500:]}")
         if result.get("stderr", "").strip():
             self._errors.append(result["stderr"].strip())
+        if timed_out:
+            self._errors.append(
+                f"nuclei hit the {timeout}s wall-clock; returning partial results. "
+                "Re-run with a higher 'timeout', a narrower 'source_dir', or a "
+                "'severity' filter to complete the sweep."
+            )
 
         results = []
         if os.path.isfile(out_file):
@@ -427,6 +435,7 @@ class MobileNucleiScan(BaseMobileSkill):
         return {
             "source_dir": source_dir,
             "templates": templates,
+            "timed_out": timed_out,
             "result_count": len(results),
             "results": results,
         }
