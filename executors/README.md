@@ -139,13 +139,15 @@ Drop the APK in the `session_dir` folder (mounted read-only at `/session`), then
   "tool": "request_security_action",
   "arguments": {
     "target": "com.example.app",
-    "phase": "enumeration",
+    "phase": "reconnaissance",
     "action_type": "mobile_skill",
     "skill": "mobile.ManifestScan",
     "arguments": { "apk": "/session/example.apk" }
   }
 }
 ```
+
+`phase` follows the standard per-target order (a brand-new target starts at `reconnaissance`); queue the first mobile action as `reconnaissance` and advance to `enumeration` for follow-ups like `SecretScan` / `MobileNucleiScan`.
 
 
 Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:

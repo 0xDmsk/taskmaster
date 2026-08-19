@@ -47,9 +47,10 @@
           "python",
           "playwright",
           "playwright_skill",
-          "report_skill"
+          "report_skill",
+          "mobile_skill"
         ],
-        "description": "Type of execution: 'skill' to invoke a skill class, 'python' to run sandbox Python code on a Kali agent, 'playwright' to run a raw Python Playwright script on a Playwright agent (NOT JavaScript), 'playwright_skill' to invoke a browser skill, or 'report_skill' to invoke a reporting skill (BaseReportSkill subclass) on a reporting agent"
+        "description": "Type of execution: 'skill' to invoke a skill class, 'python' to run sandbox Python code on a Kali agent, 'playwright' to run a raw Python Playwright script on a Playwright agent (NOT JavaScript), 'playwright_skill' to invoke a browser skill, 'report_skill' to invoke a reporting skill (BaseReportSkill subclass) on a reporting agent, or 'mobile_skill' to invoke a mobile static-analysis skill (BaseMobileSkill subclass, e.g. mobile.ManifestScan) on a mobile agent"
       },
       "skill": {
         "type": "string",

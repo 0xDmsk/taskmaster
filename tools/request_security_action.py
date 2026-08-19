@@ -31,7 +31,14 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
         "engagement_id": {"type": "string"},
         "action_type": {
             "type": "string",
-            "enum": ["skill", "python", "playwright", "playwright_skill", "report_skill"],
+            "enum": [
+                "skill",
+                "python",
+                "playwright",
+                "playwright_skill",
+                "report_skill",
+                "mobile_skill",
+            ],
         },
         "skill": {"type": "string"},
         "arguments": {"type": "object"},
@@ -149,6 +156,12 @@ def handle_request(payload):
             return {
                 "error": "Validation failed",
                 "details": "'skill' field is required when action_type is 'report_skill'",
+            }
+    elif action_type == "mobile_skill":
+        if not payload.get("skill"):
+            return {
+                "error": "Validation failed",
+                "details": "'skill' field is required when action_type is 'mobile_skill'",
             }
 
     if _should_prefer_python_guardrail(payload):

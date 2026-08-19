@@ -157,12 +157,14 @@ TOOLS = {
             "properties": {
                 "agent_type": {
                     "type": "string",
-                    "enum": ["kali", "playwright", "reporting"],
+                    "enum": ["kali", "playwright", "reporting", "mobile"],
                     "description": (
                         "Executor type to launch. Use 'kali' for CLI/python tasks, "
-                        "'playwright' for browser-rendered tasks, or 'reporting' "
+                        "'playwright' for browser-rendered tasks, 'reporting' "
                         "for rendering client-facing deliverables via 'report_skill' "
-                        "actions (e.g. reporting.FindingDocxReport)."
+                        "actions (e.g. reporting.FindingDocxReport), or 'mobile' for "
+                        "Android APK static analysis via 'mobile_skill' actions "
+                        "(e.g. mobile.ManifestScan)."
                     ),
                 },
                 "interactive_browser": {

@@ -82,18 +82,23 @@ Artifacts (decompiled trees, JSON reports) land in `/loot` → host `runtime/loo
   "arguments": { "agent_type": "mobile", "target": "com.example.app",
                  "session_dir": "/abs/path/engagement/session" } }
 
-// 2. Manifest triage (reconnaissance/enumeration on the target)
+// 2. Manifest triage — first action on a new target, so phase = reconnaissance
 { "tool": "request_security_action",
-  "arguments": { "target": "com.example.app", "phase": "enumeration",
+  "arguments": { "target": "com.example.app", "phase": "reconnaissance",
                  "action_type": "mobile_skill", "skill": "mobile.ManifestScan",
                  "arguments": { "apk": "/session/app.apk" } } }
 
-// 3. Full decompile, then chain SecretScan + nuclei off its output_dir
+// 3. Full decompile (phase advances to enumeration), then chain SecretScan +
+//    nuclei off its output_dir
 { "tool": "request_security_action",
   "arguments": { "target": "com.example.app", "phase": "enumeration",
                  "action_type": "mobile_skill", "skill": "mobile.ApkDecompile",
                  "arguments": { "apk": "/session/app.apk" } } }
 ```
+
+Phase follows the standard per-target order (`reconnaissance → enumeration → …`);
+a brand-new target starts at `reconnaissance`, so queue the first mobile action
+there and advance to `enumeration` for follow-ups.
 
 `SecretScan` / `MobileNucleiScan` take the `output_dir` from `ApkDecompile` as
 their `source_dir` (wire it with `depends_on`, or run `SecretScan` with `apk`
