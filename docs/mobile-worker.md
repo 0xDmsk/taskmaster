@@ -73,19 +73,28 @@ A decompiled app is thousands of text files, and nuclei's cost scales with
   its JSONL output as it runs, so on timeout the skill returns the **partial
   results found so far** with `findings.timed_out = true` and a note — it does
   not hang or discard work.
-- **`first_party=true` is the primary coverage lever.** A real app's decompiled
-  smali is mostly framework/third-party code (androidx, kotlin, Google libs) —
-  slow to scan and low-signal. First-party mode scopes the scan (via a nuclei
-  `-l` list file) to the app's own package smali — derived from the manifest —
-  plus the manifest and `res/`. That's a fraction of the files, so a large app
-  finishes inside the budget and the matches are the app's own code, not library
-  noise. Tune `first_party_depth` (package segments to keep, default 2, e.g.
-  `com/example`) or set `package` explicitly. If no first-party smali is found
-  (heavy obfuscation), it falls back to a full scan and says so in `scope`.
-- Other levers: raise `timeout`, or cut template volume with a `severity` filter
-  (`"medium,high,critical"`).
-- `concurrency` (default 50) and `template_timeout` (default 5s) are also
-  tunable; on small/medium apps concurrency makes little difference.
+nuclei's cost scales with **(files × templates)**, and — measured — raising
+concurrency/bulk-size does **not** speed a file scan (over-tuning actually slows
+it via parallelism overhead). **The only reliable lever is cutting files:**
+
+- **`first_party=true` is the primary lever.** A real app's decompiled smali is
+  mostly framework/third-party code (androidx, kotlin, Google libs) — slow and
+  low-signal. First-party mode scopes the scan (via a nuclei `-l` list file) to
+  the app's own package smali — derived from the manifest — plus the manifest and
+  `res/xml` (network-security-config, FileProvider paths, etc.). It deliberately
+  excludes the rest of `res/` (drawables/layouts/values), which on a real app is
+  thousands of non-code files that dominate the runtime. Result: far fewer files,
+  finishes sooner, and the matches are the app's own code, not library noise.
+- **`first_party_depth`** narrows further (default 2 = `com/example`; 3 =
+  `com/example/feature`), or set `package` explicitly. If no first-party smali is
+  found (heavy obfuscation), it falls back to a full scan and says so in `scope`.
+- **`timeout`** — raise it to let a large first-party codebase finish; a very
+  large app's own smali can still exceed the default 300s, in which case you get
+  bounded partial results and can re-run deeper or longer.
+- `severity` cuts template volume (`"medium,high,critical"`) — but drops the
+  info/low signatures (WebView usage, JS interfaces, etc.) you often want.
+- `concurrency` (default 25 = nuclei's default) and `template_timeout` (5s) are
+  tunable but are **not** effective performance levers here — don't reach for them.
 
 **Interaction with `wait_for_completion`:** its default timeout is deliberately
 below the MCP client's transport window, so a scan longer than that returns a

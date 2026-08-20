@@ -164,6 +164,11 @@ def _fake_decompiled_app(root, package="com.example.app", with_first_party=True)
     # Third-party smali always present (the bulk on a real app).
     (root / "smali" / "androidx" / "core").mkdir(parents=True)
     (root / "smali" / "kotlin").mkdir(parents=True)
+    # res/xml is security-relevant config; the rest of res/ is bulky non-code.
+    (root / "res" / "xml").mkdir(parents=True)
+    (root / "res" / "xml" / "network_security_config.xml").write_text("<network-security-config/>")
+    (root / "res" / "drawable").mkdir(parents=True)
+    (root / "res" / "drawable" / "icon.xml").write_text("<vector/>")
     if with_first_party:
         seg = os.path.join(*package.split(".")[:2])
         (root / "smali" / seg).mkdir(parents=True)
@@ -190,6 +195,9 @@ def test_nuclei_first_party_scopes_to_app_package(tmp_path):
     assert "smali_classes2/com/example" in scoped
     assert "androidx" not in scoped
     assert "kotlin" not in scoped
+    # res/xml (config) is in scope; the bulky rest of res/ is not.
+    assert "res/xml" in scoped
+    assert "res/drawable" not in scoped
 
 
 def test_nuclei_first_party_falls_back_when_no_app_smali(tmp_path):

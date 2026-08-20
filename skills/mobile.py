@@ -363,28 +363,34 @@ class MobileNucleiScan(BaseMobileSkill):
     mode (`-file`) — without it nuclei aborts with "no templates provided for
     scan". Verified against nuclei v3.11.
 
-    Bounded by design: a decompiled app is thousands of files, so the scan runs
-    with tunable concurrency and a hard wall-clock (`timeout`, default 300s).
-    nuclei streams matches to the JSONL output file as it goes, so if the
-    deadline hits we return the partial results found so far (status success,
-    with a `timed_out` note) instead of hanging or discarding everything.
-    Tune via kwargs: `timeout`, `concurrency`, `template_timeout`, `severity`.
+    Bounded by design: a decompiled app is thousands of files, and nuclei's cost
+    scales with (files x templates), so the scan has a hard wall-clock (`timeout`,
+    default 300s). nuclei streams matches to the JSONL output file as it goes, so
+    if the deadline hits we return the partial results found so far (status
+    success, with a `timed_out` note) instead of hanging or discarding everything.
 
-    Coverage on a big app is dominated by framework/third-party smali (androidx,
-    kotlin, Google libs), which is slow and low-signal. Pass `first_party=true`
-    to scope the scan to the app's own package smali (derived from the manifest)
-    plus the manifest and `res/` — far fewer files, so a large app finishes
-    inside the budget and the results are the app's own code. Tune with
-    `first_party_depth` (package segments to keep, default 2) or override the
-    detected `package`. Falls back to a full scan (with a note) if no
-    first-party smali is found (e.g. heavy obfuscation).
+    **The only reliable lever is file count** — measured, raising nuclei
+    concurrency/bulk-size does NOT speed a file scan and over-tuning slows it
+    (parallelism overhead). So to finish a big app within budget, cut files:
+      * `first_party=true` — scope to the app's own package smali (derived from
+        the manifest) + the manifest + res/xml, dropping framework/third-party
+        code (androidx, kotlin, Google libs) and the bulky non-code res/ tree.
+        This is the main lever; it also sharpens signal.
+      * `first_party_depth` — narrow further (default 2 = com/example; 3 =
+        com/example/feature), or set `package` explicitly.
+      * `timeout` — raise it to let a large first-party codebase finish.
+    Falls back to a full scan (with a note) if no first-party smali is found
+    (e.g. heavy obfuscation). `concurrency`/`template_timeout` are tunable but
+    are not effective performance levers here.
     """
 
     tool = "nuclei"
     tool_version_command = "nuclei -version 2>&1"
 
     DEFAULT_TIMEOUT = 300
-    DEFAULT_CONCURRENCY = 50
+    # nuclei's own default; measured tuning of concurrency/bulk-size does not help
+    # file scans (and higher values hurt), so we don't deviate.
+    DEFAULT_CONCURRENCY = 25
     DEFAULT_TEMPLATE_TIMEOUT = 5
     DEFAULT_FIRST_PARTY_DEPTH = 2
 
@@ -392,9 +398,12 @@ class MobileNucleiScan(BaseMobileSkill):
         """Return (nuclei_target_flag, scope_note).
 
         Default scans the whole tree. With first_party=True, scope to the app's
-        own package smali + manifest + res via a nuclei -l list file, falling
+        own package smali + manifest + res/xml via a nuclei -l list file, falling
         back to the full tree (with an explanatory note) when that can't be
-        determined.
+        determined. res/xml (network-security-config, FileProvider paths, etc.)
+        is included, but not the rest of res/ (drawables/layouts/values) — those
+        are thousands of non-code files on a real app and dominate the runtime
+        without adding signal.
         """
         if not kwargs.get("first_party"):
             return f"-target {source_dir!r}", None
@@ -418,9 +427,11 @@ class MobileNucleiScan(BaseMobileSkill):
             if os.path.isdir(cand):
                 fp_smali.append(cand)
         targets.extend(fp_smali)
-        res_dir = os.path.join(source_dir, "res")
-        if os.path.isdir(res_dir):
-            targets.append(res_dir)
+        # Only res/xml (security-relevant configs), not the whole res/ tree — the
+        # rest is thousands of non-code files that blow the time budget.
+        res_xml = os.path.join(source_dir, "res", "xml")
+        if os.path.isdir(res_xml):
+            targets.append(res_xml)
 
         if not fp_smali:
             return f"-target {source_dir!r}", (
@@ -481,8 +492,8 @@ class MobileNucleiScan(BaseMobileSkill):
         if timed_out:
             self._errors.append(
                 f"nuclei hit the {timeout}s wall-clock; returning partial results. "
-                "Re-run with first_party=true (scope to app code), a higher 'timeout', "
-                "or a 'severity' filter to complete the sweep."
+                "Cut files to finish: first_party=true (scope to app code), a deeper "
+                "first_party_depth, or raise 'timeout'. (Concurrency is not a lever.)"
             )
 
         results = []
