@@ -24,12 +24,17 @@ Standard cycle for every unit of work:
    to a known reporting engagement.
 2. **Provision** — `spawn_agent`, unless you've already verified a compatible live
    worker for the same target and executor type.
-3. **Monitor** — `wait_for_completion` (blocks until COMPLETED/FAILED). Use
-   `query_execution_status` only for debugging/recovery.
-4. **Finalize with analysis** — `mark_execution_complete` (or `complete_execution`
-   / `fail_execution`) **with an `interpretation`** — a markdown summary of what the
-   raw output *means*, notable observations, and the next step. Without it the
-   dashboard shows only raw stdout. This is required for good UX.
+3. **Monitor** — `wait_for_completion` blocks until COMPLETED/FAILED or a bounded
+   timeout. A long run (e.g. a mobile nuclei scan) returns `status: "TIMEOUT"`
+   *before* the client transport would drop — just call it again to keep waiting;
+   the execution keeps running in the worker. Use `query_execution_status` only
+   for debugging/recovery.
+4. **Finalize with analysis** — `mark_execution_complete` **with an
+   `interpretation`** — a markdown summary of what the raw output *means*, notable
+   observations, and the next step. The worker already moved the execution to
+   COMPLETED with the raw result; this call attaches your interpretation to it
+   (calling it on an already-terminal execution is expected, not an error).
+   Without it the dashboard shows only raw stdout. This is required for good UX.
 5. **Take notes** — maintain two living files in your **current working directory**
    (the assessment folder): `Findings.md` (numbered `F-NNN` triage log:
    Where / Observation / Why it matters / Reproduction / Status / Recommendation)
@@ -92,12 +97,21 @@ browser context.
   Engines per-spawn via `browser_engine`: `patchright` (default), `playwright`, `camoufox`.
 - **Reporting** operator: `"report_skill"` (a `BaseReportSkill` subclass, e.g.
   `reporting.FindingDocxReport`) to render branded DOCX.
-- **Mobile** operator: `"mobile_skill"` (a `BaseMobileSkill` subclass, e.g.
-  `mobile.ManifestScan`) for headless Android APK static analysis (apktool/jadx/
-  nuclei). Phase 1 — no device/emulator. Pass the APK by container path: drop it
-  in the `session_dir` (mounts read-only at `/session`) and pass
-  `arguments.apk="/session/<file>.apk"`. Skills: `mobile.ApkDecompile`,
-  `mobile.ManifestScan`, `mobile.SecretScan`, `mobile.MobileNucleiScan`.
+- **Mobile** operator: `"mobile_skill"` (a `BaseMobileSkill` subclass) — headless
+  Android APK static analysis (apktool/jadx/nuclei), Phase 1, no device/emulator.
+  Skills: `mobile.ApkDecompile`, `mobile.ManifestScan`, `mobile.SecretScan`,
+  `mobile.MobileNucleiScan`. Drop the APK in `session_dir` (mounts read-only at
+  `/session`) and pass `arguments.apk="/session/<file>.apk"`. **Uniform input
+  contract:** every skill accepts `apk`; the tree-scanners (`SecretScan`,
+  `MobileNucleiScan`) also accept `source_dir` to reuse a decompiled tree.
+  **Efficient flow:** run `ApkDecompile` once, then point the tree-scanners at its
+  `output_dir` (via `depends_on`) instead of decoding repeatedly. **`MobileNucleiScan`
+  over a whole app is slow and mostly library noise — prefer `first_party=true`**
+  (scopes to the app's own package smali via the manifest); it's bounded by
+  `timeout` (default 300s) and, if it hits the wall, returns partial results with
+  `findings.timed_out=true` rather than hanging (re-run with a higher `timeout` or
+  a `severity` filter to finish). First mobile action on a new target is
+  `reconnaissance`. Full guide: `docs/mobile-worker.md`.
 
 Every pathway emits a JSON envelope: `skill`, `target`, `status`, `findings`,
 `artifacts`, `errors`. (`findings` is the legacy wire key; user-facing these are
