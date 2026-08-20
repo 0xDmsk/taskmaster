@@ -153,6 +153,70 @@ def test_nuclei_scan_returns_partial_results_on_timeout(tmp_path):
     assert any("wall-clock" in e for e in env["errors"])
 
 
+def _fake_decompiled_app(root, package="com.example.app", with_first_party=True):
+    """A minimal decompiled tree: manifest + first-party + third-party smali."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "AndroidManifest.xml").write_text(
+        '<?xml version="1.0"?>\n'
+        f'<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{package}">'
+        "<application/></manifest>"
+    )
+    # Third-party smali always present (the bulk on a real app).
+    (root / "smali" / "androidx" / "core").mkdir(parents=True)
+    (root / "smali" / "kotlin").mkdir(parents=True)
+    if with_first_party:
+        seg = os.path.join(*package.split(".")[:2])
+        (root / "smali" / seg).mkdir(parents=True)
+        (root / "smali_classes2" / seg).mkdir(parents=True)
+
+
+def test_nuclei_first_party_scopes_to_app_package(tmp_path):
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    src = tmp_path / "decompiled"
+    _fake_decompiled_app(src)
+
+    skill = mobile.MobileNucleiScan(target=None)
+    skill.loot_path = str(loot)
+    flag, note = skill._resolve_targets(str(src), {"first_party": True})
+
+    # Uses a -l list file, not a full -target of the whole tree.
+    assert flag.startswith("-l ")
+    assert "com/example" in note
+    scope_path = next(a for a in skill._artifacts if a.endswith("nuclei-scope.txt"))
+    scoped = open(scope_path).read()
+    # First-party smali from both roots is included; third-party is not.
+    assert "smali/com/example" in scoped
+    assert "smali_classes2/com/example" in scoped
+    assert "androidx" not in scoped
+    assert "kotlin" not in scoped
+
+
+def test_nuclei_first_party_falls_back_when_no_app_smali(tmp_path):
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    src = tmp_path / "decompiled"
+    _fake_decompiled_app(src, package="com.example.app", with_first_party=False)
+
+    skill = mobile.MobileNucleiScan(target=None)
+    skill.loot_path = str(loot)
+    flag, note = skill._resolve_targets(str(src), {"first_party": True})
+
+    # No first-party smali -> scan the whole tree, with an explanatory note.
+    assert flag == f"-target {str(src)!r}"
+    assert "scanned full tree" in note
+
+
+def test_nuclei_default_scans_whole_tree(tmp_path):
+    src = tmp_path / "decompiled"
+    _fake_decompiled_app(src)
+    skill = mobile.MobileNucleiScan(target=None)
+    skill.loot_path = str(tmp_path)
+    flag, note = skill._resolve_targets(str(src), {})
+    assert flag == f"-target {str(src)!r}"
+    assert note is None
+
+
 def test_nuclei_scan_missing_input_is_clean_error(tmp_path):
     skill = mobile.MobileNucleiScan(target=None)
     skill.loot_path = str(tmp_path)

@@ -13,6 +13,7 @@ Skills:
   * MobileNucleiScan — run the mobile nuclei template set over a decompiled tree
 """
 
+import glob
 import json
 import os
 import re
@@ -25,6 +26,18 @@ ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
 def _android_attr(elem, name):
     return elem.get(f"{{{ANDROID_NS}}}{name}")
+
+
+def _read_manifest_package(source_dir: str) -> str | None:
+    """Return the app package from a decompiled AndroidManifest.xml, or None."""
+    manifest = os.path.join(source_dir, "AndroidManifest.xml")
+    if not os.path.isfile(manifest):
+        return None
+    try:
+        root = ET.parse(manifest).getroot()
+    except ET.ParseError:
+        return None
+    return root.get("package") or None
 
 
 class ApkDecompile(BaseMobileSkill):
@@ -356,6 +369,15 @@ class MobileNucleiScan(BaseMobileSkill):
     deadline hits we return the partial results found so far (status success,
     with a `timed_out` note) instead of hanging or discarding everything.
     Tune via kwargs: `timeout`, `concurrency`, `template_timeout`, `severity`.
+
+    Coverage on a big app is dominated by framework/third-party smali (androidx,
+    kotlin, Google libs), which is slow and low-signal. Pass `first_party=true`
+    to scope the scan to the app's own package smali (derived from the manifest)
+    plus the manifest and `res/` — far fewer files, so a large app finishes
+    inside the budget and the results are the app's own code. Tune with
+    `first_party_depth` (package segments to keep, default 2) or override the
+    detected `package`. Falls back to a full scan (with a note) if no
+    first-party smali is found (e.g. heavy obfuscation).
     """
 
     tool = "nuclei"
@@ -364,6 +386,55 @@ class MobileNucleiScan(BaseMobileSkill):
     DEFAULT_TIMEOUT = 300
     DEFAULT_CONCURRENCY = 50
     DEFAULT_TEMPLATE_TIMEOUT = 5
+    DEFAULT_FIRST_PARTY_DEPTH = 2
+
+    def _resolve_targets(self, source_dir, kwargs):
+        """Return (nuclei_target_flag, scope_note).
+
+        Default scans the whole tree. With first_party=True, scope to the app's
+        own package smali + manifest + res via a nuclei -l list file, falling
+        back to the full tree (with an explanatory note) when that can't be
+        determined.
+        """
+        if not kwargs.get("first_party"):
+            return f"-target {source_dir!r}", None
+
+        package = kwargs.get("package") or _read_manifest_package(source_dir)
+        if not package:
+            return f"-target {source_dir!r}", (
+                "first_party requested but no package in the manifest; scanned full tree."
+            )
+
+        depth = int(kwargs.get("first_party_depth", self.DEFAULT_FIRST_PARTY_DEPTH))
+        pkg_path = os.path.join(*package.split(".")[:depth])
+
+        targets = []
+        manifest = os.path.join(source_dir, "AndroidManifest.xml")
+        if os.path.isfile(manifest):
+            targets.append(manifest)
+        fp_smali = []
+        for smali_root in sorted(glob.glob(os.path.join(source_dir, "smali*"))):
+            cand = os.path.join(smali_root, pkg_path)
+            if os.path.isdir(cand):
+                fp_smali.append(cand)
+        targets.extend(fp_smali)
+        res_dir = os.path.join(source_dir, "res")
+        if os.path.isdir(res_dir):
+            targets.append(res_dir)
+
+        if not fp_smali:
+            return f"-target {source_dir!r}", (
+                f"first_party requested but no first-party smali under {pkg_path!r}; "
+                "scanned full tree (code may be obfuscated/renamed)."
+            )
+
+        scope_file = os.path.join(self.loot_path, f"{_safe_stem(source_dir)}-nuclei-scope.txt")
+        with open(scope_file, "w") as f:
+            f.write("\n".join(targets) + "\n")
+        self.track_artifact(scope_file)
+        return f"-l {scope_file!r}", (
+            f"first_party scope: package {package!r} -> {len(targets)} path(s) under {pkg_path!r}"
+        )
 
     def analyze(self, **kwargs) -> dict:
         source_dir = self.resolve_source_dir(kwargs, "nuclei-src")
@@ -378,13 +449,17 @@ class MobileNucleiScan(BaseMobileSkill):
         extra_args = kwargs.get("extra_args", "")
         out_file = os.path.join(self.loot_path, f"{_safe_stem(source_dir)}-nuclei.jsonl")
 
+        target_flag, scope_note = self._resolve_targets(source_dir, kwargs)
+        if scope_note:
+            self._errors.append(scope_note)
+
         # -file is mandatory for file-protocol templates over a source tree.
         # -c raises concurrency; -timeout bounds each template so one slow file
         # can't stall the whole run.
         cmd = (
             f"nuclei -disable-update-check -no-color -silent -file "
             f"-c {concurrency} -timeout {template_timeout} "
-            f"-jsonl -o {out_file!r} -target {source_dir!r} -t {templates!r}"
+            f"-jsonl -o {out_file!r} {target_flag} -t {templates!r}"
         )
         if severity:
             cmd += f" -severity {severity!r}"
@@ -406,8 +481,8 @@ class MobileNucleiScan(BaseMobileSkill):
         if timed_out:
             self._errors.append(
                 f"nuclei hit the {timeout}s wall-clock; returning partial results. "
-                "Re-run with a higher 'timeout', a narrower 'source_dir', or a "
-                "'severity' filter to complete the sweep."
+                "Re-run with first_party=true (scope to app code), a higher 'timeout', "
+                "or a 'severity' filter to complete the sweep."
             )
 
         results = []
@@ -435,6 +510,8 @@ class MobileNucleiScan(BaseMobileSkill):
         return {
             "source_dir": source_dir,
             "templates": templates,
+            "first_party": bool(kwargs.get("first_party")),
+            "scope": scope_note,
             "timed_out": timed_out,
             "result_count": len(results),
             "results": results,

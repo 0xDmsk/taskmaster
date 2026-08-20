@@ -45,7 +45,7 @@ All skills take the APK by **container path** and write artifacts to `/loot`.
 | `mobile.ApkDecompile` | `apk`, `resources_only=false`, `output_dir?` | `output_dir`, `file_count` |
 | `mobile.ManifestScan` | `apk` | `package`, `sdk{min,target}`, `application_flags`, `permissions`, `custom_permissions`, `exported_components`, `deeplinks`, `risk_notes` |
 | `mobile.SecretScan` | `source_dir?` **or** `apk` | `secret_matches[]` (redacted), `endpoints[]`, `files_scanned` |
-| `mobile.MobileNucleiScan` | `source_dir?` **or** `apk`, `timeout?`, `concurrency?`, `severity?`, `template_timeout?`, `templates?`, `extra_args?` | `results[]` (template_id, severity, matched), `timed_out` |
+| `mobile.MobileNucleiScan` | `source_dir?` **or** `apk`, `first_party?`, `first_party_depth?`, `package?`, `timeout?`, `concurrency?`, `severity?`, `template_timeout?`, `templates?`, `extra_args?` | `results[]` (template_id, severity, matched), `first_party`, `scope`, `timed_out` |
 
 Notes on behavior:
 
@@ -73,10 +73,17 @@ A decompiled app is thousands of text files, and nuclei's cost scales with
   its JSONL output as it runs, so on timeout the skill returns the **partial
   results found so far** with `findings.timed_out = true` and a note — it does
   not hang or discard work.
-- To complete a large sweep, raise `timeout`, narrow the `source_dir` (e.g. scan
-  `smali*` only), or cut template volume with a `severity` filter
-  (`"medium,high,critical"`) — the single biggest lever on a big app, since it
-  loads fewer templates.
+- **`first_party=true` is the primary coverage lever.** A real app's decompiled
+  smali is mostly framework/third-party code (androidx, kotlin, Google libs) —
+  slow to scan and low-signal. First-party mode scopes the scan (via a nuclei
+  `-l` list file) to the app's own package smali — derived from the manifest —
+  plus the manifest and `res/`. That's a fraction of the files, so a large app
+  finishes inside the budget and the matches are the app's own code, not library
+  noise. Tune `first_party_depth` (package segments to keep, default 2, e.g.
+  `com/example`) or set `package` explicitly. If no first-party smali is found
+  (heavy obfuscation), it falls back to a full scan and says so in `scope`.
+- Other levers: raise `timeout`, or cut template volume with a `severity` filter
+  (`"medium,high,critical"`).
 - `concurrency` (default 50) and `template_timeout` (default 5s) are also
   tunable; on small/medium apps concurrency makes little difference.
 
