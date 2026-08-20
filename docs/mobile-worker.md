@@ -63,6 +63,60 @@ Notes on behavior:
   file-protocol templates over a source tree; without it nuclei aborts with
   "no templates provided for scan". Verified against nuclei v3.11.
 
+### Recommended: the `mobile-static-assessment` playbook
+
+For a coverage-first pass, don't hand-assemble the skills — run the built-in
+playbook so nothing is skipped:
+
+```jsonc
+// APK dropped in ./session/ (one .apk); target is a nominal label.
+{ "tool": "request_playbook",
+  "arguments": { "playbook": "mobile-static-assessment",
+                 "target": "com.example.app" } }
+```
+
+It expands into a dependency chain (each step runs after the previous COMPLETES):
+
+1. `ManifestScan` (reconnaissance) — manifest triage.
+2. `ApkDecompile` (enumeration) — decode once into `/loot/mobile-assessment`,
+   reused by the rest so the APK is decompiled a single time.
+3. `SecretScan` (enumeration) — secrets across the **whole** tree, including
+   `res/values/strings.xml` (the resource findings the first-party nuclei pass
+   intentionally skips).
+4. `MobileNucleiScan` `first_party=true` (enumeration) — fast, high-signal pass
+   over the app's own code.
+5. `MobileNucleiScan` full-tree, `timeout=600` (enumeration) — library/SDK and
+   resource coverage the first-party pass omits; returns bounded partial results
+   if it hits the wall clock.
+
+This deliberately runs **both** nuclei passes so you get guaranteed app-code
+coverage *and* a best-effort full-tree sweep — the two together close the
+coverage gap that either alone leaves (see "Coverage & what you can miss").
+
+**APK auto-discovery:** every mobile skill, given no `apk`, finds a single `.apk`
+under `/session` (then `/loot`) — which is why the playbook's empty-argument steps
+just work. Drop exactly one APK in the agent's `session_dir`. Two or more APKs in
+the same location is an error (pass `arguments.apk` to disambiguate).
+
+### Coverage & what you can miss
+
+Static scanning is triage, not proof, and some options trade coverage for speed —
+know the gaps:
+
+- **`first_party=true` skips third-party/SDK code and most of `res/`.** Real bugs
+  live in bundled SDKs and in `res/values`/`res/raw`; a first-party-only run
+  misses them. The playbook compensates by also running `SecretScan` over the full
+  tree and a full-tree nuclei pass — so use the playbook, or run a full pass
+  yourself, rather than relying on first-party alone.
+- **A `timed_out: true` result is a floor, not a ceiling.** Files/templates not
+  reached before the deadline are silently unscanned. Re-run deeper
+  (`first_party_depth`) or longer (`timeout`); never treat a timed-out scan as a
+  clean bill.
+- **nuclei is a ~42-template pattern matcher.** It flags indicators (a WebView
+  with JS enabled), not confirmed vulns, and finds nothing outside those patterns
+  — no business logic, crypto misuse, or native `.so` analysis. Treat every match
+  as a lead for manual review (jadx is in the image) and eventual dynamic testing.
+
 ### Long-running nuclei scans
 
 A decompiled app is thousands of text files, and nuclei's cost scales with

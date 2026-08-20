@@ -100,15 +100,19 @@ browser context.
 - **Mobile** operator: `"mobile_skill"` (a `BaseMobileSkill` subclass) — headless
   Android APK static analysis (apktool/jadx/nuclei), Phase 1, no device/emulator.
   Skills: `mobile.ApkDecompile`, `mobile.ManifestScan`, `mobile.SecretScan`,
-  `mobile.MobileNucleiScan`. Drop the APK in `session_dir` (mounts read-only at
-  `/session`) and pass `arguments.apk="/session/<file>.apk"`. **Uniform input
-  contract:** every skill accepts `apk`; the tree-scanners (`SecretScan`,
+  `mobile.MobileNucleiScan`. **Coverage-first default: run the `mobile-static-assessment`
+  playbook** (`request_playbook`) — it chains manifest → decompile-once → full-tree
+  secret sweep → first-party nuclei → full-tree nuclei, so nothing is skipped. Drop
+  **exactly one** `.apk` in `session_dir` (mounts read-only at `/session`); every
+  skill auto-discovers it, so the playbook's steps need no `apk` argument. **Uniform
+  input contract:** every skill accepts `apk`; the tree-scanners (`SecretScan`,
   `MobileNucleiScan`) also accept `source_dir` to reuse a decompiled tree.
-  **Efficient flow:** run `ApkDecompile` once, then point the tree-scanners at its
-  `output_dir` (via `depends_on`) instead of decoding repeatedly. **`MobileNucleiScan`
-  over a whole app is slow and mostly library noise — prefer `first_party=true`**
-  (scopes to the app's own package smali via the manifest); it's bounded by
-  `timeout` (default 300s) and, if it hits the wall, returns partial results with
+  **Coverage caveats:** `first_party=true` skips SDK/library and `res/` (a
+  first-party-only run misses those); a `timed_out=true` nuclei result is partial,
+  not complete — re-run deeper/longer. `MobileNucleiScan` over a whole app is slow;
+  prefer `first_party=true` for app-code signal (scopes to the app's own package
+  smali via the manifest); it's bounded by `timeout` (default 300s) and, if it hits
+  the wall, returns partial results with
   `findings.timed_out=true` rather than hanging (re-run with a higher `timeout` or
   a `severity` filter to finish). First mobile action on a new target is
   `reconnaissance`. Full guide: `docs/mobile-worker.md`.

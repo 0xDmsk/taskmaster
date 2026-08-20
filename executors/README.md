@@ -149,6 +149,15 @@ Drop the APK in the `session_dir` folder (mounted read-only at `/session`), then
 
 `phase` follows the standard per-target order (a brand-new target starts at `reconnaissance`); queue the first mobile action as `reconnaissance` and advance to `enumeration` for follow-ups like `SecretScan` / `MobileNucleiScan`.
 
+For a coverage-first pass, prefer the built-in **`mobile-static-assessment`** playbook, which chains manifest → decompile → secret sweep → first-party nuclei → full-tree nuclei in one call (drop one APK in `session_dir`; every step auto-discovers it):
+```json
+{
+  "tool": "request_playbook",
+  "arguments": { "playbook": "mobile-static-assessment", "target": "com.example.app" }
+}
+```
+See `docs/mobile-worker.md` for the coverage trade-offs each step makes.
+
 
 Or via `spawn_agent` MCP tool with `agent_type: "playwright"`:
 ```json

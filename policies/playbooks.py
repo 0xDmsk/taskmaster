@@ -100,6 +100,99 @@ PLAYBOOKS = {
             },
         ],
     },
+    "mobile-static-assessment": {
+        "description": (
+            "Full Android APK static pass for one app: manifest triage (recon) then "
+            "decompile, secret sweep, and two nuclei passes (enumeration) — a fast "
+            "first-party pass for app-code signal plus a longer full-tree pass for "
+            "library/resource coverage. Drop exactly one .apk in the agent's session "
+            "mount (spawn with session_dir); every step auto-discovers it. Target is a "
+            "nominal label (the app package, e.g. com.example.app)."
+        ),
+        "steps": [
+            {
+                "phase": "reconnaissance",
+                "agent_role": "recon",
+                "action_type": "mobile_skill",
+                "skill": "mobile.ManifestScan",
+                "arguments": {},
+                "justification": (
+                    "Parse AndroidManifest.xml to baseline the app: package, min/target "
+                    "SDK, debuggable/allowBackup/cleartext flags, exported components with "
+                    "their permission guards, custom permissions, and declared deeplinks."
+                ),
+                "expected_output": (
+                    "Package, SDK versions, application security flags, exported "
+                    "components, custom permissions, deeplinks, and risk notes."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "mobile_skill",
+                "skill": "mobile.ApkDecompile",
+                "arguments": {"output_dir": "/loot/mobile-assessment"},
+                "justification": (
+                    "Decode the APK (manifest, resources, and smali) into a shared "
+                    "directory so the secret sweep and nuclei passes reuse one decompiled "
+                    "tree instead of each decoding the APK again."
+                ),
+                "expected_output": (
+                    "A decompiled tree at /loot/mobile-assessment and its file count."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "mobile_skill",
+                "skill": "mobile.SecretScan",
+                "arguments": {"source_dir": "/loot/mobile-assessment"},
+                "justification": (
+                    "Regex-sweep the whole decompiled tree (including res/values) for "
+                    "hardcoded secrets — API/cloud keys, private keys, JWTs, Firebase "
+                    "URLs — and collect referenced HTTP endpoints for review."
+                ),
+                "expected_output": (
+                    "Redacted secret matches with file/line, and the distinct endpoints "
+                    "found across the app."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "mobile_skill",
+                "skill": "mobile.MobileNucleiScan",
+                "arguments": {"source_dir": "/loot/mobile-assessment", "first_party": True},
+                "justification": (
+                    "Run the mobile nuclei template set scoped to the app's own package "
+                    "code (first-party), which finishes fast and surfaces the highest-value "
+                    "app-code signatures (WebView/JS misuse, insecure config) without "
+                    "library noise."
+                ),
+                "expected_output": (
+                    "Nuclei matches within the app's own code, with template id, severity, "
+                    "and matched location."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "mobile_skill",
+                "skill": "mobile.MobileNucleiScan",
+                "arguments": {"source_dir": "/loot/mobile-assessment", "timeout": 600},
+                "justification": (
+                    "Run the mobile nuclei template set across the full decompiled tree "
+                    "(bundled SDKs and resources included) with an extended budget so "
+                    "library/third-party findings the first-party pass skips are still "
+                    "covered; returns bounded partial results if it hits the wall clock."
+                ),
+                "expected_output": (
+                    "Nuclei matches across the whole app (including third-party code), "
+                    "with a timed_out flag indicating whether coverage was complete."
+                ),
+            },
+        ],
+    },
     "subdomain-recon": {
         "description": (
             "Domain attack-surface mapping: passive subdomain enumeration (recon) then "
@@ -128,9 +221,7 @@ PLAYBOOKS = {
                     "Active DNS brute-force of the target domain to discover subdomains not "
                     "present in passive sources, expanding the enumerated attack surface."
                 ),
-                "expected_output": (
-                    "Resolvable subdomains discovered via DNS brute force."
-                ),
+                "expected_output": ("Resolvable subdomains discovered via DNS brute force."),
             },
         ],
     },

@@ -1,6 +1,8 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 import skills.mobile as mobile
@@ -236,6 +238,45 @@ def test_nuclei_scan_missing_input_is_clean_error(tmp_path):
     assert any("apk" in e.lower() for e in env["errors"])
     # A missing-argument error must be a clean message, not a stack trace.
     assert not any("Traceback" in e for e in env["errors"])
+
+
+def test_resolve_apk_auto_discovers_single_apk(tmp_path, monkeypatch):
+    # Playbook steps run with empty arguments — a single APK in the mount is found.
+    monkeypatch.setenv("SESSION_DIR", str(tmp_path / "no-session"))
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    apk = loot / "app.apk"
+    apk.write_bytes(b"")
+
+    skill = mobile.ManifestScan(target="com.example.app")
+    skill.loot_path = str(loot)
+    assert skill.resolve_apk(None) == str(apk)
+
+
+def test_resolve_apk_ambiguous_when_multiple(tmp_path, monkeypatch):
+    monkeypatch.setenv("SESSION_DIR", str(tmp_path / "no-session"))
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    (loot / "a.apk").write_bytes(b"")
+    (loot / "b.apk").write_bytes(b"")
+
+    skill = mobile.ManifestScan(target=None)
+    skill.loot_path = str(loot)
+    with pytest.raises(ValueError, match="Multiple APKs"):
+        skill.resolve_apk(None)
+
+
+def test_resolve_apk_explicit_path_wins(tmp_path, monkeypatch):
+    monkeypatch.setenv("SESSION_DIR", str(tmp_path / "no-session"))
+    loot = tmp_path / "loot"
+    loot.mkdir()
+    (loot / "auto.apk").write_bytes(b"")
+    chosen = loot / "chosen.apk"
+    chosen.write_bytes(b"")
+
+    skill = mobile.ManifestScan(target=None)
+    skill.loot_path = str(loot)
+    assert skill.resolve_apk(str(chosen)) == str(chosen)
 
 
 def test_manifest_scan_requires_apk(tmp_path):

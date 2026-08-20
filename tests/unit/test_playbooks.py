@@ -40,9 +40,7 @@ def test_aws_privesc_recon_registered_and_phase_ordered():
 
 
 def test_aws_privesc_recon_expands_into_a_dependency_chain():
-    result = handle_request_playbook(
-        {"target": "509399602200", "playbook": "aws-privesc-recon"}
-    )
+    result = handle_request_playbook({"target": "509399602200", "playbook": "aws-privesc-recon"})
     assert result["status"] == "QUEUED"
     ids = result["execution_ids"]
     assert len(ids) == 2
@@ -57,6 +55,43 @@ def test_aws_privesc_recon_expands_into_a_dependency_chain():
     # Only the first step is offered to workers; the second is gated.
     queued_ids = {e["execution_id"] for e in get_queued_executions()}
     assert queued_ids == {step1}
+
+
+def test_mobile_static_assessment_registered_and_phase_ordered():
+    pb = get_playbook("mobile-static-assessment")
+    assert pb is not None
+    phases = [s["phase"] for s in pb["steps"]]
+    assert phases == ["reconnaissance", "enumeration", "enumeration", "enumeration", "enumeration"]
+    skills = [s["skill"] for s in pb["steps"]]
+    assert skills == [
+        "mobile.ManifestScan",
+        "mobile.ApkDecompile",
+        "mobile.SecretScan",
+        "mobile.MobileNucleiScan",
+        "mobile.MobileNucleiScan",
+    ]
+    assert all(s["action_type"] == "mobile_skill" for s in pb["steps"])
+    # One nuclei pass is first-party, the other full-tree.
+    nuclei = [s for s in pb["steps"] if s["skill"] == "mobile.MobileNucleiScan"]
+    assert nuclei[0]["arguments"].get("first_party") is True
+    assert "first_party" not in nuclei[1]["arguments"]
+
+
+def test_mobile_static_assessment_expands_into_a_dependency_chain():
+    result = handle_request_playbook(
+        {"target": "com.example.app", "playbook": "mobile-static-assessment"}
+    )
+    assert result["status"] == "QUEUED"
+    ids = result["execution_ids"]
+    assert len(ids) == 5
+
+    execs = {e["execution_id"]: e for e in load_executions()}
+    # Each step depends on its predecessor; the first is unblocked.
+    assert not execs[ids[0]].get("depends_on")
+    for prev, cur in zip(ids, ids[1:]):
+        assert execs[cur]["depends_on"] == [prev]
+    queued_ids = {e["execution_id"] for e in get_queued_executions()}
+    assert queued_ids == {ids[0]}
 
 
 def test_no_args_lists_available_playbooks():
@@ -77,9 +112,7 @@ def test_missing_target_is_rejected():
 
 
 def test_web_recon_expands_into_a_dependency_chain():
-    result = handle_request_playbook(
-        {"target": "http://example.com", "playbook": "web-recon"}
-    )
+    result = handle_request_playbook({"target": "http://example.com", "playbook": "web-recon"})
     assert result["status"] == "QUEUED"
     ids = result["execution_ids"]
     assert len(ids) == 2

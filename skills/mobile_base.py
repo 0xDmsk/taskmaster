@@ -180,20 +180,54 @@ class BaseMobileSkill(ABC):
             return {"error": str(e)}
 
     def resolve_apk(self, apk: str | None) -> str:
-        """Resolve and validate the APK path the caller passed.
+        """Resolve the APK to analyze.
 
-        Callers pass a container path — an APK dropped in the read-only
-        `/session` mount or written under `/loot`. We do not accept host paths.
+        Order: (1) an explicit `apk` container path; (2) the target, if it is
+        itself a file path; (3) auto-discovery of a single `.apk` under /session
+        then /loot. Auto-discovery is what lets playbook steps run with empty
+        arguments — drop one APK in the session mount and every step finds it.
         """
-        candidate = apk or self.target
-        if not candidate:
-            raise ValueError("An 'apk' path (a container path, e.g. /session/app.apk) is required.")
-        if not os.path.isfile(candidate):
+        if apk:
+            if os.path.isfile(apk):
+                return apk
             raise FileNotFoundError(
-                f"APK not found at {candidate!r}. Drop it in the agent's /session mount "
+                f"APK not found at {apk!r}. Drop it in the agent's /session mount "
                 "(spawn with session_dir) or under /loot, and pass the container path."
             )
-        return candidate
+        if self.target and os.path.isfile(self.target):
+            return self.target
+
+        discovered = self._discover_apk()
+        if discovered:
+            return discovered
+        raise ValueError(
+            "No 'apk' given and no .apk found in /session or /loot. Drop exactly one "
+            "APK in the agent's session mount (spawn with session_dir), or pass "
+            "arguments.apk with the container path."
+        )
+
+    def _discover_apk(self) -> str | None:
+        """Find a single .apk under /session (preferred) then /loot.
+
+        Returns the path when exactly one is present in the first location that
+        has any; raises if a location is ambiguous (more than one) so the caller
+        picks explicitly rather than us guessing.
+        """
+        import glob  # noqa: PLC0415
+
+        session_dir = os.environ.get("SESSION_DIR", "/session")
+        for base in (session_dir, self.loot_path):
+            if not base or not os.path.isdir(base):
+                continue
+            hits = sorted(glob.glob(os.path.join(base, "*.apk")))
+            if len(hits) == 1:
+                return hits[0]
+            if len(hits) > 1:
+                raise ValueError(
+                    f"Multiple APKs in {base} ({', '.join(os.path.basename(h) for h in hits)}); "
+                    "pass arguments.apk to choose one."
+                )
+        return None
 
     def resolve_source_dir(self, kwargs: dict, suffix: str) -> str:
         """Resolve a decompiled source tree for skills that scan one.
