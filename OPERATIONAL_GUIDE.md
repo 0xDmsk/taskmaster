@@ -61,8 +61,12 @@ in **parallel** across workers (spawn several); shards on the *same* target must
 set `sequential: true` so they chain (the per-target lock serializes same-target
 work anyway). Examples: subdomain enum as one shard per domain (parallel); a full
 nuclei scan as one shard per template group, `sequential: true` (fits the window,
-per-shard progress, resilient). Each shard writes its own envelope/artifacts —
-aggregate them in `Findings.md` / `recon-data.md`.
+per-shard progress, resilient). Each shard writes its own envelope/artifacts; call
+`aggregate_executions` with the batch's `execution_ids` to merge them into one view
+(lists deduped, `timed_out` OR-ed, `overall_status` honest about coverage), then
+record the merged result in `Findings.md` / `recon-data.md`. For a full **web**
+nuclei scan use the `web.NucleiScan` skill (shard by `tags`/`templates`); for
+mobile, `mobile.MobileNucleiScan` (shard by template dir).
 
 **Phase order is enforced** per target: reconnaissance → enumeration → exploitation
 → post_exploitation → reporting. Only one RUNNING execution per target.
@@ -175,7 +179,8 @@ Promote `draft → in_review → final`; `export_threat_model_markdown` as
 - **Orchestration:** `request_security_action`, `request_playbook`, `request_batch`
   (fan one skill over many bounded shards for oversized work), `spawn_agent`,
   `wait_for_completion`, `mark_execution_complete`, `query_execution_status`,
-  `fetch_execution_result`, `list_queued_executions`, `cleanup_agents`, `recover_execution`
+  `fetch_execution_result`, `aggregate_executions` (merge a fan of shard results
+  into one view), `list_queued_executions`, `cleanup_agents`, `recover_execution`
   (+ worker-side `claim_execution` / `start_execution` / `complete_execution` /
   `fail_execution`).
 - **Planning:** `suggest_next_action` — read-only; given an engagement (or global),

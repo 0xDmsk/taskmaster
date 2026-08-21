@@ -16,6 +16,7 @@ from tools.get_operational_guide import core_instructions, handle_get_operationa
 from tools.suggest_next_action import handle_suggest_next_action
 from tools.query_execution_status import handle_query_execution_status
 from tools.fetch_execution_result import handle_fetch_execution_result
+from tools.aggregate_executions import handle_aggregate_executions
 from tools.mark_execution_complete import handle_mark_execution_complete
 from tools.claim_execution import handle_claim_execution
 from tools.start_execution import handle_start_execution
@@ -365,6 +366,28 @@ TOOLS = {
                 "execution_id": {
                     "type": "string",
                     "description": "The execution ID to fetch results for",
+                },
+            },
+        },
+    },
+    "aggregate_executions": {
+        "description": (
+            "Merge the results of a fan of executions (e.g. the shards from "
+            "request_batch) into one view: list findings are concatenated + "
+            "de-duplicated with recomputed counts, numbers summed, booleans like "
+            "timed_out OR-ed. Read-only. overall_status is honest about coverage — "
+            "'partial' if any shard timed out, 'incomplete' if any failed/missing — "
+            "so a sharded scan reads as a single result without hiding gaps."
+        ),
+        "handler": handle_aggregate_executions,
+        "inputSchema": {
+            "type": "object",
+            "required": ["execution_ids"],
+            "properties": {
+                "execution_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Execution ids to merge (typically request_batch's execution_ids).",
                 },
             },
         },
