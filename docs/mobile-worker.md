@@ -144,7 +144,32 @@ it via parallelism overhead). **The only reliable lever is cutting files:**
   found (heavy obfuscation), it falls back to a full scan and says so in `scope`.
 - **`timeout`** — raise it to let a large first-party codebase finish; a very
   large app's own smali can still exceed the default 300s, in which case you get
-  bounded partial results and can re-run deeper or longer.
+  bounded partial results and can re-run deeper or longer. Don't push `timeout`
+  past ~2h — the reaper force-fails a heartbeat-less execution around there. For
+  a scan that genuinely won't fit, **shard it with `request_batch`** instead (see
+  below).
+
+**Sharding a full scan that won't fit (`request_batch`).** For a comprehensive
+nuclei pass that exceeds the window even scoped, split it by template group into
+bounded shards against the one target (`sequential: true`, since same-target work
+serializes on the per-target lock). Each shard is a fresh sub-window execution, so
+the whole scan completes across shards with per-shard progress and resilience, and
+it sidesteps the reaper's ~2h/4h ceilings:
+
+```jsonc
+{ "tool": "request_batch",
+  "arguments": {
+    "target": "com.example.app", "phase": "enumeration", "agent_role": "enumeration",
+    "action_type": "mobile_skill", "skill": "mobile.MobileNucleiScan",
+    "arguments": { "source_dir": "/loot/mobile-assessment" },
+    "sequential": true,
+    "shards": [
+      { "label": "android", "arguments": { "templates": "/opt/mobile-nuclei-templates/Android" } },
+      { "label": "keys",    "arguments": { "templates": "/opt/mobile-nuclei-templates/Keys" } }
+    ],
+    "justification": "Split the full nuclei template set into bounded per-group shards so the scan completes across sub-window executions instead of one that never fits.",
+    "expected_output": "Per-template-group nuclei matches across the app." } }
+```
 - `severity` cuts template volume (`"medium,high,critical"`) — but drops the
   info/low signatures (WebView usage, JS interfaces, etc.) you often want.
 - `concurrency` (default 25 = nuclei's default) and `template_timeout` (5s) are

@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 import config
 from tools.request_security_action import handle_request
 from tools.request_playbook import handle_request_playbook
+from tools.request_batch import handle_request_batch
 from tools.get_operational_guide import core_instructions, handle_get_operational_guide
 from tools.suggest_next_action import handle_suggest_next_action
 from tools.query_execution_status import handle_query_execution_status
@@ -141,6 +142,73 @@ TOOLS = {
                 "engagement_id": {
                     "type": "string",
                     "description": "Optional reporting engagement id applied to every step.",
+                },
+            },
+        },
+    },
+    "request_batch": {
+        "description": (
+            "Fan ONE skill out over many bounded shards — one execution per shard — "
+            "to tackle work that will never fit a single execution window (a full "
+            "nuclei scan split by template group, enumeration over a large scope). "
+            "Unlike request_playbook (heterogeneous steps, one target, always "
+            "chained), this queues the SAME step across a 'shards' list. Shards on "
+            "different targets run in parallel across workers; for shards on the SAME "
+            "target pass sequential=true so they chain (the per-target lock serializes "
+            "same-target work anyway). Each shard writes its own envelope/artifacts; "
+            "aggregate in your notes. Spawn one or more compatible agents afterward."
+        ),
+        "handler": handle_request_batch,
+        "inputSchema": {
+            "type": "object",
+            "required": ["action_type", "phase", "agent_role", "shards", "justification"],
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": (
+                        "Base target for shards that don't set their own. Same-target "
+                        "shards need sequential=true."
+                    ),
+                },
+                "action_type": {
+                    "type": "string",
+                    "description": "Execution type applied to every shard (e.g. 'mobile_skill', 'skill').",
+                },
+                "skill": {
+                    "type": "string",
+                    "description": "Skill class path applied to every shard (e.g. 'mobile.MobileNucleiScan').",
+                },
+                "phase": {"type": "string", "description": "Security phase for every shard."},
+                "agent_role": {"type": "string", "description": "Agent role for every shard."},
+                "arguments": {
+                    "type": "object",
+                    "description": "Base skill arguments; each shard's arguments shallow-merge over these.",
+                    "additionalProperties": True,
+                },
+                "shards": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "One entry per bounded unit of work. Each may set 'target', "
+                        "'arguments' (merged over base), 'label', and extra 'depends_on'. "
+                        "e.g. nuclei by template group: "
+                        '[{"label":"android","arguments":{"templates":"/opt/mobile-nuclei-templates/Android"}}, ...]'
+                    ),
+                },
+                "sequential": {
+                    "type": "boolean",
+                    "description": (
+                        "Chain shards (each after the previous COMPLETES). Use for "
+                        "same-target work; leave false for different-target parallel fan-out."
+                    ),
+                },
+                "justification": {"type": "string", "minLength": 50},
+                "expected_output": {"type": "string"},
+                "engagement_id": {"type": "string"},
+                "depends_on": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Prerequisite execution_ids applied to every shard.",
                 },
             },
         },

@@ -51,6 +51,19 @@ a dependency chain for one target — each step runs only after the previous COM
 and the chain is cancelled if a step fails. For manual control, pass `depends_on`
 (a list of prerequisite execution_ids) to `request_security_action`.
 
+**Oversized work that won't fit one execution window** (a full nuclei scan,
+enumeration over a big scope): don't push a single execution's timeout higher and
+hope — an execution with no heartbeat is force-failed by the reaper at ~2h and its
+container at ~4h. Instead **shard it with `request_batch`**: fan one skill out over
+a `shards` list, one bounded (sub-window) execution per shard. A fan of short
+executions also sidesteps those reaper ceilings. Shards on *different* targets run
+in **parallel** across workers (spawn several); shards on the *same* target must
+set `sequential: true` so they chain (the per-target lock serializes same-target
+work anyway). Examples: subdomain enum as one shard per domain (parallel); a full
+nuclei scan as one shard per template group, `sequential: true` (fits the window,
+per-shard progress, resilient). Each shard writes its own envelope/artifacts —
+aggregate them in `Findings.md` / `recon-data.md`.
+
 **Phase order is enforced** per target: reconnaissance → enumeration → exploitation
 → post_exploitation → reporting. Only one RUNNING execution per target.
 **Before queuing for a target that already has executions:** check its current phase
@@ -159,7 +172,8 @@ Promote `draft → in_review → final`; `export_threat_model_markdown` as
 
 ## MCP tool map
 
-- **Orchestration:** `request_security_action`, `request_playbook`, `spawn_agent`,
+- **Orchestration:** `request_security_action`, `request_playbook`, `request_batch`
+  (fan one skill over many bounded shards for oversized work), `spawn_agent`,
   `wait_for_completion`, `mark_execution_complete`, `query_execution_status`,
   `fetch_execution_result`, `list_queued_executions`, `cleanup_agents`, `recover_execution`
   (+ worker-side `claim_execution` / `start_execution` / `complete_execution` /
