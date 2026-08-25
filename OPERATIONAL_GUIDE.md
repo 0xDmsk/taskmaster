@@ -115,8 +115,8 @@ browser context.
 - **Reporting** operator: `"report_skill"` (a `BaseReportSkill` subclass, e.g.
   `reporting.FindingDocxReport`) to render branded DOCX.
 - **Mobile** operator: `"mobile_skill"` (a `BaseMobileSkill` subclass) — headless
-  Android APK static analysis (apktool/jadx/nuclei), Phase 1, no device/emulator.
-  Skills: `mobile.ApkDecompile`, `mobile.ManifestScan`, `mobile.SecretScan`,
+  static analysis, Phase 1, no device/emulator. **Android** (apktool/jadx/nuclei):
+  `mobile.ApkDecompile`, `mobile.ManifestScan`, `mobile.SecretScan`,
   `mobile.MobileNucleiScan`. **Coverage-first default: run the `mobile-static-assessment`
   playbook** (`request_playbook`) — it chains manifest → decompile-once → full-tree
   secret sweep → first-party nuclei → full-tree nuclei, so nothing is skipped. Drop
@@ -131,8 +131,14 @@ browser context.
   smali via the manifest); it's bounded by `timeout` (default 300s) and, if it hits
   the wall, returns partial results with
   `findings.timed_out=true` rather than hanging (re-run with a higher `timeout` or
-  a `severity` filter to finish). First mobile action on a new target is
-  `reconnaissance`. Full guide: `docs/mobile-worker.md`.
+  a `severity` filter to finish). **iOS** (`skills/ios.py`, no new tooling beyond
+  `openssl`+stdlib): `ios.IpaUnpack`, `ios.InfoPlistScan`, `mobile.SecretScan`, and
+  `mobile.MobileNucleiScan` scoped to the platform-agnostic `Keys/` templates (26
+  per-service rules: Stripe, AWS, GCP, Twilio, etc. — no iOS app-code nuclei
+  templates exist publicly). No decompile step; nuclei limited to secret-pattern
+  matching only (Android smali/XML checks are irrelevant to an IPA). Run via the
+  `ios-static-assessment` playbook; drop exactly one `.ipa` in `session_dir`.
+  First mobile action on a new target is `reconnaissance`. Full guide: `docs/mobile-worker.md`.
 
 Every pathway emits a JSON envelope: `skill`, `target`, `status`, `findings`,
 `artifacts`, `errors`. (`findings` is the legacy wire key; user-facing these are

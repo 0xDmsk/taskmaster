@@ -187,27 +187,36 @@ class BaseMobileSkill(ABC):
         then /loot. Auto-discovery is what lets playbook steps run with empty
         arguments — drop one APK in the session mount and every step finds it.
         """
-        if apk:
-            if os.path.isfile(apk):
-                return apk
+        return self._resolve_app_file(apk, "apk", "APK", "*.apk")
+
+    def resolve_ipa(self, ipa: str | None) -> str:
+        """Resolve the IPA to analyze. Mirrors `resolve_apk` for iOS input."""
+        return self._resolve_app_file(ipa, "ipa", "IPA", "*.ipa")
+
+    def _resolve_app_file(
+        self, explicit: str | None, kwarg_name: str, label: str, glob_pattern: str
+    ) -> str:
+        if explicit:
+            if os.path.isfile(explicit):
+                return explicit
             raise FileNotFoundError(
-                f"APK not found at {apk!r}. Drop it in the agent's /session mount "
+                f"{label} not found at {explicit!r}. Drop it in the agent's /session mount "
                 "(spawn with session_dir) or under /loot, and pass the container path."
             )
         if self.target and os.path.isfile(self.target):
             return self.target
 
-        discovered = self._discover_apk()
+        discovered = self._discover_file(glob_pattern, label, kwarg_name)
         if discovered:
             return discovered
         raise ValueError(
-            "No 'apk' given and no .apk found in /session or /loot. Drop exactly one "
-            "APK in the agent's session mount (spawn with session_dir), or pass "
-            "arguments.apk with the container path."
+            f"No {kwarg_name!r} given and no {glob_pattern[1:]} found in /session or /loot. "
+            f"Drop exactly one {label} in the agent's session mount (spawn with session_dir), "
+            f"or pass arguments.{kwarg_name} with the container path."
         )
 
-    def _discover_apk(self) -> str | None:
-        """Find a single .apk under /session (preferred) then /loot.
+    def _discover_file(self, glob_pattern: str, label: str, kwarg_name: str) -> str | None:
+        """Find a single file matching `glob_pattern` under /session then /loot.
 
         Returns the path when exactly one is present in the first location that
         has any; raises if a location is ambiguous (more than one) so the caller
@@ -219,13 +228,14 @@ class BaseMobileSkill(ABC):
         for base in (session_dir, self.loot_path):
             if not base or not os.path.isdir(base):
                 continue
-            hits = sorted(glob.glob(os.path.join(base, "*.apk")))
+            hits = sorted(glob.glob(os.path.join(base, glob_pattern)))
             if len(hits) == 1:
                 return hits[0]
             if len(hits) > 1:
                 raise ValueError(
-                    f"Multiple APKs in {base} ({', '.join(os.path.basename(h) for h in hits)}); "
-                    "pass arguments.apk to choose one."
+                    f"Multiple {label}s in {base} "
+                    f"({', '.join(os.path.basename(h) for h in hits)}); "
+                    f"pass arguments.{kwarg_name} to choose one."
                 )
         return None
 

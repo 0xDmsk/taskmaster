@@ -8,7 +8,7 @@ queue → claim → execute → envelope contract.
 - **Operator:** `executors/mobile_operator.py`
 - **Action type claimed:** `mobile_skill` (only)
 - **Skill base:** `skills/mobile_base.py:BaseMobileSkill`
-- **Skills:** `skills/mobile.py`
+- **Skills:** `skills/mobile.py` (Android), `skills/ios.py` (iOS)
 - **`agent_type` for `spawn_agent`:** `"mobile"`
 
 It is delivered in two phases. **Phase 1 (static analysis) is built and
@@ -19,9 +19,21 @@ the roadmap at the end.
 
 ## Phase 1 — static analysis (shipping)
 
-Headless static analysis of Android APKs. No device, no emulator, no
-frida-server — it builds and runs in a plain container, including on Apple
+Headless static analysis of Android APKs and iOS IPAs. No device, no emulator,
+no frida-server — it builds and runs in a plain container, including on Apple
 Silicon macOS.
+
+**iOS coverage is narrower than Android's by design.** Android release APKs
+decompile to near-source Java even unobfuscated (`jadx`); a release IPA's
+Mach-O binary is stripped ARM64, and headless disassembly (e.g. Ghidra) yields
+low-fidelity pseudo-C with no recovered class/method names — not a useful
+code-review artifact. So the iOS skills stop at bundle-level static review:
+Info.plist, entitlements, secret sweep, and a nuclei pass scoped to the
+platform-agnostic `Keys/` template set (26 per-service secret patterns —
+confirmed as the only useful iOS-applicable subset after searching for iOS
+nuclei template collections; none exist publicly). There is no iOS decompile
+step and no iOS app-code nuclei pass. See `skills/ios.py`'s module docstring
+for the full rationale.
 
 ### What's in the image
 
@@ -63,7 +75,33 @@ Notes on behavior:
   file-protocol templates over a source tree; without it nuclei aborts with
   "no templates provided for scan". Verified against nuclei v3.11.
 
-### Recommended: the `mobile-static-assessment` playbook
+### iOS skills (`skills/ios.py`)
+
+All take the IPA by **container path** and write artifacts to `/loot`.
+
+| Skill | Key args | Output (`findings`) |
+|-------|----------|---------------------|
+| `ios.IpaUnpack` | `ipa`, `output_dir?` | `output_dir`, `app_dir`, `file_count` |
+| `ios.InfoPlistScan` | `app_dir?` **or** `source_dir?` **or** `ipa` | `bundle_id`, `version`, `ats`, `url_schemes`, `queries_schemes`, `file_sharing_enabled`, `background_modes`, `entitlements`, `risk_notes` |
+| `mobile.SecretScan` (reused) | `source_dir` = the unpacked `.app` bundle | same shape as the Android case |
+
+- **`IpaUnpack`** just unzips (an IPA is a zip) and locates the single
+  `Payload/*.app` bundle — there's no decode step to run.
+- **`InfoPlistScan`** parses `Info.plist` (binary or XML — Python's `plistlib`
+  handles both) for the ATS/URL-scheme/file-sharing misconfigurations, and
+  best-effort decodes `embedded.mobileprovision` (a CMS-signed plist, via
+  `openssl smime`) for entitlements when the IPA carries one — absent on
+  IPAs pulled without a provisioning profile, which is normal, not an error.
+- **`SecretScan`** is reused unchanged: point `source_dir` at the unpacked
+  bundle (`IpaUnpack`'s `output_dir` or `app_dir`) and it sweeps the same
+  pattern set, now also over `.plist`/`.strings` files.
+- **`MobileNucleiScan` with `templates=/opt/mobile-nuclei-templates/Keys`** is
+  reused unchanged: the `Keys/` templates are platform-agnostic (file-content
+  regex, no smali/XML paths) and run fine over an unpacked `.app`. Pass
+  `source_dir` pointing at the unpacked bundle. There are no public iOS
+  app-code nuclei templates; the `Android/` folder is skipped.
+
+### Recommended: the `mobile-static-assessment` playbook (Android)
 
 For a coverage-first pass, don't hand-assemble the skills — run the built-in
 playbook so nothing is skipped:
@@ -96,7 +134,28 @@ coverage gap that either alone leaves (see "Coverage & what you can miss").
 **APK auto-discovery:** every mobile skill, given no `apk`, finds a single `.apk`
 under `/session` (then `/loot`) — which is why the playbook's empty-argument steps
 just work. Drop exactly one APK in the agent's `session_dir`. Two or more APKs in
-the same location is an error (pass `arguments.apk` to disambiguate).
+the same location is an error (pass `arguments.apk` to disambiguate). The iOS
+skills auto-discover a single `.ipa` the same way (given no `ipa`).
+
+### Recommended: the `ios-static-assessment` playbook
+
+```jsonc
+// IPA dropped in ./session/ (one .ipa); target is a nominal label.
+{ "tool": "request_playbook",
+  "arguments": { "playbook": "ios-static-assessment",
+                 "target": "com.example.app" } }
+```
+
+It expands into `IpaUnpack` (reconnaissance) → `InfoPlistScan` (reconnaissance)
+→ `SecretScan` (enumeration) → `MobileNucleiScan` with `templates=Keys/`
+(enumeration), each reusing the previous step's unpacked bundle.
+
+No decompile step and no iOS app-code nuclei templates (none exist publicly —
+confirmed via search). The nuclei pass is scoped to the platform-agnostic
+`Keys/` set (26 per-service secret-pattern rules: Stripe, AWS, GCP service-account
+JSON shape, Twilio, Slack, etc.) — finer-grained than `SecretScan`'s 7 generic
+patterns and a second confirmation engine, without running the Android smali/XML
+checks from `Android/` (irrelevant to an IPA).
 
 ### Coverage & what you can miss
 
@@ -236,7 +295,7 @@ directly to let it decode on its own).
 
 ```bash
 make build-mobile                       # build the image
-uv run pytest tests/unit/test_mobile_skills.py tests/unit/test_spawn_agent.py
+uv run pytest tests/unit/test_mobile_skills.py tests/unit/test_ios_skills.py tests/unit/test_spawn_agent.py
 ```
 
 ---
@@ -257,8 +316,10 @@ Silicon macOS running Docker Desktop:
 There is no self-contained dynamic mobile container on this hardware; that is a
 Docker-Desktop-on-macOS limitation, not a Taskmaster one.
 
-iOS is out of scope for both phases: jailbreak-detection bypass and IPA patching
-need a jailbroken device plus macOS host tooling, with no container path.
+iOS *dynamic* testing is out of scope for the foreseeable future: jailbreak-
+detection bypass and runtime instrumentation need a jailbroken device plus
+macOS host tooling, with no container path. This is separate from iOS
+*static* analysis (`skills/ios.py`), which ships in Phase 1 alongside Android.
 
 ---
 

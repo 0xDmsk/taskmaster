@@ -193,6 +193,92 @@ PLAYBOOKS = {
             },
         ],
     },
+    "ios-static-assessment": {
+        "description": (
+            "iOS IPA static pass for one app: unpack (recon), Info.plist/entitlements "
+            "triage (recon), then a secret sweep and a nuclei Keys-template pass over the "
+            "unpacked bundle (enumeration). Narrower than the Android playbook by design — "
+            "there is no jadx equivalent for stripped ARM64 Mach-O binaries and no iOS-"
+            "specific nuclei template set exists anywhere (checked), so this stops at "
+            "bundle-level review: no decompile step, and the nuclei pass is limited to the "
+            "platform-agnostic Keys/ secret-pattern templates, not app-code checks (see "
+            "skills/ios.py module docstring). Drop exactly one .ipa in the agent's session "
+            "mount (spawn with session_dir); every step auto-discovers it. Target is a "
+            "nominal label (the bundle id, e.g. com.example.app)."
+        ),
+        "steps": [
+            {
+                "phase": "reconnaissance",
+                "agent_role": "recon",
+                "action_type": "mobile_skill",
+                "skill": "ios.IpaUnpack",
+                "arguments": {"output_dir": "/loot/ios-assessment"},
+                "justification": (
+                    "Unzip the IPA into a shared directory so the plist scan and secret "
+                    "sweep reuse one unpacked bundle instead of each unzipping it again."
+                ),
+                "expected_output": (
+                    "An unpacked tree at /loot/ios-assessment, the located .app bundle "
+                    "path, and its file count."
+                ),
+            },
+            {
+                "phase": "reconnaissance",
+                "agent_role": "recon",
+                "action_type": "mobile_skill",
+                "skill": "ios.InfoPlistScan",
+                "arguments": {"source_dir": "/loot/ios-assessment"},
+                "justification": (
+                    "Parse Info.plist and (if present) embedded.mobileprovision to baseline "
+                    "the app: bundle id, ATS exceptions, registered URL schemes, file-sharing "
+                    "and background-mode flags, and entitlements."
+                ),
+                "expected_output": (
+                    "Bundle id, ATS flags, URL schemes, entitlements, and risk notes."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "mobile_skill",
+                "skill": "mobile.SecretScan",
+                "arguments": {"source_dir": "/loot/ios-assessment"},
+                "justification": (
+                    "Regex-sweep the unpacked bundle (plists, strings tables, bundled JS/HTML "
+                    "web content) for hardcoded secrets and collect referenced HTTP endpoints. "
+                    "Same skill and pattern set used for Android — no iOS-specific fork needed."
+                ),
+                "expected_output": (
+                    "Redacted secret matches with file/line, and the distinct endpoints "
+                    "found across the app."
+                ),
+            },
+            {
+                "phase": "enumeration",
+                "agent_role": "enumeration",
+                "action_type": "mobile_skill",
+                "skill": "mobile.MobileNucleiScan",
+                "arguments": {
+                    "source_dir": "/loot/ios-assessment",
+                    "templates": "/opt/mobile-nuclei-templates/Keys",
+                },
+                "justification": (
+                    "Run nuclei's Keys/ template set over the unpacked bundle — 26 per-service "
+                    "regex rules (Stripe, Twilio, Square, AWS, GCP service-account JSON, "
+                    "Firebase, Slack, etc.) that are more precise than SecretScan's 7 generic "
+                    "patterns and platform-agnostic (not Android-specific). Complements the "
+                    "Python secret sweep with a second engine and finer-grained matches. Note: "
+                    "no iOS app-code templates exist publicly; the Android/ folder is skipped "
+                    "here because its templates match smali/XML patterns irrelevant to an IPA."
+                ),
+                "expected_output": (
+                    "Nuclei matches from the Keys/ template set with template id, severity, "
+                    "and matched file/line — or an empty result if no service credentials "
+                    "are present."
+                ),
+            },
+        ],
+    },
     "subdomain-recon": {
         "description": (
             "Domain attack-surface mapping: passive subdomain enumeration (recon) then "

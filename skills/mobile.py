@@ -288,7 +288,19 @@ class SecretScan(BaseMobileSkill):
         ),
     ]
 
-    SCAN_EXTS = {".smali", ".xml", ".json", ".properties", ".txt", ".js", ".html", ".kt", ".java"}
+    SCAN_EXTS = {
+        ".smali",
+        ".xml",
+        ".json",
+        ".properties",
+        ".txt",
+        ".js",
+        ".html",
+        ".kt",
+        ".java",
+        ".strings",
+        ".plist",
+    }
     MAX_FILE_BYTES = 2_000_000
 
     def analyze(self, **kwargs) -> dict:

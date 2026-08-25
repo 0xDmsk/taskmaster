@@ -4,11 +4,14 @@ ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 
 # System deps: a JRE for apktool/jadx, tooling to fetch release binaries, and
-# git for the mobile nuclei template set. Deliberately NO Android emulator and
-# NO frida-server — this is the Phase 1 static-analysis worker. Dynamic
-# instrumentation (frida/objection against a device reached over the network)
-# is Phase 2 and layers onto this image; on Docker Desktop for macOS the device
-# must live outside the container (no KVM, no USB passthrough).
+# git for the mobile nuclei template set. `openssl` also backs iOS entitlement
+# decoding (embedded.mobileprovision is a CMS-signed plist) — IPA unpack and
+# Info.plist parsing (skills/ios.py) need nothing beyond stdlib zipfile/plistlib,
+# so no iOS-specific package is added here. Deliberately NO Android emulator and
+# NO frida-server — this is the Phase 1 static-analysis worker (Android + iOS).
+# Dynamic instrumentation (frida/objection against a device reached over the
+# network) is Phase 2 and layers onto this image; on Docker Desktop for macOS
+# the device must live outside the container (no KVM, no USB passthrough).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
