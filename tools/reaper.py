@@ -28,6 +28,7 @@ Configured via env vars (all optional):
   TASKMASTER_REAPER_ORPHAN_TIMEOUT  default 300  (5 min)
 """
 
+import glob
 import json
 import logging
 import os
@@ -37,6 +38,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+import config
 from audit.audit_manager import log_event
 from state.storage import load_executions, update_execution
 from tools.cleanup_agents import _extract_env, _inspect_container, _is_taskmaster_agent
@@ -128,8 +130,57 @@ def _stop_container(name):
     subprocess.run(["docker", "rm", name], capture_output=True)
 
 
-def _fail_execution_for_reap(execution_id, reason):
+def _find_partial_artifacts(execution):
+    """Best-effort glob of /loot for output a nuclei skill may have streamed to
+    disk before this execution was reaped.
+
+    Both nuclei skills (`web.NucleiScan`, `mobile.MobileNucleiScan`) write
+    matches to a `-jsonl`/`-o` file incrementally, so a killed process still
+    leaves real partial results on disk — but LOOT_DIR is one directory shared
+    by every agent, so there's no execution-scoped subfolder to look in. This
+    is a heuristic (skill name + target substring + mtime not older than the
+    execution) good enough to point a human at the right file, not a
+    guaranteed exact match.
+    """
+    request = execution.get("request") or {}
+    if isinstance(request, str):
+        try:
+            request = json.loads(request)
+        except json.JSONDecodeError:
+            request = {}
+    skill = request.get("skill", "")
+    if not skill.endswith("NucleiScan"):
+        return []
+
+    loot_dir = config.LOOT_DIR
+    if not os.path.isdir(loot_dir):
+        return []
+
+    created = _parse_ts(execution.get("created_at"))
+    target = execution.get("target") or ""
+    stem = re.sub(r"[^A-Za-z0-9._-]", "_", target)[:60]
+
+    hits = []
+    for path in glob.glob(os.path.join(loot_dir, "*nuclei*.jsonl")):
+        if stem and stem not in os.path.basename(path):
+            continue
+        try:
+            mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+        except OSError:
+            continue
+        if created and mtime < created:
+            continue
+        hits.append(path)
+    return hits
+
+
+def _fail_execution_for_reap(execution_id, reason, execution=None):
     from state.state import cancel_blocked_dependents
+
+    if execution is not None:
+        artifacts = _find_partial_artifacts(execution)
+        if artifacts:
+            reason = f"{reason} | possible partial output on disk: {', '.join(artifacts)}"
 
     update_execution(
         execution_id,
@@ -228,6 +279,7 @@ def reap_once(cfg=None):
             _fail_execution_for_reap(
                 execution["execution_id"],
                 f"Reaper terminated {name} ({reason})",
+                execution=execution,
             )
 
         _stop_container(name)
@@ -276,7 +328,7 @@ def _sweep_orphans(executions, live_executors, cfg):
             f"Reaper recovered orphan {eid}: executor {executor_id} has no live "
             f"container (idle > {cfg['orphan_timeout']}s)"
         )
-        _fail_execution_for_reap(eid, reason)
+        _fail_execution_for_reap(eid, reason, execution=e)
         logger.info("Reaper recovered orphan %s (executor %s gone)", eid, executor_id)
         recovered.append({"execution_id": eid, "executor_id": executor_id})
     return recovered

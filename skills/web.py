@@ -113,8 +113,10 @@ class NucleiScan(BaseSkill):
     `timed_out: true` instead of failing.
 
     kwargs: `target` (or `targets` list), `templates`, `tags`, `exclude_tags`,
-    `severity`, `concurrency`, `template_timeout`, `timeout` (wall-clock, default
-    600s), `extra_args`.
+    `severity`, `concurrency`, `template_timeout`, `rate_limit` (requests/sec —
+    the only backpressure lever against a slow/rate-limiting target; nuclei
+    has no backoff of its own), `timeout` (wall-clock, default 600s),
+    `extra_args`.
     """
 
     tool = "nuclei"
@@ -163,6 +165,11 @@ class NucleiScan(BaseSkill):
             parts += ["-c", str(int(kwargs["concurrency"]))]
         if kwargs.get("template_timeout"):
             parts += ["-timeout", str(int(kwargs["template_timeout"]))]
+        if kwargs.get("rate_limit"):
+            # Backpressure against a slow/rate-limiting target — nuclei has no
+            # backoff of its own, so an unthrottled scan against a throttling
+            # target just burns the wall-clock timeout instead of finishing.
+            parts += ["-rate-limit", str(int(kwargs["rate_limit"]))]
         if kwargs.get("extra_args"):
             parts.append(str(kwargs["extra_args"]))
         return " ".join(parts)
@@ -190,6 +197,7 @@ class NucleiScan(BaseSkill):
                 "stdout": (e.stdout or "") if isinstance(e.stdout, str) else "",
                 "stderr": (e.stderr or "") if isinstance(e.stderr, str) else "",
                 "exit_code": -1,
+                "timed_out": True,
             }
         except Exception as e:  # noqa: BLE001
             return {"error": str(e)}

@@ -12,6 +12,7 @@ import config
 from tools.request_security_action import handle_request
 from tools.request_playbook import handle_request_playbook
 from tools.request_batch import handle_request_batch
+from tools.resplit_timed_out_shard import handle_resplit_timed_out_shard
 from tools.get_operational_guide import core_instructions, handle_get_operational_guide
 from tools.suggest_next_action import handle_suggest_next_action
 from tools.query_execution_status import handle_query_execution_status
@@ -20,6 +21,7 @@ from tools.aggregate_executions import handle_aggregate_executions
 from tools.mark_execution_complete import handle_mark_execution_complete
 from tools.claim_execution import handle_claim_execution
 from tools.start_execution import handle_start_execution
+from tools.heartbeat_execution import handle_heartbeat_execution
 from tools.complete_execution import handle_complete_execution
 from tools.fail_execution import handle_fail_execution
 from tools.list_queued_executions import handle_list_queued_executions
@@ -210,6 +212,39 @@ TOOLS = {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Prerequisite execution_ids applied to every shard.",
+                },
+            },
+        },
+    },
+    "resplit_timed_out_shard": {
+        "description": (
+            "Narrow and requeue a shard whose findings.timed_out was true — it didn't "
+            "cover its full scope before the wall-clock killed it, and nuclei is "
+            "hard-killed (no resume checkpoint), so the fix is to shrink scope and retry. "
+            "web.NucleiScan: splits a comma 'tags' argument into split_factor groups and "
+            "requeues via request_batch. mobile.MobileNucleiScan: turns on first_party "
+            "scoping, or deepens first_party_depth if already on. Other skills return "
+            "splittable=false with a reason instead of guessing."
+        ),
+        "handler": handle_resplit_timed_out_shard,
+        "inputSchema": {
+            "type": "object",
+            "required": ["execution_id"],
+            "properties": {
+                "execution_id": {
+                    "type": "string",
+                    "description": "The timed-out execution to narrow and requeue.",
+                },
+                "split_factor": {
+                    "type": "integer",
+                    "description": "How many groups to split 'tags' into (web.NucleiScan only). Default 2.",
+                },
+                "sequential": {
+                    "type": "boolean",
+                    "description": (
+                        "Chain the resplit shards so they run one after another against "
+                        "the same target (default true; matches request_batch's same-target rule)."
+                    ),
                 },
             },
         },
@@ -444,6 +479,23 @@ TOOLS = {
     "start_execution": {
         "description": "Transition CLAIMED -> RUNNING (enforces target locking)",
         "handler": handle_start_execution,
+        "inputSchema": {
+            "type": "object",
+            "required": ["execution_id", "executor_id"],
+            "properties": {
+                "execution_id": {"type": "string"},
+                "executor_id": {"type": "string"},
+            },
+        },
+    },
+    "heartbeat_execution": {
+        "description": (
+            "Refresh a RUNNING execution's updated_at without changing status. "
+            "Worker-internal: called periodically during a long-running skill "
+            "(e.g. a nuclei scan) so the reaper's stale-heartbeat check (default "
+            "2h) doesn't mistake real progress for a hang."
+        ),
+        "handler": handle_heartbeat_execution,
         "inputSchema": {
             "type": "object",
             "required": ["execution_id", "executor_id"],

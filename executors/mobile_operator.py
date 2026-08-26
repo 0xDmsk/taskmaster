@@ -17,6 +17,7 @@ import importlib
 import json
 import os
 import socket
+import threading
 import time
 import traceback
 import urllib.error
@@ -29,6 +30,9 @@ TASKMASTER_PORT = int(os.environ.get("TASKMASTER_PORT", 5000))
 EXECUTOR_ID = os.environ.get("EXECUTOR_ID", f"mobile-{socket.gethostname()}")
 TARGET_SCOPE = os.environ.get("TARGET_SCOPE")
 AGENT_MISSION = os.environ.get("AGENT_MISSION")
+# How often to heartbeat a RUNNING execution while a skill blocks the main
+# loop — must stay comfortably under the reaper's stale_timeout (default 2h).
+HEARTBEAT_INTERVAL = int(os.environ.get("TASKMASTER_HEARTBEAT_INTERVAL", 300))
 
 SUPPORTED_ACTION_TYPES = {"mobile_skill"}
 
@@ -53,24 +57,51 @@ def call_taskmaster(tool_name, arguments):
         return {"error": f"Connection failed: {str(e)}"}
 
 
+def _heartbeat_loop(execution_id, stop_event):
+    """Touch a RUNNING execution's updated_at every HEARTBEAT_INTERVAL until stopped.
+
+    A mobile nuclei scan blocks this loop for its full wall-clock duration;
+    without a periodic touch the reaper's stale-heartbeat check can't tell a
+    legitimately long scan from a hung one.
+    """
+    while not stop_event.wait(HEARTBEAT_INTERVAL):
+        resp = call_taskmaster(
+            "heartbeat_execution",
+            {"execution_id": execution_id, "executor_id": EXECUTOR_ID},
+        )
+        if "error" in resp:
+            print(f"[!] heartbeat failed for {execution_id}: {resp['error']}")
+
+
 def execute_action(execution):
     payload = execution.get("request", {})
     action_type = payload.get("action_type")
+    execution_id = execution.get("execution_id")
 
-    if action_type == "mobile_skill":
-        return _execute_mobile_skill(payload)
-    return {
-        "status": "FAILED",
-        "result": json.dumps(
-            {
-                "status": "error",
-                "errors": [
-                    f"Unknown action_type: {action_type}. "
-                    f"Supported types: {', '.join(sorted(SUPPORTED_ACTION_TYPES))}"
-                ],
-            }
-        ),
-    }
+    stop_event = threading.Event()
+    if execution_id:
+        threading.Thread(
+            target=_heartbeat_loop,
+            args=(execution_id, stop_event),
+            daemon=True,
+        ).start()
+    try:
+        if action_type == "mobile_skill":
+            return _execute_mobile_skill(payload)
+        return {
+            "status": "FAILED",
+            "result": json.dumps(
+                {
+                    "status": "error",
+                    "errors": [
+                        f"Unknown action_type: {action_type}. "
+                        f"Supported types: {', '.join(sorted(SUPPORTED_ACTION_TYPES))}"
+                    ],
+                }
+            ),
+        }
+    finally:
+        stop_event.set()
 
 
 def _execute_mobile_skill(payload):

@@ -66,7 +66,11 @@ per-shard progress, resilient). Each shard writes its own envelope/artifacts; ca
 (lists deduped, `timed_out` OR-ed, `overall_status` honest about coverage), then
 record the merged result in `Findings.md` / `recon-data.md`. For a full **web**
 nuclei scan use the `web.NucleiScan` skill (shard by `tags`/`templates`); for
-mobile, `mobile.MobileNucleiScan` (shard by template dir).
+mobile, `mobile.MobileNucleiScan` (shard by template dir). If `aggregate_executions`
+reports `any_timed_out: true` for a shard, call `resplit_timed_out_shard` on that
+execution_id rather than hand-splitting it — it narrows scope (splits `tags` for
+web, escalates `first_party`/`first_party_depth` for mobile) and requeues
+automatically; it returns `splittable: false` with a reason if it can't.
 
 **Phase order is enforced** per target: reconnaissance → enumeration → exploitation
 → post_exploitation → reporting. Only one RUNNING execution per target.
@@ -183,7 +187,8 @@ Promote `draft → in_review → final`; `export_threat_model_markdown` as
 ## MCP tool map
 
 - **Orchestration:** `request_security_action`, `request_playbook`, `request_batch`
-  (fan one skill over many bounded shards for oversized work), `spawn_agent`,
+  (fan one skill over many bounded shards for oversized work), `resplit_timed_out_shard`
+  (narrow + requeue a shard that came back `timed_out`), `spawn_agent`,
   `wait_for_completion`, `mark_execution_complete`, `query_execution_status`,
   `fetch_execution_result`, `aggregate_executions` (merge a fan of shard results
   into one view), `list_queued_executions`, `cleanup_agents`, `recover_execution`

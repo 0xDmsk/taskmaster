@@ -4,6 +4,7 @@ import io
 import json
 import os
 import socket
+import threading
 import time
 import traceback
 import urllib.error
@@ -18,6 +19,10 @@ TASKMASTER_PORT = int(os.environ.get("TASKMASTER_PORT", 5000))
 EXECUTOR_ID = os.environ.get("EXECUTOR_ID", f"kali-{socket.gethostname()}")
 TARGET_SCOPE = os.environ.get("TARGET_SCOPE")  # Optional: limit to a specific target
 AGENT_MISSION = os.environ.get("AGENT_MISSION")  # Optional: mission description
+# How often to heartbeat a RUNNING execution while a skill blocks the main
+# loop — must stay comfortably under the reaper's stale_timeout (default 2h)
+# so a legitimately long scan is never mistaken for a hang.
+HEARTBEAT_INTERVAL = int(os.environ.get("TASKMASTER_HEARTBEAT_INTERVAL", 300))
 
 
 def configure_proxychains():
@@ -95,31 +100,65 @@ def call_taskmaster(tool_name, arguments):
         return {"error": f"Connection failed: {str(e)}"}
 
 
+def _heartbeat_loop(execution_id, stop_event):
+    """Touch a RUNNING execution's updated_at every HEARTBEAT_INTERVAL until stopped.
+
+    Runs in a background thread alongside the blocking skill subprocess so the
+    reaper's stale-heartbeat check keeps seeing progress for the whole
+    duration of a long scan, not just the moment it started.
+    """
+    while not stop_event.wait(HEARTBEAT_INTERVAL):
+        resp = call_taskmaster(
+            "heartbeat_execution",
+            {"execution_id": execution_id, "executor_id": EXECUTOR_ID},
+        )
+        if "error" in resp:
+            print(f"[!] heartbeat failed for {execution_id}: {resp['error']}")
+
+
 def execute_action(execution):
     """
     Two-pathway execution dispatcher:
     1. skill   — import skill class, call run(), return JSON envelope
     2. python  — sandboxed exec() with output capture
+
+    Runs behind a background heartbeat thread since both pathways block for
+    the full duration of a skill's subprocess (a nuclei scan can run
+    minutes-to-hours) — without it the execution's updated_at freezes and the
+    reaper's stale-heartbeat check (default 2h) can't distinguish real
+    progress from a hang.
     """
     payload = execution.get("request", {})
     action_type = payload.get("action_type")
+    execution_id = execution.get("execution_id")
 
-    if action_type == "skill":
-        return _execute_skill(payload)
-    elif action_type == "python":
-        return _execute_python_sandbox(payload)
-    else:
-        return {
-            "status": "FAILED",
-            "result": json.dumps(
-                {
-                    "status": "error",
-                    "errors": [
-                        f"Unknown action_type: {action_type}. " f"Supported types: skill, python"
-                    ],
-                }
-            ),
-        }
+    stop_event = threading.Event()
+    if execution_id:
+        threading.Thread(
+            target=_heartbeat_loop,
+            args=(execution_id, stop_event),
+            daemon=True,
+        ).start()
+    try:
+        if action_type == "skill":
+            return _execute_skill(payload)
+        elif action_type == "python":
+            return _execute_python_sandbox(payload)
+        else:
+            return {
+                "status": "FAILED",
+                "result": json.dumps(
+                    {
+                        "status": "error",
+                        "errors": [
+                            f"Unknown action_type: {action_type}. "
+                            f"Supported types: skill, python"
+                        ],
+                    }
+                ),
+            }
+    finally:
+        stop_event.set()
 
 
 def _execute_skill(payload):
@@ -270,12 +309,8 @@ def main_loop():
                 {"execution_id": eid, "executor_id": EXECUTOR_ID},
             )
             if "error" in start:
-                print(
-                    f"[!] start_execution rejected for {eid}: {start['error']}"
-                )
-                print(
-                    f"[!] Skipping {eid} — claim will be cleared by recovery"
-                )
+                print(f"[!] start_execution rejected for {eid}: {start['error']}")
+                print(f"[!] Skipping {eid} — claim will be cleared by recovery")
                 continue
 
             # 4. Execute
@@ -292,10 +327,7 @@ def main_loop():
                     },
                 )
                 if "error" in resp:
-                    print(
-                        f"[!] complete_execution rejected for {eid}: "
-                        f"{resp['error']}"
-                    )
+                    print(f"[!] complete_execution rejected for {eid}: " f"{resp['error']}")
                 else:
                     print(f"[+] Task {eid} completed")
             else:
@@ -308,10 +340,7 @@ def main_loop():
                     },
                 )
                 if "error" in resp:
-                    print(
-                        f"[!] fail_execution rejected for {eid}: "
-                        f"{resp['error']}"
-                    )
+                    print(f"[!] fail_execution rejected for {eid}: " f"{resp['error']}")
                 else:
                     print(f"[-] Task {eid} failed")
 

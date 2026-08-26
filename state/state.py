@@ -126,9 +126,7 @@ def transition_execution(
     # get_queued_executions, but a direct claim must not bypass the gate.
     if current_status == "QUEUED" and requested_status == "CLAIMED":
         if not dependencies_satisfied(execution):
-            raise ValueError(
-                f"Execution {execution_id} has unmet dependencies; not ready to claim"
-            )
+            raise ValueError(f"Execution {execution_id} has unmet dependencies; not ready to claim")
 
     # Executor ownership verification:
     # CLAIMED→RUNNING and RUNNING→COMPLETED/FAILED must match the executor who claimed/started.
@@ -172,6 +170,34 @@ def transition_execution(
             f"Cancelled: dependency {execution_id} {requested_status.lower()}",
         )
     return updated
+
+
+def heartbeat_execution(execution_id: str, executor_id: str) -> Optional[dict]:
+    """
+    Refresh ``updated_at`` on a RUNNING execution without changing status.
+
+    Long skill runs (e.g. a nuclei scan near the wall-clock ceiling) block the
+    worker's main loop for the whole duration, so without a periodic touch
+    ``updated_at`` freezes at RUNNING-transition time and the reaper's
+    stale-heartbeat check (state/../tools/reaper.py) can't tell a legitimately
+    long-running scan from a hung one. Callers must own the execution
+    (executor_id match) and it must still be RUNNING — a heartbeat is not a
+    state transition and never touches target locking or lifecycle policy.
+    """
+    execution = get_execution_by_id(execution_id)
+    if not execution:
+        return None
+    if execution.get("status") != "RUNNING":
+        return None
+    if execution.get("executor_id") != executor_id:
+        raise ValueError(
+            f"Executor mismatch: execution owned by {execution.get('executor_id')}, "
+            f"caller is {executor_id}"
+        )
+    return update_execution(
+        execution_id,
+        {"updated_at": datetime.now(timezone.utc).isoformat()},
+    )
 
 
 def get_execution_state(execution_id: str) -> Optional[dict]:

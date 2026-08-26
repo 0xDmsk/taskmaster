@@ -203,10 +203,15 @@ it via parallelism overhead). **The only reliable lever is cutting files:**
   found (heavy obfuscation), it falls back to a full scan and says so in `scope`.
 - **`timeout`** — raise it to let a large first-party codebase finish; a very
   large app's own smali can still exceed the default 300s, in which case you get
-  bounded partial results and can re-run deeper or longer. Don't push `timeout`
-  past ~2h — the reaper force-fails a heartbeat-less execution around there. For
-  a scan that genuinely won't fit, **shard it with `request_batch`** instead (see
-  below).
+  bounded partial results and can re-run deeper or longer. The mobile operator
+  heartbeats a RUNNING execution every `TASKMASTER_HEARTBEAT_INTERVAL` (default
+  300s), so a long-running scan alone won't get force-failed by the reaper's 2h
+  stale-heartbeat check — the hard `max_age` container ceiling (default 4h) is
+  the real backstop. For a scan that genuinely won't fit, **shard it with
+  `request_batch`** instead (see below); if a shard still comes back with
+  `findings.timed_out: true`, call `resplit_timed_out_shard` on it rather than
+  hand-narrowing — it escalates `first_party`/`first_party_depth` and requeues
+  automatically.
 
 **Sharding a full scan that won't fit (`request_batch`).** For a comprehensive
 nuclei pass that exceeds the window even scoped, split it by template group into

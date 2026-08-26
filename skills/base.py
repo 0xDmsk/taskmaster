@@ -99,8 +99,11 @@ class BaseSkill(ABC):
 
         # Execute
         shell_result = self.execute_shell(command)
+        timed_out = bool(shell_result.get("timed_out"))
 
-        if "error" in shell_result:
+        # A hard error (not a salvageable timeout) short-circuits — there's no
+        # stdout/stderr worth parsing.
+        if "error" in shell_result and not timed_out:
             completed_at = datetime.now(timezone.utc).isoformat()
             return {
                 "skill": skill_name,
@@ -120,15 +123,22 @@ class BaseSkill(ABC):
         stderr = shell_result.get("stderr", "")
         exit_code = shell_result.get("exit_code", -1)
 
-        # Parse output
+        # Parse output. On a timeout, still run parse_output — a skill that
+        # streams results to a /loot file (nuclei's -jsonl, ffuf's -o, ...)
+        # has real partial data on disk even though the process was killed.
         try:
             findings = self.parse_output(stdout, stderr, exit_code)
-            status = "error" if exit_code != 0 and not findings else "success"
+            if timed_out:
+                status = "partial" if findings else "error"
+            else:
+                status = "error" if exit_code != 0 and not findings else "success"
         except Exception as e:
             findings = {}
             status = "partial"
             self._errors.append(f"parse_output failed: {e}")
 
+        if timed_out:
+            self._errors.append(shell_result.get("error", "Command timed out"))
         if stderr.strip():
             self._errors.append(stderr.strip())
 
@@ -146,6 +156,7 @@ class BaseSkill(ABC):
             "findings": findings,
             "artifacts": list(self._artifacts),
             "errors": list(self._errors),
+            "timed_out": timed_out,
         }
 
     def _detect_tool_version(self) -> str:
@@ -221,7 +232,15 @@ class BaseSkill(ABC):
         return f"PDTM failed to install '{project}'."
 
     def execute_shell(self, command, timeout=300):
-        """Helper to run shell commands safely."""
+        """Helper to run shell commands safely.
+
+        On a wall-clock timeout, returns whatever stdout/stderr had already
+        buffered plus `timed_out: True` instead of only an error — this lets
+        `run()` still call `parse_output` on what the tool streamed to a
+        `/loot` file before the kill (the pattern `web.NucleiScan` and
+        `mobile.MobileNucleiScan` use), rather than discarding real partial
+        results just because the wall clock ran out.
+        """
         try:
             result = subprocess.run(
                 command,
@@ -235,8 +254,14 @@ class BaseSkill(ABC):
                 "stderr": result.stderr,
                 "exit_code": result.returncode,
             }
-        except subprocess.TimeoutExpired:
-            return {"error": f"Command timed out after {timeout}s"}
+        except subprocess.TimeoutExpired as e:
+            return {
+                "error": f"Command timed out after {timeout}s",
+                "timed_out": True,
+                "stdout": (e.stdout or "") if isinstance(e.stdout, str) else "",
+                "stderr": (e.stderr or "") if isinstance(e.stderr, str) else "",
+                "exit_code": -1,
+            }
         except Exception as e:
             return {"error": str(e)}
 
