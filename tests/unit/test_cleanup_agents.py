@@ -72,7 +72,7 @@ def test_cleanup_agents_matches_hostname_target_against_url_scope():
                 "Image": "kali-smart-operator",
                 "Env": [
                     "EXECUTOR_ID=penny-recon",
-                    "TARGET_SCOPE=https://www.priceline.com/penny",
+                    "TARGET_SCOPE=https://www.example.com/penny",
                 ],
                 "Labels": {"taskmaster.managed": "true"},
             }
@@ -87,7 +87,7 @@ def test_cleanup_agents_matches_hostname_target_against_url_scope():
             _completed(),
         ]
 
-        result = handle_cleanup_agents({"target": "www.priceline.com"})
+        result = handle_cleanup_agents({"target": "www.example.com"})
 
     assert result["status"] == "success"
     assert result["cleaned"] == ["penny-recon"]
