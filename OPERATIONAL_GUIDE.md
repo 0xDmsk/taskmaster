@@ -154,8 +154,16 @@ Execution results are an event log; client-facing findings are curated records i
 reporting tables. Flow:
 1. `create_reporting_engagement`.
 2. `create_reporting_finding` (include `source_execution_id` when based on an execution).
+   For a reflection-based hypothesis (a nuclei/ffuf hit, a suspected XSS/SSRF/injection
+   param) run `web.StrikeVerify` first — baseline + marker + negative-control live
+   request — before writing it up. `confirmed` is real signal; `false_positive` means
+   the "hit" was just a normal echo (drop it); `unconfirmed`/`blocked` means don't
+   report it as confirmed yet. It only proves reflected behavior, not blind/time-based/
+   OOB findings.
 3. `update_reporting_finding` for scalar edits; `add_reporting_finding_evidence` /
-   `add_reporting_finding_reference` for proof (don't overwrite the evidence trail).
+   `add_reporting_finding_reference` for proof (don't overwrite the evidence trail) —
+   `StrikeVerify`'s `evidence_artifact` + execution id feed `add_reporting_finding_evidence`
+   directly.
 4. Review with `get_reporting_finding` / `list_reporting_findings`.
 5. `request_reporting_docx` → spawn a `reporting` agent → `wait_for_completion`.
    It returns `not_ready` when required client-facing fields are missing — fill the

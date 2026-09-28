@@ -171,7 +171,7 @@ The lower-level `reporting.FindingDocxReport` skill still accepts direct `findin
 
 ## 🛠 Skills Library (`skills/`)
 
-Each skill wraps exactly one CLI tool and produces a standardized JSON envelope with `findings`, `artifacts`, and `errors`. The `findings` key is a legacy envelope field; in user-facing dashboard language, those values are execution observations.
+Most skills wrap exactly one CLI tool; a couple wrap a Python HTTP client instead (see `StrikeVerify` below) when the work is a structured multi-request algorithm rather than a single tool invocation. Every skill produces a standardized JSON envelope with `findings`, `artifacts`, and `errors`. The `findings` key is a legacy envelope field; in user-facing dashboard language, those values are execution observations.
 
 | Skill | Tool | Description |
 |-------|------|-------------|
@@ -179,6 +179,8 @@ Each skill wraps exactly one CLI tool and produces a standardized JSON envelope 
 | `network.NmapScan` | `nmap` | Service/version scan with XML parsing |
 | `web.FfufFuzz` | `ffuf` | Directory and endpoint fuzzing |
 | `web.HttpxDetect` | `httpx` | Technology detection and fingerprinting |
+| `web.NucleiScan` | `nuclei` | Templated HTTP vulnerability scanning, shardable via `request_batch` |
+| `web.StrikeVerify` | `curl_cffi`/`requests` | Baseline + marker + negative-control live verification — confirms or refutes a scan hit before it's reported |
 | `subdomain.GobusterDns` | `gobuster` | Active DNS subdomain brute-force |
 | `subdomain.SubfinderEnum` | `subfinder` | Passive subdomain enumeration |
 | `takeover.NucleiTakeover` | `nuclei` | Subdomain takeover detection |
