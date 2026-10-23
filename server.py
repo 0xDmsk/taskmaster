@@ -701,7 +701,18 @@ TOOLS = {
             "properties": {
                 "finding_id": {"type": "string"},
                 "engagement_id": {"type": "string"},
-                "title": {"type": "string"},
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "A compact label, not a sentence. Name the weakness and where "
+                        "it is, as a noun phrase of roughly 3-8 words; no verb clause, "
+                        "no trailing period. The body carries the detail, so do not "
+                        "summarize cause or impact here. "
+                        "Good: 'Reflected XSS in search parameter'. "
+                        "Bad: 'The search parameter reflects user input, which lets an "
+                        "attacker run JavaScript in the victim browser'."
+                    ),
+                },
                 "severity": {
                     "type": "string",
                     "enum": ["Critical", "High", "Medium", "Low", "Info"],
@@ -734,10 +745,41 @@ TOOLS = {
                     "type": "array",
                     "items": {"type": "string"},
                 },
-                "description": {"type": "string"},
-                "impact": {"type": "string"},
-                "proof_of_concept": {"type": "string"},
-                "remediation": {"type": "string"},
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "What was found, stated plainly. Lead with the point in the "
+                        "first sentence, then the minimum context needed to understand "
+                        "it. Short sentences, one idea each; expand an acronym on first "
+                        "use. Write for a technical stakeholder who is not a pentester. "
+                        "State what is wrong here; leave consequences to 'impact' and "
+                        "repro steps to 'proof_of_concept'."
+                    ),
+                },
+                "impact": {
+                    "type": "string",
+                    "description": (
+                        "The concrete consequence if this is not fixed, in plain terms "
+                        "(what an attacker gains, what data or function is exposed). Tie "
+                        "it to this target; no generic boilerplate, no scaremongering."
+                    ),
+                },
+                "proof_of_concept": {
+                    "type": "string",
+                    "description": (
+                        "A self-contained reproduction: the exact request/steps and the "
+                        "observed response, enough for the reader to repeat it. Keep it "
+                        "to what proves the finding; no narration or filler."
+                    ),
+                },
+                "remediation": {
+                    "type": "string",
+                    "description": (
+                        "Specific, actionable fix steps for this finding, most important "
+                        "first. Name the concrete change; avoid vague advice like "
+                        "'validate input' without saying where or how."
+                    ),
+                },
                 "cvss": {
                     "type": "object",
                     "properties": {
@@ -832,10 +874,41 @@ TOOLS = {
                     ],
                 },
                 "affected": {"type": "string"},
-                "description": {"type": "string"},
-                "impact": {"type": "string"},
-                "proof_of_concept": {"type": "string"},
-                "remediation": {"type": "string"},
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "What was found, stated plainly. Lead with the point in the "
+                        "first sentence, then the minimum context needed to understand "
+                        "it. Short sentences, one idea each; expand an acronym on first "
+                        "use. Write for a technical stakeholder who is not a pentester. "
+                        "State what is wrong here; leave consequences to 'impact' and "
+                        "repro steps to 'proof_of_concept'."
+                    ),
+                },
+                "impact": {
+                    "type": "string",
+                    "description": (
+                        "The concrete consequence if this is not fixed, in plain terms "
+                        "(what an attacker gains, what data or function is exposed). Tie "
+                        "it to this target; no generic boilerplate, no scaremongering."
+                    ),
+                },
+                "proof_of_concept": {
+                    "type": "string",
+                    "description": (
+                        "A self-contained reproduction: the exact request/steps and the "
+                        "observed response, enough for the reader to repeat it. Keep it "
+                        "to what proves the finding; no narration or filler."
+                    ),
+                },
+                "remediation": {
+                    "type": "string",
+                    "description": (
+                        "Specific, actionable fix steps for this finding, most important "
+                        "first. Name the concrete change; avoid vague advice like "
+                        "'validate input' without saying where or how."
+                    ),
+                },
                 "cvss_score": {"type": "string"},
                 "cvss_vector": {"type": "string"},
                 "source_execution_id": {"type": "string"},

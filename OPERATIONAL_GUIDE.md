@@ -172,9 +172,23 @@ reporting tables. Flow:
 **Report-writing style** (stored fields ARE the client deliverable — translate, don't
 transcribe): never carry over `F-NNN` IDs, `§N.M` markers, or "(pending triage)". Each
 field has one job — `description` (what was found), `impact` (plain consequences),
-`proof_of_concept` (self-contained repro), `remediation` (specific actions). Severity is
-final, not a working estimate. `category` is a fixed enum — pick the closest, `TBD` when
-unknown; off-list values are coerced to `Other`.
+`proof_of_concept` (self-contained repro), `remediation` (specific actions). Keep each
+field in its lane; don't restate the impact inside the description or vice versa.
+Severity is final, not a working estimate. `category` is a fixed enum — pick the
+closest, `TBD` when unknown; off-list values are coerced to `Other`.
+
+- **Title = compact label, not a sentence.** A noun phrase naming the weakness and
+  where it lives, ~3-8 words, no verb clause, no trailing period. The body carries the
+  detail, so the title doesn't explain cause or impact. Write "Reflected XSS in search
+  parameter", not "The search parameter reflects user input, allowing an attacker to
+  execute JavaScript in the victim's browser".
+- **Write so a non-specialist can follow it.** Lead with the point, then only the
+  context needed to understand it. Short sentences, one idea each. Plain words over
+  jargon; expand an acronym on first use. Prefer short paragraphs or bullets over a
+  wall of text. The reader is a technical stakeholder, not necessarily a pentester.
+- **Enough detail to reproduce and fix — no more.** Cut narration, hedging, and
+  restated background. If a sentence doesn't help the reader understand, reproduce, or
+  remediate the issue, drop it.
 
 ## Threat modeling (evidence-grounded, two-pass)
 
