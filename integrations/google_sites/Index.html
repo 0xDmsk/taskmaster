@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <?!= include('Styles'); ?>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <h1>Taskmaster</h1>
+                <span>Shared Findings</span>
+            </div>
+            <nav id="nav">
+                <div class="nav-section-label">Team</div>
+                <a href="#" data-page="overview">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                    Overview
+                </a>
+                <a href="#" data-page="engagements">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                    Engagements
+                </a>
+                <a href="#" data-page="findings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    All Findings
+                </a>
+                <div class="nav-section-label">Data</div>
+                <a href="#" data-page="import">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Import from Taskmaster
+                </a>
+            </nav>
+            <div class="sidebar-foot">
+                <span id="whoami" class="mono"></span>
+                <button class="action-btn small" id="refresh-btn" type="button">Refresh</button>
+            </div>
+        </aside>
+        <main class="main" id="main">
+            <div class="empty-state">Loading shared findings…</div>
+        </main>
+    </div>
+    <div id="toast" class="toast" hidden></div>
+    <?!= include('App'); ?>
+</body>
+</html>

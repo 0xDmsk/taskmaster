@@ -1,0 +1,869 @@
+<script>
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------------ *
+ * State                                                                     *
+ * ------------------------------------------------------------------------ */
+
+var S = {
+  data: null,
+  idx: null,
+  route: { page: 'overview' },
+  busy: false,
+  dirty: false,            // unsaved edits in the finding form
+  editEngagement: false,   // engagement workspace: header edit form open
+  openFindings: {},        // finding_id -> true for expanded cards
+  filters: {
+    overview: { eng: '', year: '' },
+    engList: { q: '', status: '' },
+    eng: { status: '', severity: '', q: '' },
+    all: { eng: '', severity: '', status: '', category: '', author: '', q: '', sort: 'updated_at', dir: -1 },
+  },
+};
+
+var SEV_RANK = { Critical: 0, High: 1, Medium: 2, Low: 3, Info: 4 };
+
+/* ------------------------------------------------------------------------ *
+ * Server calls                                                              *
+ * ------------------------------------------------------------------------ */
+
+function call(action, payload) {
+  return new Promise(function (resolve, reject) {
+    google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).api(action, payload || {});
+  });
+}
+
+function setBusy(on) {
+  S.busy = on;
+  document.body.classList.toggle('busy', on);
+  Array.prototype.forEach.call(document.querySelectorAll('button'), function (b) { b.disabled = on; });
+}
+
+/** Run a write; on success swap in the fresh dataset and re-render. */
+function mutate(action, payload, okMsg) {
+  if (S.busy) return Promise.resolve({ ok: false });
+  setBusy(true);
+  return call(action, payload).then(function (d) {
+    setData(d);
+    setBusy(false);
+    if (okMsg) toast(okMsg, 'success');
+    return { ok: true, result: d.result };
+  }, function (err) {
+    setBusy(false);
+    toast((err && err.message) || String(err), 'error');
+    return { ok: false };
+  });
+}
+
+function reload(msg) {
+  setBusy(true);
+  return call('bootstrap').then(function (d) {
+    setData(d);
+    setBusy(false);
+    render();
+    if (msg) toast(msg, 'success');
+  }, function (err) {
+    setBusy(false);
+    document.getElementById('main').innerHTML =
+      '<div class="empty-state">Could not load data: ' + esc((err && err.message) || err) + '</div>';
+  });
+}
+
+function setData(d) {
+  S.data = d;
+  var ix = { eng: {}, finding: {}, assetsByEng: {}, findingsByEng: {}, evByFinding: {}, refsByFinding: {} };
+  d.engagements.forEach(function (e) { ix.eng[e.engagement_id] = e; });
+  d.report_assets.forEach(function (a) { push(ix.assetsByEng, a.engagement_id, a); });
+  d.findings.forEach(function (f) {
+    ix.finding[f.finding_id] = f;
+    push(ix.findingsByEng, f.engagement_id || '', f);
+  });
+  bySort(d.finding_evidence).forEach(function (e) { push(ix.evByFinding, e.finding_id, e); });
+  bySort(d.finding_references).forEach(function (r) { push(ix.refsByFinding, r.finding_id, r); });
+  S.idx = ix;
+  document.getElementById('whoami').textContent = d.user;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Helpers                                                                   *
+ * ------------------------------------------------------------------------ */
+
+function push(map, k, v) { (map[k] = map[k] || []).push(v); }
+function bySort(list) { return list.slice().sort(function (a, b) { return (+a.sort_order || 0) - (+b.sort_order || 0); }); }
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+if (window.DOMPurify) {
+  DOMPurify.addHook('afterSanitizeAttributes', function (n) {
+    if (n.tagName === 'A') { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener noreferrer'); }
+  });
+}
+function md(text) {
+  if (!text) return '';
+  if (window.marked && window.DOMPurify) return DOMPurify.sanitize(marked.parse(text, { gfm: true, breaks: true }));
+  return '<p>' + esc(text).replace(/\n/g, '<br>') + '</p>';
+}
+
+function day(iso) { return (iso || '').slice(0, 10); }
+function who(email) { return email ? String(email).split('@')[0] : ''; }
+function label(s) { return String(s || '').replace(/_/g, ' '); }
+function lc(s) { return String(s || '').toLowerCase(); }
+function opts() { return S.data.options; }
+function isOpen(f) { return opts().closed_statuses.indexOf(f.status) < 0; }
+function engName(id) { var e = S.idx.eng[id]; return e ? e.name : 'Unassigned'; }
+function engFindings(id) { return S.idx.findingsByEng[id] || []; }
+
+function countBy(list, key, order) {
+  var out = {};
+  (order || []).forEach(function (k) { out[k] = 0; });
+  list.forEach(function (x) { var k = x[key] || ''; out[k] = (out[k] || 0) + 1; });
+  return out;
+}
+
+function options(values, current, labeller) {
+  return values.map(function (v) {
+    var val = typeof v === 'object' ? v.value : v;
+    var text = typeof v === 'object' ? v.text : (labeller ? labeller(v) : v);
+    return '<option value="' + esc(val) + '"' + (String(current) === String(val) ? ' selected' : '') + '>' + esc(text) + '</option>';
+  }).join('');
+}
+
+function engagementOptions(current, emptyText) {
+  var list = S.data.engagements.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+  return '<option value="">' + esc(emptyText) + '</option>' +
+    options(list.map(function (e) { return { value: e.engagement_id, text: e.name }; }), current);
+}
+
+function sevBadge(sev) { return '<span class="sev-chip sev-' + lc(sev) + '">' + esc(sev || 'Info') + '</span>'; }
+function sevDot(sev) { return '<span class="sev-dot sev-' + lc(sev) + '" title="' + esc(sev) + '"></span>'; }
+
+function bars(counts, classFor, labeller) {
+  var keys = Object.keys(counts);
+  var max = Math.max.apply(null, keys.map(function (k) { return counts[k]; }).concat([0]));
+  if (!max) return '<p class="ov-empty">No findings in this scope.</p>';
+  return '<div class="bar-chart">' + keys.map(function (k) {
+    var n = counts[k];
+    return '<div class="bar-row" title="' + esc(k) + ': ' + n + '">' +
+      '<span class="bar-name">' + esc(labeller ? labeller(k) : k) + '</span>' +
+      '<div class="bar-track"><div class="bar-fill ' + (classFor ? classFor(k) : '') + '" style="width:' +
+      (n ? Math.max(2, Math.round(100 * n / max)) : 0) + '%"></div></div>' +
+      '<span class="bar-count">' + n + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function toast(msg, kind) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (kind || '');
+  el.hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(function () { el.hidden = true; }, kind === 'error' ? 9000 : 3000);
+}
+
+function formData(form) {
+  var out = {};
+  Array.prototype.forEach.call(form.elements, function (el) {
+    if (el.name) out[el.name] = el.value;
+  });
+  return out;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Routing                                                                   *
+ * ------------------------------------------------------------------------ */
+
+function routeHash(r) { return r.page + (r.id ? '/' + r.id : ''); }
+
+function go(route, replace) {
+  if (S.dirty && !confirmDiscard()) return;
+  S.dirty = false;
+  S.editEngagement = false;
+  S.route = route;
+  try {
+    var hist = google.script.history;
+    (replace ? hist.replace : hist.push).call(hist, route, null, routeHash(route));
+  } catch (e) { /* history is a convenience only */ }
+  render();
+  window.scrollTo(0, 0);
+}
+
+function confirmDiscard() {
+  try { return window.confirm('Discard unsaved changes to this finding?'); } catch (e) { return true; }
+}
+
+function parseHash(hash) {
+  var parts = String(hash || '').replace(/^#/, '').split('/');
+  var pages = ['overview', 'engagements', 'engagement', 'findings', 'finding', 'import'];
+  return pages.indexOf(parts[0]) >= 0 ? { page: parts[0], id: parts[1] || null } : { page: 'overview' };
+}
+
+/* ------------------------------------------------------------------------ *
+ * Render                                                                    *
+ * ------------------------------------------------------------------------ */
+
+function render() {
+  if (!S.data) return;
+  var r = S.route;
+  // Keep unsaved finding edits across re-renders triggered by evidence /
+  // reference saves on the same page.
+  var kept = S.dirty ? captureFindingForm() : null;
+  var html;
+  if (r.page === 'engagements') html = pageEngagements();
+  else if (r.page === 'engagement') html = S.idx.eng[r.id] ? pageEngagement(S.idx.eng[r.id]) : missing('engagement');
+  else if (r.page === 'findings') html = pageAllFindings();
+  else if (r.page === 'finding') html = (!r.id || S.idx.finding[r.id]) ? pageFinding(r) : missing('finding');
+  else if (r.page === 'import') html = pageImport();
+  else html = pageOverview();
+  document.getElementById('main').innerHTML = html;
+  if (kept) restoreFindingForm(kept);
+
+  var navPage = { engagement: 'engagements', finding: 'findings' }[r.page] || r.page;
+  Array.prototype.forEach.call(document.querySelectorAll('#nav a'), function (a) {
+    a.classList.toggle('active', a.dataset.page === navPage);
+  });
+}
+
+function missing(what) {
+  return '<div class="empty-state">This ' + what + ' no longer exists — a colleague may have deleted it. ' +
+    '<a data-go="overview">Back to overview</a></div>';
+}
+
+/* --- Overview ----------------------------------------------------------- */
+
+function pageOverview() {
+  var f = S.filters.overview;
+  var all = S.data.findings;
+  var years = Object.keys(countBy(all.map(function (x) { return { y: day(x.created_at).slice(0, 4) }; }), 'y'))
+    .filter(Boolean).sort().reverse();
+  var list = all.filter(function (x) {
+    return (!f.eng || x.engagement_id === f.eng) && (!f.year || day(x.created_at).slice(0, 4) === f.year);
+  });
+  var engs = f.eng ? [S.idx.eng[f.eng]].filter(Boolean) : S.data.engagements;
+  var sev = countBy(list, 'severity', opts().severities);
+  var status = countBy(list, 'status', opts().statuses);
+  var cats = countBy(list, 'category');
+  var topCats = {};
+  Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).slice(0, 10)
+    .forEach(function (k) { topCats[k] = cats[k]; });
+  var authors = countBy(list, 'created_by');
+  var latest = list.slice().sort(function (a, b) { return b.updated_at.localeCompare(a.updated_at); }).slice(0, 10);
+  var activity = engs.map(function (e) {
+    var fs = engFindings(e.engagement_id);
+    var last = fs.reduce(function (m, x) { return x.updated_at > m ? x.updated_at : m; }, e.updated_at || '');
+    return { e: e, last: last, n: fs.length };
+  }).sort(function (a, b) { return b.last.localeCompare(a.last); }).slice(0, 8);
+
+  return '' +
+    '<div class="page-heading"><h2 class="page-title">Overview</h2>' +
+    (f.eng ? '<a class="action-btn" data-go="engagement:' + esc(f.eng) + '">' + esc(engName(f.eng)) + ' workspace →</a>' : '') +
+    '</div>' +
+    '<div class="filter-bar">' +
+      '<select data-filter="overview.eng">' + engagementOptions(f.eng, 'All engagements') + '</select>' +
+      '<select data-filter="overview.year"><option value="">All years</option>' + options(years, f.year) + '</select>' +
+    '</div>' +
+    '<div class="stats-bar">' +
+      stat('Engagements', engs.length) +
+      stat('Active', engs.filter(function (e) { return e.status === 'active'; }).length) +
+      stat('Findings', list.length) +
+      stat('Open', list.filter(isOpen).length) +
+      stat('Critical', sev.Critical, 'sev-critical') +
+      stat('High', sev.High, 'sev-high') +
+      stat('Contributors', Object.keys(authors).filter(Boolean).length) +
+    '</div>' +
+    '<div class="overview-grid">' +
+      card('Findings by severity', bars(sev, function (k) { return 'sev-' + lc(k); })) +
+      card('Finding pipeline', bars(status, null, label)) +
+      card('Top categories', bars(topCats)) +
+      card('Latest findings', latest.length ? '<ul class="ov-list">' + latest.map(function (x) {
+        return '<li><a class="ov-list-main" data-go="finding:' + esc(x.finding_id) + '">' + sevBadge(x.severity) +
+          '<span class="ov-list-title">' + esc(x.title) + '</span></a>' +
+          '<span class="ov-list-sub">' + esc(engName(x.engagement_id)) + ' · ' + esc(who(x.updated_by || x.created_by)) + ' · ' + day(x.updated_at) + '</span></li>';
+      }).join('') + '</ul>' : '<p class="ov-empty">No report findings yet.</p>') +
+      card('Recently active engagements', activity.length ? '<ul class="ov-list">' + activity.map(function (a) {
+        return '<li><a class="ov-list-main" data-go="engagement:' + esc(a.e.engagement_id) + '">' +
+          '<span class="badge eng-' + esc(a.e.status) + '">' + esc(a.e.status) + '</span>' +
+          '<span class="ov-list-title">' + esc(a.e.name) + '</span></a>' +
+          '<span class="ov-list-sub">' + a.n + ' findings · ' + day(a.last) + '</span></li>';
+      }).join('') + '</ul>' : '<p class="ov-empty">No engagements yet.</p>') +
+      card('Findings by contributor', bars(authors, null, who)) +
+    '</div>';
+}
+
+function stat(name, value, cls) {
+  return '<div class="stat-card"><div class="label">' + esc(name) + '</div><div class="value ' + (cls || '') + '">' + (value || 0) + '</div></div>';
+}
+function card(title, body) { return '<section class="ov-card"><h3 class="ov-card-title">' + esc(title) + '</h3>' + body + '</section>'; }
+
+/* --- Engagements list --------------------------------------------------- */
+
+function pageEngagements() {
+  var f = S.filters.engList;
+  return '' +
+    '<div class="page-heading"><h2 class="page-title">Engagements</h2></div>' +
+    '<form data-form="createEngagement" class="filter-bar engagement-create">' +
+      '<input type="text" name="name" required placeholder="Engagement name">' +
+      '<input type="text" name="client_name" placeholder="Client / product">' +
+      '<input type="text" name="summary" placeholder="Summary (optional)">' +
+      '<button class="action-btn primary" type="submit">Create Engagement</button>' +
+    '</form>' +
+    '<div class="filter-bar">' +
+      '<input type="search" data-filter="engList.q" value="' + esc(f.q) + '" placeholder="Search name, client, creator">' +
+      '<select data-filter="engList.status"><option value="">All statuses</option>' + options(opts().engagement_statuses, f.status) + '</select>' +
+    '</div>' +
+    '<div id="eng-grid">' + engagementGrid() + '</div>';
+}
+
+function engagementGrid() {
+  var f = S.filters.engList;
+  var q = lc(f.q);
+  var list = S.data.engagements.filter(function (e) {
+    return (!f.status || e.status === f.status) &&
+      (!q || lc([e.name, e.client_name, e.created_by].join(' ')).indexOf(q) >= 0);
+  }).sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+  if (!list.length) {
+    return '<div class="empty-state">' + (S.data.engagements.length ? 'No engagements match.' : 'No engagements yet. Create one above, or import from Taskmaster.') + '</div>';
+  }
+  return '<div class="engagement-grid">' + list.map(function (e) {
+    var fs = engFindings(e.engagement_id);
+    var sev = countBy(fs, 'severity', opts().severities);
+    return '<a class="engagement-card" data-go="engagement:' + esc(e.engagement_id) + '">' +
+      '<div class="engagement-card-head"><span class="engagement-card-name">' + esc(e.name) + '</span>' +
+        '<span class="badge eng-' + esc(e.status) + '">' + esc(e.status) + '</span></div>' +
+      '<div class="engagement-card-meta">' +
+        (e.client_name ? '<span>' + esc(e.client_name) + '</span>' : '') +
+        '<span>' + (S.idx.assetsByEng[e.engagement_id] || []).length + ' scope</span>' +
+        '<span>' + esc(who(e.created_by)) + ' · ' + day(e.created_at) + '</span></div>' +
+      '<div class="engagement-card-counts"><span>' + fs.length + ' findings</span>' +
+        '<span class="finding-open">' + fs.filter(isOpen).length + ' open</span></div>' +
+      '<div class="sev-chips">' + opts().severities.map(function (s) {
+        return sev[s] ? '<span class="sev-chip sev-' + lc(s) + '">' + s[0] + ' ' + sev[s] + '</span>' : '';
+      }).join('') + '</div></a>';
+  }).join('') + '</div>';
+}
+
+/* --- Engagement workspace ----------------------------------------------- */
+
+function pageEngagement(e) {
+  var fs = engFindings(e.engagement_id);
+  var sev = countBy(fs, 'severity', opts().severities);
+  var status = countBy(fs, 'status', opts().statuses);
+  var f = S.filters.eng;
+  var head = S.editEngagement ? engagementEditForm(e) :
+    '<div class="page-heading"><div>' +
+      '<a class="breadcrumb" data-go="engagements">&larr; Engagements</a>' +
+      '<h2 class="page-title">' + esc(e.name) + '</h2>' +
+      '<div class="engagement-card-meta">' +
+        (e.client_name ? '<span>' + esc(e.client_name) + '</span>' : '') +
+        '<span class="badge eng-' + esc(e.status) + '">' + esc(e.status) + '</span>' +
+        '<span>created by ' + esc(e.created_by) + ' · ' + day(e.created_at) + '</span></div>' +
+    '</div><div class="heading-actions">' +
+      '<button class="action-btn" type="button" data-action="editEngagement">Edit</button>' +
+      '<button class="action-btn primary" type="button" data-go="finding-new:' + esc(e.engagement_id) + '">New Finding</button>' +
+    '</div></div>' +
+    (e.summary ? '<div class="engagement-summary md-body">' + md(e.summary) + '</div>' : '');
+
+  return head +
+    '<div class="workspace-grid"><section class="workspace-main">' +
+      '<div class="workspace-rollup">' +
+        '<div class="rollup-block"><h3 class="panel-title">Severity</h3><div class="sev-chips">' +
+          opts().severities.map(function (s) {
+            return '<span class="sev-chip sev-' + lc(s) + (sev[s] ? '' : ' muted') + '">' + s + ' ' + sev[s] + '</span>';
+          }).join('') + '</div></div>' +
+        '<div class="rollup-block"><h3 class="panel-title">Pipeline</h3><div class="status-funnel">' +
+          opts().statuses.map(function (s) {
+            return '<span class="status-pill status-' + s + (status[s] ? '' : ' muted') + '">' + label(s) + ': ' + status[s] + '</span>';
+          }).join('') + '</div></div>' +
+      '</div>' +
+      '<div class="filter-bar">' +
+        '<select data-filter="eng.status" data-target="eng-findings-list"><option value="">All statuses</option>' + options(opts().statuses, f.status, label) + '</select>' +
+        '<select data-filter="eng.severity" data-target="eng-findings-list"><option value="">All severities</option>' + options(opts().severities, f.severity) + '</select>' +
+        '<input type="search" data-filter="eng.q" data-target="eng-findings-list" value="' + esc(f.q) + '" placeholder="Search title, affected, description">' +
+      '</div>' +
+      '<div id="eng-findings-list">' + engagementFindingList(e) + '</div>' +
+    '</section><aside class="workspace-side">' + scopePanel(e) + '</aside></div>';
+}
+
+function engagementEditForm(e) {
+  var hasFindings = engFindings(e.engagement_id).length > 0;
+  return '<form data-form="saveEngagement" class="report-form" style="margin-bottom:1rem">' +
+    '<input type="hidden" name="engagement_id" value="' + esc(e.engagement_id) + '">' +
+    '<input type="hidden" name="expected_updated_at" value="' + esc(e.updated_at) + '">' +
+    '<div class="form-grid">' +
+      '<label><span>Name</span><input type="text" name="name" required value="' + esc(e.name) + '"></label>' +
+      '<label><span>Client / product</span><input type="text" name="client_name" value="' + esc(e.client_name) + '"></label>' +
+      '<label><span>Status</span><select name="status">' + options(opts().engagement_statuses, e.status) + '</select></label>' +
+      '<label class="span-all"><span>Summary (markdown)</span><textarea name="summary">' + esc(e.summary) + '</textarea></label>' +
+    '</div><div class="form-actions"><div class="heading-actions">' +
+      '<button class="action-btn primary" type="submit">Save Engagement</button>' +
+      '<button class="action-btn" type="button" data-action="cancelEditEngagement">Cancel</button></div>' +
+      (hasFindings ? '<span class="form-meta">Delete is available once the engagement has no findings.</span>' :
+        '<button class="action-btn danger" type="button" data-confirm data-action="deleteEngagement" data-id="' + esc(e.engagement_id) + '">Delete Engagement</button>') +
+    '</div></form>';
+}
+
+function engagementFindingList(e) {
+  var f = S.filters.eng;
+  var q = lc(f.q);
+  var fs = engFindings(e.engagement_id).filter(function (x) {
+    return (!f.status || x.status === f.status) && (!f.severity || x.severity === f.severity) &&
+      (!q || lc([x.title, x.affected, x.description].join(' ')).indexOf(q) >= 0);
+  }).sort(function (a, b) {
+    return (SEV_RANK[a.severity] - SEV_RANK[b.severity]) || a.title.localeCompare(b.title);
+  });
+  var summary = '<div class="finding-list-summary"><span>' + fs.length + ' shown</span>' +
+    opts().statuses.map(function (s) {
+      var n = fs.filter(function (x) { return x.status === s; }).length;
+      return n ? '<span>' + label(s) + ': ' + n + '</span>' : '';
+    }).join('') + '</div>';
+  if (!fs.length) return summary + '<div class="empty-state">No findings match the current filters.</div>';
+  return summary + '<div class="finding-rows">' + fs.map(findingCard).join('') + '</div>';
+}
+
+function findingCard(x) {
+  var ev = S.idx.evByFinding[x.finding_id] || [];
+  var refs = S.idx.refsByFinding[x.finding_id] || [];
+  var field = function (name, value, markdown) {
+    return value ? '<div class="report-field"><strong>' + name + '</strong><div class="md-body">' +
+      (markdown ? md(value) : esc(value).replace(/\n/g, '<br>')) + '</div></div>' : '';
+  };
+  return '<details class="report-finding-card" data-finding="' + esc(x.finding_id) + '"' + (S.openFindings[x.finding_id] ? ' open' : '') + '>' +
+    '<summary>' + sevDot(x.severity) +
+      '<span class="report-finding-title">' + esc(x.title) + '</span>' +
+      '<select class="status-select status-' + esc(x.status) + '" data-status-for="' + esc(x.finding_id) + '">' +
+        options(opts().statuses, x.status, label) + '</select>' +
+      '<span class="report-finding-counts">' + ev.length + ' evid · ' + refs.length + ' refs</span>' +
+    '</summary>' +
+    '<div class="report-finding-detail">' +
+      '<div class="report-finding-meta">' +
+        '<span>' + esc(x.severity) + '</span><span>Category ' + esc(x.category) + '</span>' +
+        (x.cvss_score ? '<span>CVSS ' + esc(x.cvss_score) + '</span>' : '') +
+        '<span>by ' + esc(who(x.created_by)) + ' · ' + day(x.created_at) + '</span>' +
+        (x.updated_by && x.updated_by !== x.created_by ? '<span>edited by ' + esc(who(x.updated_by)) + ' · ' + day(x.updated_at) + '</span>' : '') +
+      '</div>' +
+      field('Affected', x.affected) +
+      field('Description', x.description, true) +
+      field('Impact', x.impact, true) +
+      field('Proof of Concept', x.proof_of_concept, true) +
+      field('Remediation', x.remediation, true) +
+      (refs.length ? '<div class="report-field"><strong>References</strong><ul class="report-inline-list">' +
+        refs.map(function (r) { return '<li><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.label || r.url) + '</a></li>'; }).join('') +
+        '</ul></div>' : '') +
+      '<div class="report-actions">' +
+        '<button class="action-btn" type="button" data-go="finding:' + esc(x.finding_id) + '">Edit</button>' +
+        '<button class="action-btn" type="button" data-go="finding-copy:' + esc(x.finding_id) + '">Copy as new</button>' +
+      '</div>' +
+    '</div></details>';
+}
+
+function scopePanel(e) {
+  var assets = S.idx.assetsByEng[e.engagement_id] || [];
+  return '<section class="side-panel"><h3 class="panel-title">Scope</h3>' +
+    (assets.length ? '<ul class="scope-list">' + assets.map(function (a) {
+      return '<li><span class="scope-kind">' + esc(a.kind) + '</span><span class="scope-value mono">' + esc(a.value) + '</span>' +
+        '<button class="icon-btn" type="button" title="Remove from scope" data-confirm data-action="deleteAsset" data-id="' + esc(a.asset_id) + '">&times;</button>' +
+        (a.description ? '<span class="scope-desc">' + esc(a.description) + '</span>' : '') + '</li>';
+    }).join('') + '</ul>' : '<div class="empty-state small" style="margin-bottom:0.75rem">No scope recorded.</div>') +
+    '<form data-form="addAsset" class="stacked-form">' +
+      '<input type="hidden" name="engagement_id" value="' + esc(e.engagement_id) + '">' +
+      '<select name="kind">' + options(opts().asset_kinds, 'host') + '</select>' +
+      '<input type="text" name="value" required placeholder="Asset (e.g. 10.0.0.5, api.example.com)">' +
+      '<input type="text" name="description" placeholder="Note (optional)">' +
+      '<button class="action-btn" type="submit">Add</button>' +
+    '</form></section>';
+}
+
+/* --- All findings (cross-engagement) ------------------------------------ */
+
+function pageAllFindings() {
+  var f = S.filters.all;
+  var authors = Object.keys(countBy(S.data.findings, 'created_by')).filter(Boolean).sort();
+  return '' +
+    '<div class="page-heading"><h2 class="page-title">All Findings</h2>' +
+      '<button class="action-btn primary" type="button" data-go="finding-new:">New Finding</button></div>' +
+    '<div class="filter-bar">' +
+      '<input type="search" data-filter="all.q" data-target="all-table" value="' + esc(f.q) + '" placeholder="Search title, affected, description, remediation">' +
+      '<select data-filter="all.eng" data-target="all-table">' + engagementOptions(f.eng, 'All engagements') + '</select>' +
+      '<select data-filter="all.severity" data-target="all-table"><option value="">All severities</option>' + options(opts().severities, f.severity) + '</select>' +
+      '<select data-filter="all.status" data-target="all-table"><option value="">All statuses</option>' + options(opts().statuses, f.status, label) + '</select>' +
+      '<select data-filter="all.category" data-target="all-table"><option value="">All categories</option>' + options(opts().categories, f.category) + '</select>' +
+      '<select data-filter="all.author" data-target="all-table"><option value="">Anyone</option>' + options(authors, f.author, who) + '</select>' +
+    '</div>' +
+    '<div id="all-table">' + allFindingsTable() + '</div>';
+}
+
+function allFindingsTable() {
+  var f = S.filters.all;
+  var q = lc(f.q);
+  var list = S.data.findings.filter(function (x) {
+    return (!f.eng || x.engagement_id === f.eng) && (!f.severity || x.severity === f.severity) &&
+      (!f.status || x.status === f.status) && (!f.category || x.category === f.category) &&
+      (!f.author || x.created_by === f.author) &&
+      (!q || lc([x.title, x.affected, x.description, x.remediation].join(' ')).indexOf(q) >= 0);
+  });
+  var key = {
+    severity: function (x) { return SEV_RANK[x.severity]; },
+    engagement: function (x) { return lc(engName(x.engagement_id)); },
+    title: function (x) { return lc(x.title); },
+  }[f.sort] || function (x) { return x[f.sort] || ''; };
+  list.sort(function (a, b) { var ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * f.dir; });
+  if (!list.length) return '<div class="empty-state">No findings match.</div>';
+  var th = function (k, text) {
+    return '<th data-sort="' + k + '">' + text + (f.sort === k ? (f.dir > 0 ? ' ▲' : ' ▼') : '') + '</th>';
+  };
+  return '<div class="finding-list-summary"><span>' + list.length + ' of ' + S.data.findings.length + ' findings</span></div>' +
+    '<div class="table-wrap"><table class="data"><thead><tr>' +
+      th('severity', 'Severity') + th('title', 'Title') + th('engagement', 'Engagement') + th('category', 'Category') +
+      th('status', 'Status') + th('updated_at', 'Updated') + th('created_by', 'Author') +
+    '</tr></thead><tbody>' + list.map(function (x) {
+      return '<tr data-go="finding:' + esc(x.finding_id) + '">' +
+        '<td>' + sevBadge(x.severity) + '</td>' +
+        '<td class="title-cell">' + esc(x.title) + '</td>' +
+        '<td class="nowrap">' + esc(engName(x.engagement_id)) + '</td>' +
+        '<td class="nowrap">' + esc(x.category) + '</td>' +
+        '<td><span class="status-pill status-' + esc(x.status) + '">' + label(x.status) + '</span></td>' +
+        '<td class="nowrap">' + day(x.updated_at) + '</td>' +
+        '<td class="nowrap">' + esc(who(x.created_by)) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+/* --- Finding editor ----------------------------------------------------- */
+
+function pageFinding(r) {
+  var x = r.id ? S.idx.finding[r.id] : (r.copyFrom ? copyOf(S.idx.finding[r.copyFrom]) : null);
+  var edit = !!r.id;
+  var engId = x ? x.engagement_id : (r.preset || '');
+  var back = engId && S.idx.eng[engId] ? 'engagement:' + engId : 'findings';
+  var v = function (k, dflt) { return esc(x && x[k] != null ? x[k] : (dflt || '')); };
+  var area = function (name, text, hint) {
+    return '<label class="span-all"><span>' + text + (hint ? ' <span class="muted">(' + hint + ')</span>' : '') + '</span>' +
+      '<textarea name="' + name + '">' + v(name) + '</textarea></label>';
+  };
+  var title = edit ? 'Edit Finding' : (r.copyFrom ? 'New Finding (copy)' : 'New Finding');
+
+  var html = '<div class="page-heading"><h2 class="page-title">' + title + '</h2>' +
+    '<a class="action-btn" data-go="' + esc(back) + '">' + (back === 'findings' ? 'Back to All Findings' : 'Back to Engagement') + '</a></div>' +
+    '<form data-form="saveFinding" id="finding-form" class="report-form">' +
+      (edit ? '<input type="hidden" name="finding_id" value="' + v('finding_id') + '">' +
+              '<input type="hidden" name="expected_updated_at" value="' + v('updated_at') + '">' : '') +
+      '<div class="form-grid">' +
+        '<label class="span-all"><span>Title</span><input type="text" name="title" required value="' + v('title') + '"></label>' +
+        '<label><span>Engagement</span><select name="engagement_id">' + engagementOptions(engId, 'Unassigned') + '</select></label>' +
+        '<label><span>Status</span><select name="status">' + options(opts().statuses, x ? x.status : 'draft', label) + '</select></label>' +
+        '<label><span>Severity</span><select name="severity">' + options(opts().severities, x ? x.severity : 'Info') + '</select></label>' +
+        '<label><span>Category</span><select name="category">' + options(opts().categories, x ? x.category : 'TBD') + '</select></label>' +
+        '<label><span>CVSS Score</span><input type="text" name="cvss_score" value="' + v('cvss_score') + '"></label>' +
+        '<label><span>Source Execution</span><input type="text" name="source_execution_id" value="' + v('source_execution_id') + '" placeholder="Taskmaster execution id (optional)"></label>' +
+        '<label class="span-all"><span>CVSS Vector</span><input type="text" name="cvss_vector" value="' + v('cvss_vector') + '"></label>' +
+        area('affected', 'Affected') +
+        area('description', 'Description', 'markdown') +
+        area('impact', 'Impact', 'markdown') +
+        area('proof_of_concept', 'Proof of Concept', 'markdown') +
+        area('remediation', 'Remediation', 'markdown') +
+      '</div>' +
+      '<div class="form-actions"><div class="heading-actions">' +
+        '<button class="action-btn primary" type="submit">' + (edit ? 'Save Finding' : 'Create Finding') + '</button>' +
+        (edit ? '<button class="action-btn" type="button" data-go="finding-copy:' + v('finding_id') + '">Copy as new</button>' : '') +
+        '</div>' +
+        (edit ? '<span class="form-meta">Created by ' + v('created_by') + ' · ' + day(x.created_at) +
+                ' — last edited by ' + v('updated_by') + ' · ' + esc((x.updated_at || '').slice(0, 16).replace('T', ' ')) + '</span>' +
+                '<button class="action-btn danger" type="button" data-confirm data-action="deleteFinding" data-id="' + v('finding_id') + '">Delete Finding</button>' : '') +
+      '</div>' +
+    '</form>';
+
+  if (edit) html += '<div class="report-edit-grid">' + evidencePanel(x) + referencePanel(x) + '</div>';
+  return html;
+}
+
+function copyOf(src) {
+  if (!src) return null;
+  var c = {};
+  Object.keys(src).forEach(function (k) { c[k] = src[k]; });
+  c.status = 'draft';
+  c.source_execution_id = '';
+  return c;
+}
+
+function evidencePanel(x) {
+  var ev = S.idx.evByFinding[x.finding_id] || [];
+  return '<section class="report-panel"><h3>Evidence</h3>' +
+    (ev.length ? '<ul class="report-inline-list">' + ev.map(function (e) {
+      return '<li><div><span class="badge">' + esc(e.kind) + '</span> ' + esc(e.title || '') +
+        (e.artifact_path ? ' <span class="mono">' + esc(e.artifact_path) + '</span>' : '') +
+        (e.url ? ' <a href="' + esc(e.url) + '" target="_blank" rel="noopener">' + esc(e.url) + '</a>' : '') +
+        ' <span class="muted">— ' + esc(who(e.created_by)) + '</span>' +
+        (e.body ? '<div class="ev-body">' + esc(e.body) + '</div>' : '') + '</div>' +
+        '<button class="icon-btn" type="button" title="Delete evidence" data-confirm data-action="deleteEvidence" data-id="' + esc(e.evidence_id) + '">&times;</button></li>';
+    }).join('') + '</ul>' : '<p class="muted" style="margin-bottom:0.9rem">No evidence attached.</p>') +
+    '<form data-form="addEvidence" class="stacked-form">' +
+      '<input type="hidden" name="finding_id" value="' + esc(x.finding_id) + '">' +
+      '<label><span>Kind</span><select name="kind">' + options(opts().evidence_kinds, 'note') + '</select></label>' +
+      '<label><span>Title</span><input type="text" name="title"></label>' +
+      '<label><span>URL <span class="muted">(e.g. a screenshot on Google Drive)</span></span><input type="url" name="url"></label>' +
+      '<label><span>Artifact Path</span><input type="text" name="artifact_path" placeholder="/loot/..."></label>' +
+      '<label><span>Body</span><textarea name="body"></textarea></label>' +
+      '<button class="action-btn" type="submit">Add Evidence</button>' +
+    '</form></section>';
+}
+
+function referencePanel(x) {
+  var refs = S.idx.refsByFinding[x.finding_id] || [];
+  return '<section class="report-panel"><h3>References</h3>' +
+    (refs.length ? '<ul class="report-inline-list">' + refs.map(function (r) {
+      return '<li><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.label || r.url) + '</a>' +
+        '<button class="icon-btn" type="button" title="Delete reference" data-confirm data-action="deleteReference" data-id="' + esc(r.reference_id) + '">&times;</button></li>';
+    }).join('') + '</ul>' : '<p class="muted" style="margin-bottom:0.9rem">No references attached.</p>') +
+    '<form data-form="addReference" class="stacked-form">' +
+      '<input type="hidden" name="finding_id" value="' + esc(x.finding_id) + '">' +
+      '<label><span>Label</span><input type="text" name="label"></label>' +
+      '<label><span>URL</span><input type="url" name="url" required></label>' +
+      '<button class="action-btn" type="submit">Add Reference</button>' +
+    '</form></section>';
+}
+
+var FINDING_FIELDS = ['title', 'engagement_id', 'status', 'severity', 'category', 'cvss_score',
+  'source_execution_id', 'cvss_vector', 'affected', 'description', 'impact', 'proof_of_concept', 'remediation'];
+
+function captureFindingForm() {
+  var form = document.getElementById('finding-form');
+  if (!form) return null;
+  var d = formData(form);
+  return { id: d.finding_id || '', values: d };
+}
+
+function restoreFindingForm(kept) {
+  var form = document.getElementById('finding-form');
+  if (!form || (form.elements.finding_id ? form.elements.finding_id.value : '') !== kept.id) { S.dirty = false; return; }
+  FINDING_FIELDS.concat(['expected_updated_at']).forEach(function (k) {
+    if (form.elements[k] && kept.values[k] !== undefined) form.elements[k].value = kept.values[k];
+  });
+}
+
+/* --- Import ------------------------------------------------------------- */
+
+function pageImport() {
+  return '<div class="page-heading"><h2 class="page-title">Import from Taskmaster</h2></div>' +
+    '<div class="import-box report-panel">' +
+      '<p>Bring engagements and report findings from your local Taskmaster into the shared space.</p>' +
+      '<ol>' +
+        '<li>In your Taskmaster checkout (or engagement folder), export the reporting tables:' +
+          '<pre>uv run python scripts/export_reporting_json.py -o taskmaster-export.json\n' +
+          '# only some engagements:\nuv run python scripts/export_reporting_json.py --engagement eng_abc… -o export.json</pre></li>' +
+        '<li>Upload the file below. Records are matched by Taskmaster id, so re-importing is safe: ' +
+          'a shared copy edited more recently than your local one is kept.</li>' +
+        '<li>Imported records with no author are attributed to you (' + esc(S.data.user) + ').</li>' +
+      '</ol>' +
+      '<form data-form="import" class="filter-bar">' +
+        '<input type="file" name="file" accept=".json,application/json" required>' +
+        '<button class="action-btn primary" type="submit">Import</button>' +
+      '</form>' +
+      '<div id="import-result"></div>' +
+    '</div>';
+}
+
+/* ------------------------------------------------------------------------ *
+ * Events                                                                    *
+ * ------------------------------------------------------------------------ */
+
+function navigateTo(spec) {
+  var i = spec.indexOf(':');
+  var page = i < 0 ? spec : spec.slice(0, i);
+  var arg = i < 0 ? '' : spec.slice(i + 1);
+  if (page === 'finding-new') return go({ page: 'finding', id: null, preset: arg });
+  if (page === 'finding-copy') return go({ page: 'finding', id: null, copyFrom: arg });
+  if (page === 'engagement' && S.route.page !== 'engagement') S.filters.eng = { status: '', severity: '', q: '' };
+  go({ page: page, id: arg || null });
+}
+
+var FORMS = {
+  createEngagement: function (form, d) {
+    mutate('saveEngagement', d, 'Engagement created.').then(function (r) {
+      if (r.ok) go({ page: 'engagement', id: r.result.engagement_id });
+    });
+  },
+  saveEngagement: function (form, d) {
+    mutate('saveEngagement', d, 'Engagement saved.').then(function (r) {
+      if (r.ok) { S.editEngagement = false; render(); }
+    });
+  },
+  addAsset: function (form, d) {
+    mutate('addAsset', d).then(function (r) { if (r.ok) render(); });
+  },
+  saveFinding: function (form, d) {
+    var creating = !d.finding_id;
+    mutate('saveFinding', d, creating ? 'Finding created.' : 'Finding saved.').then(function (r) {
+      if (!r.ok) return;
+      S.dirty = false;
+      if (creating) go({ page: 'finding', id: r.result.finding_id }, true);
+      else render();
+    });
+  },
+  addEvidence: function (form, d) {
+    mutate('addEvidence', d, 'Evidence added.').then(function (r) { if (r.ok) render(); });
+  },
+  addReference: function (form, d) {
+    mutate('addReference', d, 'Reference added.').then(function (r) { if (r.ok) render(); });
+  },
+  import: function (form) {
+    var file = form.elements.file.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      mutate('importTaskmaster', { json: String(reader.result) }, 'Import finished.').then(function (r) {
+        if (!r.ok) return;
+        render();
+        var names = { engagements: 'Engagements', report_assets: 'Scope assets', findings: 'Findings',
+          finding_evidence: 'Evidence', finding_references: 'References' };
+        document.getElementById('import-result').innerHTML =
+          '<div class="table-wrap"><table class="data"><thead><tr><th>Table</th><th>Added</th><th>Updated</th><th>Kept (shared copy newer)</th></tr></thead><tbody>' +
+          Object.keys(names).map(function (k) {
+            var c = r.result[k] || {};
+            return '<tr><td>' + names[k] + '</td><td>' + (c.added || 0) + '</td><td>' + (c.updated || 0) + '</td><td>' + (c.kept || 0) + '</td></tr>';
+          }).join('') + '</tbody></table></div>';
+      });
+    };
+    reader.readAsText(file);
+  },
+};
+
+var ACTIONS = {
+  editEngagement: function () { S.editEngagement = true; render(); },
+  cancelEditEngagement: function () { S.editEngagement = false; render(); },
+  deleteEngagement: function (id) {
+    mutate('deleteEngagement', { engagement_id: id }, 'Engagement deleted.').then(function (r) {
+      if (r.ok) { S.editEngagement = false; go({ page: 'engagements' }, true); }
+    });
+  },
+  deleteAsset: function (id) {
+    mutate('deleteAsset', { asset_id: id }).then(function (r) { if (r.ok) render(); });
+  },
+  deleteFinding: function (id) {
+    var back = S.idx.finding[id] && S.idx.eng[S.idx.finding[id].engagement_id]
+      ? { page: 'engagement', id: S.idx.finding[id].engagement_id } : { page: 'findings' };
+    mutate('deleteFinding', { finding_id: id }, 'Finding deleted.').then(function (r) {
+      if (r.ok) { S.dirty = false; go(back, true); }
+    });
+  },
+  deleteEvidence: function (id) {
+    mutate('deleteEvidence', { evidence_id: id }).then(function (r) { if (r.ok) render(); });
+  },
+  deleteReference: function (id) {
+    mutate('deleteReference', { reference_id: id }).then(function (r) { if (r.ok) render(); });
+  },
+};
+
+document.addEventListener('click', function (ev) {
+  var nav = ev.target.closest('#nav a[data-page]');
+  if (nav) { ev.preventDefault(); navigateTo(nav.dataset.page); return; }
+
+  if (ev.target.closest('summary select')) { ev.stopPropagation(); return; }
+
+  var sortTh = ev.target.closest('th[data-sort]');
+  if (sortTh) {
+    var f = S.filters.all;
+    if (f.sort === sortTh.dataset.sort) f.dir = -f.dir; else { f.sort = sortTh.dataset.sort; f.dir = 1; }
+    document.getElementById('all-table').innerHTML = allFindingsTable();
+    return;
+  }
+
+  var act = ev.target.closest('[data-action]');
+  if (act) {
+    ev.preventDefault();
+    // Two-step confirm for destructive actions (dialogs can be blocked in the
+    // embedded iframe).
+    if (act.hasAttribute('data-confirm') && !act.dataset.armed) {
+      act.dataset.armed = '1';
+      act.dataset.label = act.innerHTML;
+      act.innerHTML = act.classList.contains('icon-btn') ? 'confirm?' : 'Click again to confirm';
+      setTimeout(function () { if (act.isConnected) { delete act.dataset.armed; act.innerHTML = act.dataset.label; } }, 4000);
+      return;
+    }
+    ACTIONS[act.dataset.action](act.dataset.id);
+    return;
+  }
+
+  var link = ev.target.closest('[data-go]');
+  if (link) { ev.preventDefault(); navigateTo(link.dataset.go); }
+});
+
+document.addEventListener('submit', function (ev) {
+  var form = ev.target;
+  var handler = FORMS[form.dataset.form];
+  if (!handler) return;
+  ev.preventDefault();
+  handler(form, formData(form));
+});
+
+function applyFilter(el) {
+  var path = el.dataset.filter.split('.');
+  S.filters[path[0]][path[1]] = el.value;
+  var target = el.dataset.target;
+  if (target === 'eng-findings-list') {
+    document.getElementById(target).innerHTML = engagementFindingList(S.idx.eng[S.route.id]);
+  } else if (target === 'all-table') {
+    document.getElementById(target).innerHTML = allFindingsTable();
+  } else if (path[0] === 'engList') {
+    document.getElementById('eng-grid').innerHTML = engagementGrid();
+  } else {
+    render();
+  }
+}
+
+document.addEventListener('change', function (ev) {
+  var el = ev.target;
+  if (el.dataset.statusFor) {
+    var x = S.idx.finding[el.dataset.statusFor];
+    S.openFindings[x.finding_id] = true;
+    mutate('setFindingStatus', { finding_id: x.finding_id, status: el.value, expected_updated_at: x.updated_at },
+      'Status set to ' + label(el.value) + '.').then(function () { render(); });
+    return;
+  }
+  if (el.dataset.filter && el.tagName === 'SELECT') applyFilter(el);
+});
+
+var filterTimer;
+document.addEventListener('input', function (ev) {
+  var el = ev.target;
+  if (el.closest('#finding-form')) S.dirty = true;
+  if (el.dataset.filter && el.tagName === 'INPUT') {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(function () { applyFilter(el); }, 250);
+  }
+});
+
+// <details> toggle doesn't bubble; capture it to remember open cards.
+document.addEventListener('toggle', function (ev) {
+  var id = ev.target.dataset && ev.target.dataset.finding;
+  if (id) S.openFindings[id] = ev.target.open;
+}, true);
+
+document.getElementById('refresh-btn').addEventListener('click', function () {
+  if (S.dirty && !confirmDiscard()) return;
+  S.dirty = false;
+  reload('Refreshed.');
+});
+
+/* ------------------------------------------------------------------------ *
+ * Boot                                                                      *
+ * ------------------------------------------------------------------------ */
+
+try {
+  google.script.history.setChangeHandler(function (e) {
+    S.dirty = false;
+    S.editEngagement = false;
+    S.route = e.state && e.state.page ? e.state : parseHash(e.location && e.location.hash);
+    render();
+  });
+  google.script.url.getLocation(function (loc) {
+    S.route = parseHash(loc.hash);
+    reload();
+  });
+} catch (e) {
+  reload();
+}
+})();
+</script>
