@@ -70,3 +70,4 @@ temp/
 # Claude Code
 claude_session_id.txt
 codex_session.txt
+.claude/settings.local.json

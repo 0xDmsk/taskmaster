@@ -28,12 +28,15 @@ from pathlib import Path
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Pt
 from docx.text.paragraph import Paragraph
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SOURCE = Path.home() / "Downloads" / "Finding Template.docx"
 DEFAULT_OUTPUT = PROJECT_ROOT / "templates" / "finding_template.docx"
+# Gap below each prose body field (description/impact/PoC/remediation): 240 twips.
+BODY_SPACE_AFTER = Pt(12)
 
 
 _W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -73,6 +76,12 @@ def _replace_cell_text(cell, new_text: str) -> None:
     _replace_paragraph_text(paragraphs[0], new_text)
     for extra in paragraphs[1:]:
         extra._element.getparent().remove(extra._element)
+
+
+def _ensure_space_after(paragraph: Paragraph, space: Pt = BODY_SPACE_AFTER) -> None:
+    """Set the paragraph's space-after unless the source already defines one."""
+    if paragraph.paragraph_format.space_after is None:
+        paragraph.paragraph_format.space_after = space
 
 
 def _delete_paragraph(paragraph: Paragraph) -> None:
@@ -195,6 +204,12 @@ def build(source: Path, output: Path) -> None:
     _replace_paragraph_text(body_paragraphs[5], "{{ finding.impact }}")
     _replace_paragraph_text(body_paragraphs[6], "{{ finding.proof_of_concept }}")
     _replace_paragraph_text(body_paragraphs[7], "{{ finding.remediation }}")
+
+    # Only the description paragraph carries w:spacing in the source, and
+    # Normal/docDefaults set no w:after, so the other body fields would butt
+    # against the next section. Give all four the same 12pt gap below.
+    for paragraph in body_paragraphs[4:8]:
+        _ensure_space_after(paragraph)
 
     # --- References block (CVE / CWE / OWASP / MITRE / Blogs) ------------- #
     # Convert the 5 reference lines into a docxtpl paragraph loop. P9 (after
