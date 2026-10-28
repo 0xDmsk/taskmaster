@@ -189,6 +189,15 @@ closest, `TBD` when unknown; off-list values are coerced to `Other`.
 - **Enough detail to reproduce and fix — no more.** Cut narration, hedging, and
   restated background. If a sentence doesn't help the reader understand, reproduce, or
   remediate the issue, drop it.
+- **Structure evidence as Markdown the renderer understands** (especially
+  `proof_of_concept`). The DOCX renderer turns a Markdown subset into native Word, so
+  author the body fields that way: use `-`/`*` or `1.` list items — never a literal `•`
+  glyph, which renders as a flat line — with one trace step or evidence item per line;
+  group related items under a short **bold** label taken from the finding itself, not
+  invented; wrap every path, `file:line`, identifier, and code snippet in `` `backticks` ``
+  (or a fenced block) so it renders monospaced, rather than hand-escaping `_ * + ! =` with
+  backslashes. Lead with the verified / most-exposed item. Restructure layout to fit;
+  never drop a path or token to save space.
 
 ## Threat modeling (evidence-grounded, two-pass)
 

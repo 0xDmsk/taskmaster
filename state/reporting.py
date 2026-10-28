@@ -111,6 +111,44 @@ def _clean_text(value: Any, default: str = "") -> str:
     return str(value)
 
 
+# Bullet glyphs an author (or a paste from another doc) may put at the start of a
+# line. Both Markdown renderers — the DOCX report skill and the dashboard preview —
+# only match "-", "*", "+" and ordered "N." / "N)" markers, so a literal glyph
+# renders as a flat paragraph instead of a list item. Rewrite it to a real marker.
+_LEADING_BULLET_RE = re.compile(r"^(?P<indent> *)[•·‣▪◦∙⁃]\s*(?=\S)")
+# A backslash-escaped ordered marker ("1\." — a common Markdown-export artifact)
+# also slips past the "N." detection; strip the escape.
+_ESCAPED_ORDERED_RE = re.compile(
+    r"^(?P<indent> *)(?P<num>\d{1,3})\\(?P<punct>[.)])(?P<sp>\s+)(?=\S)"
+)
+
+
+def normalize_report_markdown(text: str) -> str:
+    """Repair leading list markers the report/dashboard Markdown renderers can't read.
+
+    Shared by the DOCX report path (finding_to_report_dict) and the dashboard
+    preview (render_analysis). Non-destructive and deterministic. Operates only on
+    multi-line text (a single-line field is a plain paragraph anyway) and only
+    rewrites *leading* markers:
+      - a literal bullet glyph (•, ·, ‣, ▪, ◦, ∙, ⁃)  ->  "- "
+      - a backslash-escaped ordered marker ("1\\.")    ->  "1."
+    Prose, inline code, fenced blocks, mid-line glyphs, and real "-"/"*"/"N."
+    lists are left exactly as authored. Idempotent. Stored finding text is never
+    mutated; this only shapes what the renderers receive.
+    """
+    if not text or "\n" not in text:
+        return text
+    lines = []
+    for line in text.split("\n"):
+        line = _LEADING_BULLET_RE.sub(lambda m: f"{m.group('indent')}- ", line)
+        line = _ESCAPED_ORDERED_RE.sub(
+            lambda m: f"{m.group('indent')}{m.group('num')}{m.group('punct')}{m.group('sp')}",
+            line,
+        )
+        lines.append(line)
+    return "\n".join(lines)
+
+
 def _normalize_affected(payload: dict) -> str:
     affected = payload.get("affected")
     if affected is None:
@@ -479,10 +517,10 @@ def finding_to_report_dict(finding: dict) -> dict:
             "vector": finding.get("cvss_vector") or "",
         },
         "affected": finding.get("affected") or "",
-        "description": finding.get("description") or "",
-        "impact": finding.get("impact") or "",
-        "proof_of_concept": finding.get("proof_of_concept") or "",
-        "remediation": finding.get("remediation") or "",
+        "description": normalize_report_markdown(finding.get("description") or ""),
+        "impact": normalize_report_markdown(finding.get("impact") or ""),
+        "proof_of_concept": normalize_report_markdown(finding.get("proof_of_concept") or ""),
+        "remediation": normalize_report_markdown(finding.get("remediation") or ""),
         "references": refs,
     }
 
@@ -647,8 +685,18 @@ def update_finding_template(
 
     columns = []
     values: list[Any] = []
-    for field in ("title", "severity", "category", "description", "impact",
-                  "proof_of_concept", "remediation", "cvss_score", "cvss_vector", "source"):
+    for field in (
+        "title",
+        "severity",
+        "category",
+        "description",
+        "impact",
+        "proof_of_concept",
+        "remediation",
+        "cvss_score",
+        "cvss_vector",
+        "source",
+    ):
         if field in updates:
             columns.append(f"{field} = ?")
             values.append(updates[field])
@@ -675,9 +723,7 @@ def update_finding_template(
 
 def delete_finding_template(template_id: str) -> bool:
     with _connect() as conn:
-        cur = conn.execute(
-            "DELETE FROM finding_templates WHERE template_id = ?", (template_id,)
-        )
+        cur = conn.execute("DELETE FROM finding_templates WHERE template_id = ?", (template_id,))
         return cur.rowcount > 0
 
 

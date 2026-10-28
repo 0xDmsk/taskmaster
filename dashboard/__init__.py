@@ -7,6 +7,8 @@ import re
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup, escape
 
+from state.reporting import normalize_report_markdown
+
 try:
     from pygments import highlight as _pygments_highlight
     from pygments.formatters import HtmlFormatter
@@ -147,7 +149,9 @@ def render_analysis(text):
     if not text:
         return Markup("")
 
-    lines = str(text).splitlines()
+    # Repair list markers the renderer can't read (literal •, escaped "1\.") so the
+    # dashboard preview matches the normalized report output. Shared with the DOCX path.
+    lines = normalize_report_markdown(str(text)).splitlines()
     html_parts: list[str] = []
     para_buf: list[str] = []
     list_kind: str | None = None  # 'ul' or 'ol' or None

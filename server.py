@@ -769,7 +769,13 @@ TOOLS = {
                     "description": (
                         "A self-contained reproduction: the exact request/steps and the "
                         "observed response, enough for the reader to repeat it. Keep it "
-                        "to what proves the finding; no narration or filler."
+                        "to what proves the finding; no narration or filler. Format it as "
+                        "Markdown (the report renderer turns it into native Word): use "
+                        "'-' or '1.' list items, never literal bullet glyphs, with one "
+                        "step or evidence item per line; group related items under a short "
+                        "**bold** label; wrap every path, file:line, and code snippet in "
+                        "`backticks` or a fenced code block; do not hand-escape "
+                        "punctuation with backslashes."
                     ),
                 },
                 "remediation": {
@@ -898,7 +904,13 @@ TOOLS = {
                     "description": (
                         "A self-contained reproduction: the exact request/steps and the "
                         "observed response, enough for the reader to repeat it. Keep it "
-                        "to what proves the finding; no narration or filler."
+                        "to what proves the finding; no narration or filler. Format it as "
+                        "Markdown (the report renderer turns it into native Word): use "
+                        "'-' or '1.' list items, never literal bullet glyphs, with one "
+                        "step or evidence item per line; group related items under a short "
+                        "**bold** label; wrap every path, file:line, and code snippet in "
+                        "`backticks` or a fenced code block; do not hand-escape "
+                        "punctuation with backslashes."
                     ),
                 },
                 "remediation": {

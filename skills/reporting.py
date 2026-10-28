@@ -131,6 +131,13 @@ def _default_template_path() -> str:
 _SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _FENCE_RE = re.compile(r"^\s*```\s*(?P<language>[A-Za-z0-9_+.-]*)\s*$")
 _INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+_INLINE_SPAN_RE = re.compile(r"`([^`\n]+)`|\*\*(.+?)\*\*|(?<![\w*])\*([^*\n]+?)\*(?![\w*])")
+_HEADING_RE = re.compile(r"^\s{0,3}(?P<hashes>#{1,6})\s+(?P<text>.+?)\s*#*\s*$")
+_LIST_RE = re.compile(r"^(?P<indent> *)(?P<marker>[-*+]|\d{1,3}[.)])\s+(?P<text>\S.*)$")
+_TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_SEP_RE = re.compile(r"^\s*\|(?:\s*:?-{2,}:?\s*\|)+\s*$")
+_INDENT_CODE_MIN = 4
+_TABLE_HEADER_FILL = "EEF2F6"
 _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
 _W = f"{{{_W_NS}}}"
@@ -204,21 +211,32 @@ def _contains_rich_markdown(text: str) -> bool:
     return "\n" in text or "```" in text or _INLINE_CODE_RE.search(text) is not None
 
 
+def _dedent_block(lines: list[str]) -> str:
+    widths = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
+    cut = min(widths) if widths else 0
+    return "\n".join(line[cut:] if line.strip() else "" for line in lines)
+
+
 def _split_markdown_blocks(text: str) -> list[tuple[str, str, str]]:
-    """Split a small Markdown subset into plain and fenced-code blocks."""
+    """Split a Markdown subset into blocks the DOCX writer understands.
+
+    Block kinds: ``plain``, ``code``, ``table``, ``list``, ``heading``, ``blank``.
+    Supports fenced code, indented code (the 4-space CommonMark rule), pipe
+    tables, ordered/unordered lists and ATX headings. Anything unrecognised
+    falls through as ``plain``, one block per source line.
+    """
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     blocks: list[tuple[str, str, str]] = []
-    plain: list[str] = []
+    buffer: list[str] = []
     code: list[str] = []
     code_language = ""
     in_code = False
 
-    def flush_plain() -> None:
-        nonlocal plain
-        for line in plain:
-            if line.strip():
-                blocks.append(("plain", line, ""))
-        plain = []
+    def flush_buffer() -> None:
+        nonlocal buffer
+        if buffer:
+            blocks.append(("code", _dedent_block(buffer), ""))
+            buffer = []
 
     def flush_code() -> None:
         nonlocal code, code_language
@@ -226,28 +244,103 @@ def _split_markdown_blocks(text: str) -> list[tuple[str, str, str]]:
         code = []
         code_language = ""
 
-    for line in lines:
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+
         fence_match = _FENCE_RE.match(line)
         if fence_match:
             if in_code:
                 flush_code()
                 in_code = False
             else:
-                flush_plain()
+                flush_buffer()
                 code_language = fence_match.group("language").lower()
                 in_code = True
+            index += 1
             continue
+
         if in_code:
             code.append(line)
+            index += 1
+            continue
+
+        # Indented code block: a run of >=4-space-indented lines that is not a
+        # list continuation. Blank lines inside the run are kept.
+        indent = len(line) - len(line.lstrip(" "))
+        if line.strip() and indent >= _INDENT_CODE_MIN and not _LIST_RE.match(line):
+            run: list[str] = []
+            while index < len(lines):
+                candidate = lines[index]
+                c_indent = len(candidate) - len(candidate.lstrip(" "))
+                if candidate.strip() and c_indent >= _INDENT_CODE_MIN:
+                    run.append(candidate)
+                    index += 1
+                elif not candidate.strip() and any(
+                    other.strip() and (len(other) - len(other.lstrip(" "))) >= _INDENT_CODE_MIN
+                    for other in lines[index + 1 : index + 3]
+                ):
+                    run.append("")
+                    index += 1
+                else:
+                    break
+            buffer.extend(run)
+            flush_buffer()
+            continue
+
+        # Pipe table: a header row followed by a delimiter row.
+        if (
+            _TABLE_ROW_RE.match(line)
+            and index + 1 < len(lines)
+            and _TABLE_SEP_RE.match(lines[index + 1])
+        ):
+            rows = [line, lines[index + 1]]
+            index += 2
+            while index < len(lines) and _TABLE_ROW_RE.match(lines[index]):
+                rows.append(lines[index])
+                index += 1
+            blocks.append(("table", "\n".join(rows), ""))
+            continue
+
+        heading_match = _HEADING_RE.match(line)
+        if heading_match:
+            blocks.append(
+                ("heading", heading_match.group("text"), str(len(heading_match.group("hashes"))))
+            )
+            index += 1
+            continue
+
+        list_match = _LIST_RE.match(line)
+        if list_match:
+            marker = list_match.group("marker")
+            level = min(len(list_match.group("indent")) // 2, 3)
+            blocks.append(("list", list_match.group("text"), f"{marker}|{level}"))
+            index += 1
+            continue
+
+        if line.strip():
+            blocks.append(("plain", line.strip(), ""))
         else:
-            plain.append(line)
+            blocks.append(("blank", "", ""))
+        index += 1
 
     if in_code:
         flush_code()
-    else:
-        flush_plain()
+    flush_buffer()
 
-    return blocks or [("plain", "", "")]
+    # Collapse runs of blanks and drop leading/trailing ones; a single blank
+    # between two plain paragraphs is represented by paragraph spacing instead.
+    cleaned: list[tuple[str, str, str]] = []
+    for block in blocks:
+        if block[0] == "blank":
+            if cleaned and cleaned[-1][0] != "blank":
+                cleaned.append(block)
+            continue
+        cleaned.append(block)
+    while cleaned and cleaned[-1][0] == "blank":
+        cleaned.pop()
+
+    return cleaned or [("plain", "", "")]
 
 
 def _paragraph_text(paragraph: ET.Element) -> str:
@@ -333,32 +426,195 @@ def _set_plain_run_properties(run: ET.Element, base_rpr: ET.Element | None) -> N
         run.append(copy.deepcopy(base_rpr))
 
 
+def _ensure_spacing(ppr: ET.Element, after: str = "160") -> None:
+    """Give a paragraph space below it when the template supplies none.
+
+    Normal/docDefaults do not set w:after, so a template paragraph without its
+    own w:spacing (e.g. one rebuilt by scripts/build_finding_template.py) would
+    otherwise butt against the next one. An explicit w:after is kept as-is.
+    """
+    spacing = ppr.find(f"{_W}spacing")
+    if spacing is None:
+        spacing = ET.Element(f"{_W}spacing")
+        ppr.insert(0, spacing)
+    if spacing.get(f"{_W}after") is None:
+        spacing.set(f"{_W}after", after)
+    if spacing.get(f"{_W}lineRule") is None:
+        spacing.set(f"{_W}lineRule", "auto")
+
+
+def _base_paragraph(base_ppr: ET.Element | None, *, after: str = "160") -> ET.Element:
+    paragraph = ET.Element(f"{_W}p")
+    ppr = copy.deepcopy(base_ppr) if base_ppr is not None else ET.Element(f"{_W}pPr")
+    _ensure_spacing(ppr, after)
+    paragraph.append(ppr)
+    return paragraph
+
+
+def _append_inline_runs(
+    paragraph: ET.Element,
+    text: str,
+    base_rpr: ET.Element | None,
+    *,
+    bold: bool = False,
+) -> None:
+    """Write text into runs, honouring `code`, **bold** and *italic* spans."""
+
+    def emit_plain(chunk: str, *, force_bold: bool = False, italic: bool = False) -> None:
+        if not chunk:
+            return
+        run = ET.SubElement(paragraph, f"{_W}r")
+        rpr = copy.deepcopy(base_rpr) if base_rpr is not None else ET.Element(f"{_W}rPr")
+        if force_bold or bold:
+            _remove_run_property(rpr, {"b", "bCs"})
+            ET.SubElement(rpr, f"{_W}b")
+            ET.SubElement(rpr, f"{_W}bCs")
+        if italic:
+            _remove_run_property(rpr, {"i", "iCs"})
+            ET.SubElement(rpr, f"{_W}i")
+            ET.SubElement(rpr, f"{_W}iCs")
+        run.append(rpr)
+        _set_text(run, chunk)
+
+    last = 0
+    for match in _INLINE_SPAN_RE.finditer(text):
+        emit_plain(text[last : match.start()])
+        code_span, bold_span, italic_span = match.group(1), match.group(2), match.group(3)
+        if code_span is not None:
+            run = ET.SubElement(paragraph, f"{_W}r")
+            _set_code_run_properties(run, base_rpr, block=False)
+            _set_text(run, code_span)
+        elif bold_span is not None:
+            emit_plain(bold_span, force_bold=True)
+        else:
+            emit_plain(italic_span or "", italic=True)
+        last = match.end()
+    emit_plain(text[last:])
+
+    if not list(paragraph.findall(f"{_W}r")):
+        emit_plain("")
+
+
 def _plain_paragraph(
     text: str,
     base_ppr: ET.Element | None,
     base_rpr: ET.Element | None,
 ) -> ET.Element:
-    paragraph = ET.Element(f"{_W}p")
-    if base_ppr is not None:
-        paragraph.append(copy.deepcopy(base_ppr))
-
-    last = 0
-    for match in _INLINE_CODE_RE.finditer(text):
-        if match.start() > last:
-            run = ET.SubElement(paragraph, f"{_W}r")
-            _set_plain_run_properties(run, base_rpr)
-            _set_text(run, text[last : match.start()])
-        run = ET.SubElement(paragraph, f"{_W}r")
-        _set_code_run_properties(run, base_rpr, block=False)
-        _set_text(run, match.group(1))
-        last = match.end()
-
-    if last < len(text) or not list(paragraph.findall(f"{_W}r")):
-        run = ET.SubElement(paragraph, f"{_W}r")
-        _set_plain_run_properties(run, base_rpr)
-        _set_text(run, text[last:])
-
+    paragraph = _base_paragraph(base_ppr)
+    _append_inline_runs(paragraph, text, base_rpr)
     return paragraph
+
+
+def _blank_paragraph(base_ppr: ET.Element | None) -> ET.Element:
+    paragraph = _base_paragraph(base_ppr, after="0")
+    run = ET.SubElement(paragraph, f"{_W}r")
+    _set_text(run, "")
+    return paragraph
+
+
+def _heading_paragraph(
+    text: str,
+    level: str,
+    base_ppr: ET.Element | None,
+    base_rpr: ET.Element | None,
+) -> ET.Element:
+    paragraph = _base_paragraph(base_ppr, after="80")
+    ppr = paragraph.find(f"{_W}pPr")
+    spacing = ppr.find(f"{_W}spacing")
+    if spacing is not None:
+        spacing.set(f"{_W}before", "200")
+    _append_inline_runs(paragraph, text, base_rpr, bold=True)
+    return paragraph
+
+
+def _list_paragraph(
+    text: str,
+    meta: str,
+    base_ppr: ET.Element | None,
+    base_rpr: ET.Element | None,
+) -> ET.Element:
+    marker, _, level_raw = meta.partition("|")
+    level = int(level_raw or 0)
+    paragraph = _base_paragraph(base_ppr, after="80")
+    ppr = paragraph.find(f"{_W}pPr")
+    indent = ET.SubElement(ppr, f"{_W}ind")
+    indent.set(f"{_W}left", str(360 + level * 360))
+    indent.set(f"{_W}hanging", "280")
+
+    bullet = "\u2022 " if marker in {"-", "*", "+"} else f"{marker} "
+    run = ET.SubElement(paragraph, f"{_W}r")
+    _set_plain_run_properties(run, base_rpr)
+    _set_text(run, bullet)
+    _append_inline_runs(paragraph, text, base_rpr)
+    return paragraph
+
+
+def _parse_table_rows(text: str) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for line in text.split("\n"):
+        if _TABLE_SEP_RE.match(line):
+            continue
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            stripped = stripped[1:]
+        if stripped.endswith("|"):
+            stripped = stripped[:-1]
+        rows.append([cell.strip() for cell in stripped.split("|")])
+    return rows
+
+
+def _markdown_table(text: str, base_rpr: ET.Element | None) -> ET.Element:
+    """Render a pipe table as a real Word table with a shaded header row."""
+    rows = _parse_table_rows(text)
+    columns = max((len(row) for row in rows), default=1) or 1
+
+    table = ET.Element(f"{_W}tbl")
+    tbl_pr = ET.SubElement(table, f"{_W}tblPr")
+    tbl_w = ET.SubElement(tbl_pr, f"{_W}tblW")
+    tbl_w.set(f"{_W}w", "5000")
+    tbl_w.set(f"{_W}type", "pct")
+
+    borders = ET.SubElement(tbl_pr, f"{_W}tblBorders")
+    for name in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        _table_border(borders, name)
+
+    grid = ET.SubElement(table, f"{_W}tblGrid")
+    width = 9025 // columns
+    for _ in range(columns):
+        grid_col = ET.SubElement(grid, f"{_W}gridCol")
+        grid_col.set(f"{_W}w", str(width))
+
+    for row_index, row in enumerate(rows):
+        tr = ET.SubElement(table, f"{_W}tr")
+        if row_index == 0:
+            tr_pr = ET.SubElement(tr, f"{_W}trPr")
+            ET.SubElement(tr_pr, f"{_W}tblHeader")
+        cells = list(row) + [""] * (columns - len(row))
+        for cell_text in cells:
+            tc = ET.SubElement(tr, f"{_W}tc")
+            tc_pr = ET.SubElement(tc, f"{_W}tcPr")
+            tc_w = ET.SubElement(tc_pr, f"{_W}tcW")
+            tc_w.set(f"{_W}w", str(width))
+            tc_w.set(f"{_W}type", "dxa")
+            if row_index == 0:
+                shading = ET.SubElement(tc_pr, f"{_W}shd")
+                shading.set(f"{_W}val", "clear")
+                shading.set(f"{_W}color", "auto")
+                shading.set(f"{_W}fill", _TABLE_HEADER_FILL)
+            margins = ET.SubElement(tc_pr, f"{_W}tcMar")
+            _table_cell_margin(margins, "top", "60")
+            _table_cell_margin(margins, "left", "100")
+            _table_cell_margin(margins, "bottom", "60")
+            _table_cell_margin(margins, "right", "100")
+
+            paragraph = ET.SubElement(tc, f"{_W}p")
+            ppr = ET.SubElement(paragraph, f"{_W}pPr")
+            spacing = ET.SubElement(ppr, f"{_W}spacing")
+            spacing.set(f"{_W}after", "0")
+            spacing.set(f"{_W}lineRule", "auto")
+            _append_inline_runs(paragraph, cell_text, base_rpr, bold=row_index == 0)
+
+    return table
 
 
 def _token_style(ttype) -> dict[str, str | bool]:
@@ -514,11 +770,24 @@ def _markdown_paragraphs(paragraph: ET.Element, text: str) -> list[ET.Element]:
     base_rpr = _first_run_properties(paragraph)
     replacement: list[ET.Element] = []
 
-    for kind, value, language in _split_markdown_blocks(text):
+    for kind, value, meta in _split_markdown_blocks(text):
         if kind == "code":
-            replacement.append(_code_table(value, language))
+            replacement.append(_code_table(value, meta))
+        elif kind == "table":
+            replacement.append(_markdown_table(value, base_rpr))
+        elif kind == "list":
+            replacement.append(_list_paragraph(value, meta, base_ppr, base_rpr))
+        elif kind == "heading":
+            replacement.append(_heading_paragraph(value, meta, base_ppr, base_rpr))
+        elif kind == "blank":
+            replacement.append(_blank_paragraph(base_ppr))
         else:
             replacement.append(_plain_paragraph(value, base_ppr, base_rpr))
+
+    # Word drops a table that is the last element of a table cell or body
+    # without a following paragraph; guarantee one.
+    if replacement and replacement[-1].tag in {f"{_W}tbl"}:
+        replacement.append(_blank_paragraph(base_ppr))
 
     return replacement
 

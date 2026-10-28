@@ -16,6 +16,7 @@ from state.reporting import (
     list_assets,
     list_engagements,
     list_findings,
+    normalize_report_markdown,
     update_finding,
 )
 
@@ -171,3 +172,56 @@ class TestFindings:
                 "CWE-79 - https://cwe.mitre.org/data/definitions/79.html",
             ],
         }
+
+
+class TestReportMarkdownNormalization:
+    def test_literal_bullet_glyphs_become_list_markers(self):
+        text = "Static source trace:\n\n\u2022 first item\n\u2022 second item"
+        assert normalize_report_markdown(text) == (
+            "Static source trace:\n\n- first item\n- second item"
+        )
+
+    def test_bullet_with_no_following_space(self):
+        text = "trace:\n\u2022bhi-eapp/foo.xml:12 does a thing"
+        assert normalize_report_markdown(text) == "trace:\n- bhi-eapp/foo.xml:12 does a thing"
+
+    def test_indented_and_mixed_glyphs_preserved_as_lists(self):
+        text = "head:\n\u2022 top\n  \u2043 nested-ish\n\u2219 third"
+        assert normalize_report_markdown(text) == "head:\n- top\n  - nested-ish\n- third"
+
+    def test_escaped_ordered_marker_is_unescaped(self):
+        text = "steps:\n1\\. do this\n2\\. then that"
+        assert normalize_report_markdown(text) == "steps:\n1. do this\n2. then that"
+
+    def test_single_line_text_is_left_untouched(self):
+        # The renderer treats a single-line field as a plain paragraph, so rewriting
+        # a lone "• x" to "- x" would only yield a literal dash. Guard on newlines.
+        assert normalize_report_markdown("\u2022 lone bullet") == "\u2022 lone bullet"
+
+    def test_midline_glyph_and_real_lists_are_untouched(self):
+        text = "a \u2022 b dot in prose\n- already a list\n1. already ordered"
+        assert normalize_report_markdown(text) == text
+
+    def test_is_idempotent(self):
+        text = "t:\n\u2022 one\n\u2022 two"
+        once = normalize_report_markdown(text)
+        assert normalize_report_markdown(once) == once
+
+    def test_empty_text_is_safe(self):
+        assert normalize_report_markdown("") == ""
+
+    def test_finding_to_report_dict_normalizes_body_fields(self):
+        finding = create_finding(
+            title="Path traversal in file handler",
+            severity="High",
+            category="Web",
+            proof_of_concept="Static source trace:\n\n\u2022 reads path\n\u2022 writes path",
+        )
+        report_dict = finding_to_report_dict(get_finding(finding["finding_id"]))
+        assert report_dict["proof_of_concept"] == (
+            "Static source trace:\n\n- reads path\n- writes path"
+        )
+        # Stored text is untouched; only the render shape is normalized.
+        assert get_finding(finding["finding_id"])["proof_of_concept"] == (
+            "Static source trace:\n\n\u2022 reads path\n\u2022 writes path"
+        )
