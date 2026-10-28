@@ -72,6 +72,8 @@ Complete overview of what has been implemented and what remains to be done.
 - [x] Engagements hub: per-engagement overview cards + workspace (severity/status rollups, scope panel, inline finding status control, render history)
 - [x] Report Findings view: cross-engagement create/edit, evidence and references, engagement/status/severity/search filters, queue DOCX
 - [x] Rendered DOCX download with path-containment guard (`/reporting/download`)
+- [x] DOCX renderer Markdown subset: code (fenced/indented/inline), pipe tables, lists, headings, bold/italic; list-marker normalization shared with the dashboard preview
+- [x] Shared Findings Google Site (`integrations/google_sites/`) with JSON import from `scripts/export_reporting_json.py`
 - [x] Findings rollup in the stats bar; markdown-rendered finding bodies
 - [x] Executions bound to an engagement via an explicit `engagement_id` (set by `request_security_action` / reporting renders, or reassigned from the execution detail panel)
 - [x] Evidence-grounded threat model per engagement (`threat_models` + twelve `tm_*` entity tables, ref-string cross-references, evidence tags, two-pass workflow; `assemble_threat_model_context` / `create_threat_model` / `add_threat_model_entry` / `export_threat_model_markdown` MCP tools; dashboard tables + `.md` export)

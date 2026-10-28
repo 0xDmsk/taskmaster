@@ -165,7 +165,9 @@ The dashboard supports the same reporting database flow. The **Engagements** hub
 
 `request_reporting_docx` validates report readiness before it queues work. A finding must have `title`, `severity`, `category`, `affected`, `description`, `impact`, `proof_of_concept`, and `remediation`; incomplete findings return a `not_ready` list instead of producing a weak deliverable.
 
-Current DOCX rendering uses the finding body fields plus references. Fenced Markdown code blocks and inline backticks are rendered as Word code formatting. Markdown pipe tables remain literal text, and attached evidence records are stored for traceability but are not yet rendered into a dedicated report evidence section.
+Current DOCX rendering uses the finding body fields plus references. Body fields are Markdown: fenced and 4-space indented code blocks and inline backticks render as Word code formatting, pipe tables become Word tables with a shaded header row, and `-`/`*`/`1.` lists, `#` headings, `**bold**` and `*italic*` render natively. Leading `•` glyphs and escaped `1\.` markers are normalized into real list items (the dashboard preview applies the same normalization). Attached evidence records are stored for traceability but are not yet rendered into a dedicated report evidence section.
+
+To share findings with the team, `scripts/export_reporting_json.py` exports the reporting tables to JSON for the Shared Findings Google Site. Setup and import steps are in [`integrations/google_sites/README.md`](integrations/google_sites/README.md).
 
 The lower-level `reporting.FindingDocxReport` skill still accepts direct `finding`, `findings`, or `findings_path` arguments, but the database-backed tools are the preferred path for normal engagements.
 
@@ -238,5 +240,6 @@ The sidebar groups the tabs into **Operations** (Overview, Executions, Targets, 
     *   `Dockerfile.playwright` + `playwright_operator.py` — Playwright agent (browser, `playwright_skill`/`playwright` action types)
     *   `Dockerfile.reporting` + `report_operator.py` — Reporting agent (docxtpl renderer, `report_skill` action type)
 *   `templates/`: docxtpl-tagged document templates consumed by the reporting executor. See `templates/README.md` for how to produce a new template from an example docx.
-*   `scripts/`: Build / spawn helpers. Notable: `scripts/build_finding_template.py` rewrites an example docx into a docxtpl-tagged template under `templates/`.
+*   `scripts/`: Build / spawn helpers. Notable: `scripts/build_finding_template.py` rewrites an example docx into a docxtpl-tagged template under `templates/`. `scripts/export_reporting_json.py` exports the reporting tables to JSON for the Shared Findings site.
+*   `integrations/google_sites/`: Shared Findings, a Google Apps Script web app on a Google Sheet that gives the team a shared reporting dashboard across engagements. See its `README.md` for setup.
 *   `tools/`: MCP tool handlers for orchestration (spawning, tracking, waiting, cleanup) and database-backed reporting (`create_reporting_finding`, `request_reporting_docx`, etc.).
