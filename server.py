@@ -35,6 +35,7 @@ from tools.list_reporting_engagements import handle_list_reporting_engagements
 from tools.create_reporting_finding import handle_create_reporting_finding
 from tools.get_reporting_finding import handle_get_reporting_finding
 from tools.list_reporting_findings import handle_list_reporting_findings
+from tools.list_surface_items import handle_list_surface_items
 from tools.request_reporting_docx import handle_request_reporting_docx
 from tools.update_reporting_finding import handle_update_reporting_finding
 from tools.add_reporting_finding_evidence import handle_add_reporting_finding_evidence
@@ -48,6 +49,7 @@ from tools.add_threat_model_entry import handle_add_threat_model_entry
 from tools.update_threat_model_entry import handle_update_threat_model_entry
 from tools.delete_threat_model_entry import handle_delete_threat_model_entry
 from tools.export_threat_model_markdown import handle_export_threat_model_markdown
+from tools.upsert_surface_items import handle_upsert_surface_items
 from state.reporting import FINDING_CATEGORY_ORDER
 
 
@@ -212,6 +214,14 @@ TOOLS = {
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Prerequisite execution_ids applied to every shard.",
+                },
+                "surface_refs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Surface items every shard tests (EP-n / FN-n or 'GET /path'); a "
+                        "shard may set its own. Requires engagement_id."
+                    ),
                 },
             },
         },
@@ -826,6 +836,15 @@ TOOLS = {
                     },
                 },
                 "source_execution_id": {"type": "string"},
+                "surface_refs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Surface items this finding affects: EP-n / FN-n refs or endpoint "
+                        "strings like 'GET /api/x'. Marks them vulnerable in the coverage "
+                        "matrix. Requires engagement_id."
+                    ),
+                },
                 "created_by": {"type": "string"},
             },
         },
@@ -924,6 +943,14 @@ TOOLS = {
                 "cvss_score": {"type": "string"},
                 "cvss_vector": {"type": "string"},
                 "source_execution_id": {"type": "string"},
+                "surface_refs": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Surface items to add as affected by this finding (additive; "
+                        "existing links are kept)."
+                    ),
+                },
                 "updated_by": {"type": "string"},
             },
         },
@@ -983,6 +1010,99 @@ TOOLS = {
                     ],
                 },
                 "include_evidence": {"type": "boolean", "default": True},
+            },
+        },
+    },
+    "upsert_surface_items": {
+        "description": (
+            "Add functionalities and endpoints to an engagement's surface inventory from "
+            "knowledge that isn't an execution: a scoping document, an OpenAPI spec, a "
+            "Burp sitemap, manual recon. Idempotent: an endpoint is identified by its "
+            "normalized method+host+path (query dropped, id-like segments become {id}), "
+            "so re-adding merges and only fills blank fields. Endpoints found BY an "
+            "execution don't need this — emit them in the envelope (findings.endpoints; "
+            "emit_endpoints() in python actions) and they're ingested on completion."
+        ),
+        "handler": handle_upsert_surface_items,
+        "inputSchema": {
+            "type": "object",
+            "required": ["engagement_id", "items"],
+            "properties": {
+                "engagement_id": {"type": "string"},
+                "items": {
+                    "type": "array",
+                    "description": (
+                        "Each item is an endpoint string ('POST https://h/api/x', '/path') "
+                        "or an object."
+                    ),
+                    "items": {
+                        "anyOf": [
+                            {"type": "string"},
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "kind": {
+                                        "type": "string",
+                                        "enum": ["endpoint", "functionality"],
+                                        "default": "endpoint",
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Required for a functionality.",
+                                    },
+                                    "method": {"type": "string"},
+                                    "url": {
+                                        "type": "string",
+                                        "description": "Full URL, host/path, or path.",
+                                    },
+                                    "host": {"type": "string"},
+                                    "parent": {
+                                        "type": "string",
+                                        "description": (
+                                            "Functionality this endpoint belongs to: an "
+                                            "FN-n ref, or a name (created if new)."
+                                        ),
+                                    },
+                                    "attack_surface_ref": {
+                                        "type": "string",
+                                        "description": "Threat-model AS-n this maps to.",
+                                    },
+                                    "description": {"type": "string"},
+                                },
+                            },
+                        ]
+                    },
+                },
+                "default_host": {
+                    "type": "string",
+                    "description": "Host for path-only endpoints (e.g. app.example.com).",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["import", "llm"],
+                    "default": "import",
+                },
+            },
+        },
+    },
+    "list_surface_items": {
+        "description": (
+            "List an engagement's surface inventory with derived coverage status per "
+            "item (discovered / in_progress / tested / vulnerable), linked-execution "
+            "counts per phase, and linked findings. Use the EP-n / FN-n refs in "
+            "surface_refs on request_security_action and on report findings."
+        ),
+        "handler": handle_list_surface_items,
+        "inputSchema": {
+            "type": "object",
+            "required": ["engagement_id"],
+            "properties": {
+                "engagement_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["discovered", "in_progress", "tested", "vulnerable"],
+                },
+                "kind": {"type": "string", "enum": ["endpoint", "functionality"]},
             },
         },
     },

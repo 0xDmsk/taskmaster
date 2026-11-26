@@ -1,4 +1,5 @@
 from state.state import transition_execution
+from state.surface import ingest_after_completion
 
 def handle_complete_execution(args):
     execution_id = args.get("execution_id")
@@ -28,8 +29,12 @@ def handle_complete_execution(args):
     log_event("execution_completed", execution)
     update_report(execution)
 
-    return {
+    response = {
         "execution_id": execution_id,
         "status": "COMPLETED",
         "executor_id": execution.get("executor_id"),
     }
+    ingested = ingest_after_completion(execution_id)
+    if ingested:
+        response["surface_endpoints_ingested"] = ingested
+    return response

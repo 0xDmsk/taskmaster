@@ -86,6 +86,13 @@
           "type": "string"
         },
         "description": "Optional prerequisite execution_ids. This execution stays queued and hidden from workers until every prerequisite COMPLETES, and is cancelled automatically if any prerequisite fails. Use it to chain dependent steps (e.g. fuzz after tech-detect) without hand-sequencing spawn/wait calls."
+      },
+      "surface_refs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional surface items this action tests: EP-n / FN-n refs from list_surface_items, or endpoint strings like 'GET /api/v1/users/search' (created if new; a full URL or a path resolved against the target host). Each is linked to this execution as 'tested', so the engagement's coverage matrix shows it in progress and then tested. Requires engagement_id. An unknown EP-n/FN-n ref rejects the request."
       }
     }
   }

@@ -56,6 +56,14 @@ REQUEST_SECURITY_ACTION_SCHEMA = {
                 "cancelled if any prerequisite fails."
             ),
         },
+        "surface_refs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional surface items this action tests: EP-n / FN-n refs, or "
+                "endpoints like 'GET /api/x'. Requires engagement_id."
+            ),
+        },
     },
 }
 
@@ -232,7 +240,26 @@ def handle_request(payload):
             ),
         }
 
-    # 5. Create execution
+    # 5. Resolve surface_refs before creating anything, so a mistyped EP-n fails
+    # the queue call instead of leaving an untagged execution behind.
+    surface_refs = payload.get("surface_refs") or []
+    surface_items = []
+    if surface_refs:
+        if not engagement_id:
+            return {
+                "error": "surface_refs requires engagement_id",
+                "details": "Surface items belong to an engagement; pass engagement_id.",
+            }
+        from state.surface import _host_from_target, resolve_surface_refs
+
+        try:
+            surface_items = resolve_surface_refs(
+                engagement_id, surface_refs, default_host=_host_from_target(target)
+            )
+        except ValueError as exc:
+            return {"error": "Invalid surface_refs", "details": str(exc)}
+
+    # 6. Create execution
     execution_id = str(uuid.uuid4())
 
     record = create_execution(
@@ -244,8 +271,12 @@ def handle_request(payload):
         engagement_id=engagement_id,
         depends_on=payload.get("depends_on"),
     )
+    if surface_items:
+        from state.surface import link_surface
 
-    # 6. Audit Logging
+        link_surface([i["item_id"] for i in surface_items], "tested", execution_id=execution_id)
+
+    # 7. Audit Logging
     from audit.audit_manager import log_event, update_report
 
     log_event("request_created", record)
@@ -264,6 +295,9 @@ def handle_request(payload):
             "Then call wait_for_completion with this execution_id",
         ],
     }
+
+    if surface_items:
+        result["surface_refs"] = [i["ref"] for i in surface_items]
 
     if warnings:
         result["platform_warnings"] = [

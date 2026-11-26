@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from state.state import transition_execution
 from state.storage import get_execution_by_id, update_execution
+from state.surface import ingest_after_completion
 
 TERMINAL_STATES = {"COMPLETED", "FAILED"}
 
@@ -37,11 +38,17 @@ def handle_mark_execution_complete(args):
         if interpretation is not None:
             updates["interpretation"] = interpretation
         updated = update_execution(execution_id, updates)
-        return {
+        response = {
             "execution_id": execution_id,
             "status": (updated or existing).get("status"),
             "interpretation_attached": interpretation is not None,
         }
+        # A result override may carry endpoints the worker's envelope didn't.
+        if result is not None and current_status == "COMPLETED":
+            ingested = ingest_after_completion(execution_id)
+            if ingested:
+                response["surface_endpoints_ingested"] = ingested
+        return response
 
     try:
         execution = transition_execution(
@@ -57,7 +64,12 @@ def handle_mark_execution_complete(args):
     if not execution:
         return {"error": "Execution not found"}
 
-    return {
+    response = {
         "execution_id": execution_id,
         "status": execution.get("status"),
     }
+    if execution.get("status") == "COMPLETED":
+        ingested = ingest_after_completion(execution_id)
+        if ingested:
+            response["surface_endpoints_ingested"] = ingested
+    return response
