@@ -1,12 +1,11 @@
 # Taskmaster Operational Guide
 
 Canonical, distilled guide for the LLM orchestrating Taskmaster during a security
-assessment. This is the single source of truth for *how to drive the tools*. The
+assessment — the single source of truth for operator workflow. The
 server surfaces the **Core loop** section below via the MCP `initialize`
 handshake, and serves this whole file through the `get_operational_guide` tool —
-so it reaches you regardless of which directory you launched in. This is the
-single source of truth for operator workflow; the repo's `CLAUDE.md` is the
-separate guide for *developing* the Taskmaster codebase.
+so it reaches you regardless of which directory you launched in. The repo's
+`CLAUDE.md` is the separate guide for *developing* the Taskmaster codebase.
 
 <!-- MCP-INSTRUCTIONS-START -->
 ## Core loop
@@ -256,7 +255,7 @@ exploitation work not linked to any surface item.
   `fetch_execution_result`, `aggregate_executions` (merge a fan of shard results
   into one view), `list_queued_executions`, `cleanup_agents`, `recover_execution`
   (+ worker-side `claim_execution` / `start_execution` / `complete_execution` /
-  `fail_execution`).
+  `fail_execution` / `heartbeat_execution`).
 - **Planning:** `suggest_next_action` — read-only; given an engagement (or global),
   returns prioritized gaps (failed work, executions missing an interpretation, ready
   queue, untriaged observations, findings not report-ready, phase gaps, threat-model

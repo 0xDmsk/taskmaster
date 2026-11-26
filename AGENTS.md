@@ -28,7 +28,7 @@ Code style: Black with a 100-char line length, Ruff linting, Python 3.12+.
 - `state/` — execution lifecycle (`state.py`), SQLite persistence (`storage.py`).
 - `policies/` — phase-transition policy, playbooks, mission/note-taking templates.
 - `dashboard/` — web UI (`webapp.py` router, `api.py`, `agents.py`, Jinja2 `templates/`, `static/`).
-- `skills/` — `base.py` (CLI skills), `browser.py` (Playwright), `reporting.py` (docx).
-- `executors/` — Dockerfiles + operator scripts for the Kali / Playwright / Reporting agents.
+- `skills/` — base classes in `base.py` (CLI), `browser.py` (Playwright), `reporting.py` (docx), `mobile_base.py` (mobile); skill modules alongside (`web.py`, `mobile.py`, `ios.py`, …).
+- `executors/` — Dockerfiles + operator scripts for the Kali / Playwright / Reporting / Mobile agents.
 
 Keep tests green (`make test`) and lint clean (`make lint`) before finishing. When you add or change a tool, update its schema in `server.py` and the tool map in `CLAUDE.md`.
