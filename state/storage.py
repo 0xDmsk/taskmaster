@@ -393,6 +393,53 @@ CREATE INDEX IF NOT EXISTS idx_finding_templates_category
     ON finding_templates (category);
 CREATE INDEX IF NOT EXISTS idx_finding_templates_severity
     ON finding_templates (severity);
+
+-- Surface inventory: the functionalities and endpoints mapped for an engagement,
+-- linked to the executions that discovered/tested them and the findings that
+-- affect them (see state/surface.py). Coverage status is derived from the links,
+-- never stored. `key` is the normalized identity ("GET api.example.com/users/{id}")
+-- that makes re-discovery idempotent.
+CREATE TABLE IF NOT EXISTS surface_items (
+    item_id TEXT PRIMARY KEY,
+    engagement_id TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'endpoint',
+    name TEXT NOT NULL DEFAULT '',
+    method TEXT NOT NULL DEFAULT 'ANY',
+    host TEXT NOT NULL DEFAULT '',
+    path TEXT NOT NULL DEFAULT '',
+    key TEXT NOT NULL,
+    sample_url TEXT,
+    parent_id TEXT,
+    attack_surface_ref TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'llm',
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (engagement_id) REFERENCES engagements (engagement_id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES surface_items (item_id) ON DELETE SET NULL,
+    UNIQUE (engagement_id, key),
+    UNIQUE (engagement_id, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_surface_items_parent ON surface_items (parent_id);
+
+CREATE TABLE IF NOT EXISTS surface_links (
+    link_id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL,
+    rel TEXT NOT NULL,
+    execution_id TEXT,
+    finding_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (item_id) REFERENCES surface_items (item_id) ON DELETE CASCADE,
+    FOREIGN KEY (execution_id) REFERENCES executions (execution_id) ON DELETE SET NULL,
+    FOREIGN KEY (finding_id) REFERENCES findings (finding_id) ON DELETE CASCADE
+);
+-- UNIQUE treats NULLs as distinct, so dedup on the IFNULL'd expression instead.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_surface_links_unique
+    ON surface_links (item_id, rel, IFNULL(execution_id, ''), IFNULL(finding_id, ''));
+CREATE INDEX IF NOT EXISTS idx_surface_links_execution ON surface_links (execution_id);
+CREATE INDEX IF NOT EXISTS idx_surface_links_finding ON surface_links (finding_id);
 """
 
 # Online-migration columns, keyed by table. Adding a column to an existing table
