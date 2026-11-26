@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}{{ surface.engagement.name }} — Surface{% endblock %}
+{% block content %}
+{% set eng = surface.engagement %}
+<div class="page-heading">
+    <div class="engagement-title-block">
+        <a class="breadcrumb" href="/reporting/engagements/{{ eng.engagement_id }}">&larr; {{ eng.name }}</a>
+        <h2 class="page-title">Surface Coverage</h2>
+        <div class="engagement-card-meta"><span>{{ surface.endpoint_total }} endpoints mapped</span></div>
+    </div>
+</div>
+
+<div class="workspace-rollup">
+    <div class="rollup-block">
+        <h3 class="panel-title">Coverage</h3>
+        <div class="status-funnel">
+            {% for status in surface.statuses %}
+            <a class="cov-pill cov-{{ status }} {% if not surface.status_counts[status] %}muted{% endif %}{% if filters.status == status %} active{% endif %}"
+               href="?status={{ status if filters.status != status else '' }}{% if filters.q %}&q={{ filters.q|urlencode }}{% endif %}">{{ status|replace('_', ' ') }}: {{ surface.status_counts[status] }}</a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<form class="report-filter-bar surface-filter" method="get">
+    <select name="status" onchange="this.form.submit()">
+        <option value="">All statuses</option>
+        {% for status in surface.statuses %}
+        <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status|replace('_', ' ') }}</option>
+        {% endfor %}
+    </select>
+    <input type="text" name="q" value="{{ filters.q or '' }}" placeholder="Search ref, endpoint, functionality">
+</form>
+
+{% if not surface.groups %}
+<div class="empty-state">
+    {% if surface.endpoint_total %}No surface items match these filters.{% else %}
+    No surface mapped yet. Endpoints appear here when executions report them
+    (<code>emit_endpoints()</code> in python actions, <code>findings.endpoints</code> in skills
+    and playwright scripts) or via <code>upsert_surface_items</code>.{% endif %}
+</div>
+{% else %}
+<table class="surface-matrix">
+    <thead>
+        <tr>
+            <th>Ref</th><th>Method</th><th>Endpoint</th>
+            <th title="Distinct executions that reported this endpoint">Found by</th>
+            {% for phase in surface.phases %}<th class="cov-phase" title="Linked executions in {{ phase }}">{{ {'reconnaissance': 'Recon', 'enumeration': 'Enum', 'exploitation': 'Exploit', 'post_exploitation': 'Post'}[phase] }}</th>{% endfor %}
+            <th>Findings</th><th>Status</th>
+        </tr>
+    </thead>
+    {% for group in surface.groups %}
+    <tbody>
+        <tr class="surface-group{% if group.item %} surface-row{% endif %}"{% if group.item %} data-item-id="{{ group.item.item_id }}" id="surface-{{ group.item.item_id }}"{% endif %}>
+            <td colspan="{{ 6 + surface.phases|length }}">
+                {% if group.item %}
+                <span class="surface-ref">{{ group.item.ref }}</span> {{ group.item.name }}
+                {% if group.item.attack_surface_ref %}<span class="badge">{{ group.item.attack_surface_ref }}</span>{% endif %}
+                <span class="surface-coverage">{{ group.covered }}/{{ group.total }} tested</span>
+                {% else %}
+                <span class="surface-ref">—</span> Unassigned <span class="surface-coverage">{{ group.total }} endpoint{{ 's' if group.total != 1 }}</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% for row in group.rows %}
+        <tr class="surface-row" data-item-id="{{ row.item_id }}" id="surface-{{ row.item_id }}">
+            <td class="surface-ref">{{ row.ref }}</td>
+            <td><span class="http-method m-{{ row.method|lower }}">{{ row.method }}</span></td>
+            <td class="surface-endpoint" title="{{ row.description or row.key }}">{{ row.host }}{{ row.path }}</td>
+            <td class="cov-cell {% if not row.discovered_by %}zero{% endif %}">{{ row.discovered_by or '·' }}</td>
+            {% for count in row.phase_counts %}
+            <td class="cov-cell {% if not count %}zero{% endif %}">{{ count or '·' }}</td>
+            {% endfor %}
+            <td>
+                {% for f in row.findings %}
+                <span class="sev-chip sev-{{ (f.severity or 'info')|lower }}{% if f.status == 'false_positive' %} muted{% endif %}" title="{{ f.title }}">{{ f.severity }}</span>
+                {% endfor %}
+            </td>
+            <td><span class="cov-pill cov-{{ row.status }}">{{ row.status|replace('_', ' ') }}</span></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    {% endfor %}
+</table>
+{% endif %}
+
+<section class="workspace-graph" id="lineage-graph">
+    <div class="graph-head">
+        <h3 class="panel-title">Lineage</h3>
+        <span class="graph-stats" data-graph="stats">Select a row to see what discovered and tested it.</span>
+        <button type="button" class="action-btn" data-graph="fit">Fit</button>
+        <button type="button" class="action-btn" data-graph="expand" title="Full-window view (Esc to close)">Expand</button>
+    </div>
+    {% include "partials/graph_legend.html" %}
+    <div class="graph-body">
+        <div class="graph-canvas" data-graph="canvas"></div>
+        <aside class="graph-drawer" data-graph="drawer">
+            <p class="graph-hint">Click a node for details.</p>
+        </aside>
+    </div>
+</section>
+
+{% include "partials/graph_libs.html" %}
+<script>
+(function() {
+    var base = '/api/reporting/engagements/{{ eng.engagement_id }}/surface/';
+    var section = document.getElementById('lineage-graph');
+    var graph = EvidenceGraph.mount(section, {engagementId: '{{ eng.engagement_id }}'});
+    if (!graph) return;
+
+    function select(row, scroll) {
+        document.querySelectorAll('.surface-row.selected').forEach(function(r) { r.classList.remove('selected'); });
+        row.classList.add('selected');
+        graph.load(base + encodeURIComponent(row.dataset.itemId) + '/graph');
+        history.replaceState(null, '', '#surface:' + row.dataset.itemId);
+        if (scroll) section.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+    document.querySelectorAll('.surface-row').forEach(function(row) {
+        row.addEventListener('click', function() { select(row, true); });
+    });
+    /* Deep link from the evidence graph drawer: #surface:<item_id> */
+    var m = location.hash.match(/^#surface:(.+)$/);
+    var target = m && document.getElementById('surface-' + m[1]);
+    if (target) {
+        target.scrollIntoView({block: 'center'});
+        select(target, false);
+    }
+})();
+</script>
+{% endblock %}

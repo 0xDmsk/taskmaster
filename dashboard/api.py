@@ -605,3 +605,84 @@ def get_render_artifact(execution_id, index):
     if index < 0 or index >= len(artifacts):
         return None
     return resolve_artifact_host_path(artifacts[index])
+
+
+SURFACE_PHASES = ["reconnaissance", "enumeration", "exploitation", "post_exploitation"]
+
+
+def _surface_row(item):
+    links = item["links"]
+    findings = {}
+    for link in links:
+        if link["rel"] == "affects" and link.get("finding_id"):
+            findings[link["finding_id"]] = {
+                "finding_id": link["finding_id"],
+                "title": link.get("finding_title"),
+                "severity": link.get("finding_severity"),
+                "status": link.get("finding_status"),
+            }
+    return {
+        **{k: item[k] for k in ("item_id", "ref", "kind", "name", "method", "host", "path", "key")},
+        "status": item["status"],
+        "attack_surface_ref": item.get("attack_surface_ref"),
+        "description": item.get("description"),
+        "source": item.get("source"),
+        "discovered_by": len({l["execution_id"] for l in links if l["rel"] == "discovered" and l["execution_id"]}),
+        "phase_counts": [item["phase_counts"].get(p, 0) for p in SURFACE_PHASES],
+        "findings": sorted(
+            findings.values(), key=lambda f: SEVERITY_ORDER.index(f["severity"]) if f["severity"] in SEVERITY_ORDER else 9
+        ),
+    }
+
+
+def get_engagement_surface(engagement_id, status=None, query=None):
+    """Coverage-matrix payload: functionality groups with their endpoint rows.
+
+    Status counts are computed across all endpoints so the summary stays stable
+    while the status / text filters narrow the rows. Endpoints without a
+    functionality go in a trailing "Unassigned" group.
+    """
+    from state.surface import STATUS_ORDER, list_surface
+
+    engagement = get_engagement(engagement_id)
+    if not engagement:
+        return None
+    items = list_surface(engagement_id)
+    endpoints = [i for i in items if i["kind"] == "endpoint"]
+    counts = {s: sum(1 for i in endpoints if i["status"] == s) for s in STATUS_ORDER}
+
+    needle = (query or "").strip().lower()
+
+    def visible(item):
+        if status and item["status"] != status:
+            return False
+        haystack = " ".join([item["ref"], item["key"], item["name"], item.get("description") or ""])
+        return not needle or needle in haystack.lower()
+
+    groups = []
+    for fn in (i for i in items if i["kind"] == "functionality"):
+        rows = [_surface_row(i) for i in endpoints if i["parent_id"] == fn["item_id"] and visible(i)]
+        fn_matches = not status and needle and needle in f"{fn['ref']} {fn['name']}".lower()
+        if rows or fn_matches or (not status and not needle):
+            children = [i for i in endpoints if i["parent_id"] == fn["item_id"]]
+            groups.append(
+                {
+                    "item": _surface_row(fn),
+                    "rows": rows,
+                    "total": len(children),
+                    "covered": sum(1 for i in children if i["status"] in ("tested", "vulnerable")),
+                }
+            )
+    known = {i["item_id"] for i in items if i["kind"] == "functionality"}
+    orphans = [_surface_row(i) for i in endpoints if i["parent_id"] not in known and visible(i)]
+    if orphans:
+        groups.append({"item": None, "rows": orphans, "total": len(orphans), "covered": None})
+
+    return {
+        "engagement": engagement,
+        "groups": groups,
+        "status_counts": counts,
+        "endpoint_total": len(endpoints),
+        "phases": SURFACE_PHASES,
+        "statuses": STATUS_ORDER,
+    }

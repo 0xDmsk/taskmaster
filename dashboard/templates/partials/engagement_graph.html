@@ -1,0 +1,36 @@
+{% set eng_id = workspace.engagement.engagement_id %}
+<section class="workspace-graph" id="evidence-graph">
+    <div class="graph-head">
+        <h3 class="panel-title">Evidence Graph</h3>
+        <span class="graph-stats" data-graph="stats">Loading&hellip;</span>
+        <label class="graph-toggle"><input type="checkbox" data-graph="linked-only"> Only executions that reach the report</label>
+        <label class="graph-toggle"><input type="checkbox" data-graph="gaps" checked> Highlight gaps</label>
+        <label class="graph-toggle"><input type="checkbox" id="graph-surface"> Show surface items</label>
+        <button type="button" class="action-btn" data-graph="fit">Fit</button>
+        <button type="button" class="action-btn" data-graph="expand" title="Full-window view (Esc to close)">Expand</button>
+    </div>
+    {% include "partials/graph_legend.html" %}
+    <div class="graph-body">
+        <div class="graph-canvas" data-graph="canvas"></div>
+        <aside class="graph-drawer" data-graph="drawer">
+            <p class="graph-hint">Click a node for details.</p>
+        </aside>
+    </div>
+</section>
+
+{% include "partials/graph_libs.html" %}
+<script>
+(function() {
+    var url = '/api/reporting/engagements/{{ eng_id }}/graph';
+    var graph = EvidenceGraph.mount(document.getElementById('evidence-graph'),
+                                    {url: url, engagementId: '{{ eng_id }}'});
+    window.engagementGraph = graph && graph.cy;  /* handle for console debugging */
+    var surface = document.getElementById('graph-surface');
+    if (graph && surface) {
+        /* Off by default: endpoint nodes turn a large engagement into a hairball. */
+        surface.addEventListener('change', function() {
+            graph.load(url + (surface.checked ? '?surface=1' : ''));
+        });
+    }
+})();
+</script>

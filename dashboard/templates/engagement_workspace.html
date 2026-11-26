@@ -11,7 +11,10 @@
             <span class="badge">{{ eng.status }}</span>
         </div>
     </div>
-    <a class="action-btn primary" href="/reporting/findings/new?engagement_id={{ eng.engagement_id }}">New Finding</a>
+    <div class="page-actions">
+        <a class="action-btn" href="/reporting/engagements/{{ eng.engagement_id }}/surface">Surface Coverage</a>
+        <a class="action-btn primary" href="/reporting/findings/new?engagement_id={{ eng.engagement_id }}">New Finding</a>
+    </div>
 </div>
 
 {% if message %}<div class="flash success">{{ message }}</div>{% endif %}
@@ -86,5 +89,6 @@
     </aside>
 </div>
 
+{% include "partials/engagement_graph.html" %}
 {% include "partials/engagement_threats.html" %}
 {% endblock %}

@@ -25,6 +25,7 @@ import config
 import dashboard.agents as agents_mod
 import dashboard.api as api
 from dashboard import render
+from dashboard.graph import get_engagement_graph, get_surface_lineage_graph
 from state.reporting import (
     create_asset,
     create_finding,
@@ -101,12 +102,25 @@ ROUTER.add(
     r"/api/reporting/engagements/(?P<engagement_id>[^/]+)/findings",
     "api_engagement_findings",
 )
+ROUTER.add(
+    "GET",
+    r"/api/reporting/engagements/(?P<engagement_id>[^/]+)/graph",
+    "api_engagement_graph",
+)
+ROUTER.add(
+    "GET",
+    r"/api/reporting/engagements/(?P<engagement_id>[^/]+)/surface/(?P<item_id>[^/]+)/graph",
+    "api_surface_lineage_graph",
+)
 ROUTER.add("GET", r"/overview", "page_overview")
 ROUTER.add("GET", r"/executions", "page_executions")
 ROUTER.add("GET", r"/targets", "page_targets")
 ROUTER.add("GET", r"/findings", "redirect_observations")
 ROUTER.add("GET", r"/observations", "page_observations")
 ROUTER.add("GET", r"/reporting/engagements", "page_engagements")
+ROUTER.add(
+    "GET", r"/reporting/engagements/(?P<engagement_id>[^/]+)/surface", "page_engagement_surface"
+)
 ROUTER.add("GET", r"/reporting/engagements/(?P<engagement_id>[^/]+)", "page_engagement_workspace")
 ROUTER.add("GET", r"/reporting/findings/new", "page_report_finding_new")
 ROUTER.add("GET", r"/reporting/findings/(?P<finding_id>[^/]+)/edit", "page_report_finding_edit")
@@ -336,6 +350,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
         else:
             self._send_json(200, data)
 
+    def api_engagement_graph(self, cap):
+        data = get_engagement_graph(
+            cap["engagement_id"], include_surface=self.params.get("surface") == "1"
+        )
+        if data is None:
+            self._send_json(404, {"error": "Not found"})
+        else:
+            self._send_json(200, data)
+
+    def api_surface_lineage_graph(self, cap):
+        data = get_surface_lineage_graph(cap["engagement_id"], cap["item_id"])
+        if data is None:
+            self._send_json(404, {"error": "Not found"})
+        else:
+            self._send_json(200, data)
+
     def api_engagement_findings(self, cap):
         engagement_id = cap["engagement_id"]
         findings = api.get_engagement_findings(
@@ -454,6 +484,25 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 filters=filters,
                 message=self.params.get("message"),
                 error=self.params.get("error"),
+            ),
+        )
+
+    def page_engagement_surface(self, cap):
+        filters = {"status": self.params.get("status"), "q": self.params.get("q")}
+        surface = api.get_engagement_surface(
+            cap["engagement_id"], status=filters["status"], query=filters["q"]
+        )
+        if not surface:
+            self._send_html(404, "<h1>Engagement not found</h1>")
+            return
+        self._send_html(
+            200,
+            render(
+                "engagement_surface.html",
+                page="engagements",
+                stats=self._stats(),
+                surface=surface,
+                filters=filters,
             ),
         )
 
