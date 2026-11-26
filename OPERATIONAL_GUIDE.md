@@ -40,6 +40,9 @@ Standard cycle for every unit of work:
    Where / Observation / Why it matters / Reproduction / Status / Recommendation)
    and `recon-data.md` (the raw data dossier the findings cite via `§section`).
    Create them on first observation; append after every execution with novel data.
+   For engagement work, also feed the **surface inventory**: report mapped endpoints in
+   the envelope (`emit_endpoints()` in python actions) and pass `surface_refs` when
+   queuing tests and creating findings (see "Surface inventory").
 6. **Cleanup** — `cleanup_agents` once a phase/target is done.
 
 Queuing does **not** provision a worker. `request_security_action` returns QUEUED;
@@ -215,6 +218,35 @@ Author cross-refs as ref strings (`AP-1` impacts `CA-1, CA-4`).
 Promote `draft → in_review → final`; `export_threat_model_markdown` as
 `<name>-threat-model.md` in the engagement dir. Keep the threat set small and evidenced.
 
+## Surface inventory (coverage tracking)
+
+Per-engagement map of functionalities (`FN-n`) and endpoints (`EP-n`), linked to the
+executions that **discovered** and **tested** them and the findings that **affect**
+them. Coverage status (`discovered` → `in_progress` → `tested` → `vulnerable`) is derived
+from those links — never set by hand — and shows in the dashboard's **Surface Coverage**
+matrix (per-endpoint lineage graph on click). It only works if you feed it as you go:
+
+- **Discovery — report it in the envelope**, don't re-type it. Python actions get an
+  `emit_endpoints()` helper: `emit_endpoints(["GET /api/users/42", {"method": "POST",
+  "url": "https://app.example.com/api/login", "parent": "Authentication"}])`. Raw
+  playwright scripts put a list at `findings.endpoints`; built-in skills (`web.FfufFuzz`,
+  `web.HttpxDetect`, `subdomain.*`, `mobile.SecretScan`) already do. Taskmaster ingests it on
+  completion for executions with an `engagement_id`.
+- **Testing — `surface_refs` on `request_security_action`** (and `request_batch`): the
+  `EP-n`/`FN-n` refs from `list_surface_items`, or endpoint strings (`"GET /api/x"`, created
+  if new). An unknown `EP-n` rejects the queue call.
+- **Findings — `surface_refs` on `create_reporting_finding` / `update_reporting_finding`**
+  marks the endpoint vulnerable (update adds links; it never removes them).
+- **Knowledge that isn't an execution** (scoping docs, OpenAPI specs, Burp sitemaps):
+  `upsert_surface_items`, grouping endpoints under functionalities via `parent` and mapping
+  functionalities to the threat model with `attack_surface_ref` (`AS-n`).
+
+Identity is normalized — method + host + path, query dropped, id-like segments become
+`{id}` — so `/users/42` and `/users/97` are one endpoint and re-discovery is idempotent.
+Path-only endpoints resolve against the execution's target host. `suggest_next_action`
+reports endpoints never tested, functionalities with no endpoints, and enumeration /
+exploitation work not linked to any surface item.
+
 ## MCP tool map
 
 - **Orchestration:** `request_security_action`, `request_playbook`, `request_batch`
@@ -228,7 +260,10 @@ Promote `draft → in_review → final`; `export_threat_model_markdown` as
 - **Planning:** `suggest_next_action` — read-only; given an engagement (or global),
   returns prioritized gaps (failed work, executions missing an interpretation, ready
   queue, untriaged observations, findings not report-ready, phase gaps, threat-model
-  status). Call it to orient at session start or whenever deciding what to do next.
+  status, surface-coverage gaps). Call it to orient at session start or whenever
+  deciding what to do next.
+- **Surface inventory:** `upsert_surface_items`, `list_surface_items` (+ `surface_refs` on
+  `request_security_action` / `request_batch` / report-finding tools).
 - **Reporting:** `create_reporting_engagement`, `list_reporting_engagements`,
   `create_reporting_finding`, `get_reporting_finding`, `update_reporting_finding`,
   `add_reporting_finding_evidence`, `add_reporting_finding_reference`,
