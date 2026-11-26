@@ -205,22 +205,38 @@ def _execute_python_sandbox(payload):
 
     print(f"[*] Executing Python sandbox: {command[:50]}...")
 
+    # emit_endpoints() lets a script report what it mapped in structured form;
+    # the server ingests findings.endpoints into the engagement's surface
+    # inventory on completion. Accepts one item or a list: "GET /api/x",
+    # "https://host/path", or {"method", "url"|"path", "host", "parent", ...}.
+    endpoints = []
+
+    def emit_endpoints(items):
+        if isinstance(items, (str, dict)):
+            items = [items]
+        for item in items or []:
+            if isinstance(item, (str, dict)):
+                endpoints.append(item)
+
     try:
         f_stdout = io.StringIO()
         f_stderr = io.StringIO()
 
         with redirect_stdout(f_stdout), redirect_stderr(f_stderr):
-            exec_globals = {"__builtins__": __builtins__}
+            exec_globals = {"__builtins__": __builtins__, "emit_endpoints": emit_endpoints}
             exec(command, exec_globals)
 
         output = f_stdout.getvalue()
         errors = f_stderr.getvalue()
 
+        findings = {"stdout": output}
+        if endpoints:
+            findings["endpoints"] = endpoints
         envelope = {
             "skill": "python_sandbox",
             "target": target,
             "status": "success",
-            "findings": {"stdout": output},
+            "findings": findings,
             "artifacts": [],
             "errors": [errors] if errors.strip() else [],
         }

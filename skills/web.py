@@ -56,6 +56,8 @@ class FfufFuzz(BaseSkill):
         return {
             "directories_found": len(found),
             "directories": found,
+            # Normalized for the engagement surface inventory (state/surface.py).
+            "endpoints": [{"method": "GET", "url": d["url"]} for d in found if d.get("url")],
         }
 
 
@@ -100,6 +102,7 @@ class HttpxDetect(BaseSkill):
                         "title": entry.get("title", ""),
                         "server": entry.get("webserver", ""),
                         "technologies": entry.get("tech", []),
+                        "endpoints": [entry["url"]] if entry.get("url") else [],
                     }
             except (json.JSONDecodeError, OSError):
                 self._errors.append(f"Failed to parse {self._output_file}")

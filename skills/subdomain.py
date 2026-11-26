@@ -34,6 +34,7 @@ class GobusterDns(BaseSkill):
             "domain": self._domain,
             "subdomains_found": len(found),
             "subdomains": found,
+            "endpoints": list(found),  # hosts, for the surface inventory
         }
 
 
@@ -80,4 +81,5 @@ class SubfinderEnum(BaseSkill):
             "domain": self._domain,
             "subdomains_found": len(subdomains),
             "subdomains": subdomains,
+            "endpoints": list(subdomains),  # hosts, for the surface inventory
         }

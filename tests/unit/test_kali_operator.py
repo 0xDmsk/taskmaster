@@ -88,6 +88,22 @@ class TestPythonSandbox:
         assert parsed["status"] == "error"
         assert any("ValueError" in e for e in parsed["errors"])
 
+    def test_emit_endpoints(self):
+        command = (
+            "emit_endpoints('GET /api/a')\n"
+            "emit_endpoints([{'method': 'POST', 'path': '/api/b'}, 42])\n"
+        )
+        result = _execute_python_sandbox({"command": command, "target": "myhost"})
+        parsed = json.loads(result["result"])
+        assert parsed["findings"]["endpoints"] == [
+            "GET /api/a",
+            {"method": "POST", "path": "/api/b"},
+        ]
+
+    def test_no_endpoints_key_without_emit(self):
+        result = _execute_python_sandbox({"command": "print('ok')", "target": "myhost"})
+        assert "endpoints" not in json.loads(result["result"])["findings"]
+
     def test_envelope_structure(self):
         payload = {"command": "print('ok')", "target": "myhost"}
         result = _execute_python_sandbox(payload)
