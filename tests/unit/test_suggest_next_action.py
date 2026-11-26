@@ -130,3 +130,40 @@ def test_suggestions_are_priority_ordered():
     ranks = {"high": 0, "medium": 1, "low": 2, "info": 3}
     assert priorities == sorted(priorities, key=lambda p: ranks[p])
     assert result["headline"] == result["suggestions"][0]["message"]
+
+
+def test_surface_coverage_gaps_are_flagged():
+    from state.reporting import create_engagement
+    from state.surface import link_surface, upsert_surface_items
+
+    eng = create_engagement("Surface Co")["engagement_id"]
+    items = upsert_surface_items(
+        eng,
+        [
+            {"kind": "functionality", "name": "Billing"},
+            "GET https://app.example.com/a",
+            "GET https://app.example.com/b",
+        ],
+    )
+    create_execution("t", "app.example.com", "reconnaissance", {}, engagement_id=eng)
+    _complete("t", interpretation="ok")
+    create_execution("u", "app.example.com", "enumeration", {}, engagement_id=eng)
+    _complete("u", interpretation="ok")
+    link_surface([items[1]["item_id"]], "tested", execution_id="t")
+
+    result = handle_suggest_next_action({"engagement_id": eng})
+    untested = _by_category(result, "surface_untested")
+    assert untested["priority"] == "medium"
+    assert untested["surface_refs"] == ["EP-2"]
+    assert _by_category(result, "surface_functionality_unmapped")["surface_refs"] == ["FN-1"]
+    assert _by_category(result, "surface_untagged_work")["execution_ids"] == ["u"]
+
+
+def test_no_surface_suggestions_without_inventory():
+    from state.reporting import create_engagement
+
+    eng = create_engagement("Plain Co")["engagement_id"]
+    create_execution("e", "app.example.com", "enumeration", {}, engagement_id=eng)
+    _complete("e", interpretation="ok")
+    result = handle_suggest_next_action({"engagement_id": eng})
+    assert not {c for c in _categories(result) if c.startswith("surface_")}

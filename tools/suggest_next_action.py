@@ -4,7 +4,8 @@ Given the current state (optionally scoped to an engagement), inspect executions
 report findings, and threat models and return a prioritized list of concrete,
 actionable gaps: work that failed, executions that need an interpretation,
 observations not yet triaged into findings, findings that aren't report-ready,
-phase-coverage gaps, and threat-model status. This saves the orchestrating LLM
+phase-coverage gaps, threat-model status, and surface-coverage gaps (endpoints
+mapped but never tested). This saves the orchestrating LLM
 from reconstructing engagement state by hand every session.
 
 Read-only: it never mutates state — it only recommends the next move.
@@ -20,6 +21,7 @@ from state.reporting import (
     list_findings,
     list_threat_models,
 )
+from state.surface import list_surface
 from tools.request_reporting_docx import _REQUIRED_REPORT_FIELDS
 
 PHASES = ["reconnaissance", "enumeration", "exploitation", "post_exploitation", "reporting"]
@@ -277,6 +279,51 @@ def handle_suggest_next_action(args):
                     f"'{model.get('status')}'{tail} — run the validation pass and promote it to "
                     "final.",
                     threat_model_id=model.get("threat_model_id"),
+                )
+
+    # --- Surface coverage (engagement-scoped only) -------------------------
+    if engagement_id:
+        surface = list_surface(engagement_id)
+        endpoints = [i for i in surface if i["kind"] == "endpoint"]
+        untested = [i for i in endpoints if i["status"] == "discovered"]
+        if untested:
+            preview = ", ".join(f"{i['ref']} {i['key']}" for i in untested[:5])
+            _suggest(
+                suggestions,
+                "medium",
+                "surface_untested",
+                f"{len(untested)} of {len(endpoints)} mapped endpoint(s) have no test against "
+                f"them yet: {preview}. Queue work with surface_refs so coverage is tracked.",
+                surface_refs=[i["ref"] for i in untested[:20]],
+            )
+        empty = [i for i in surface if i["kind"] == "functionality" and not i["endpoint_count"]]
+        if empty:
+            _suggest(
+                suggestions,
+                "low",
+                "surface_functionality_unmapped",
+                f"{len(empty)} functionality item(s) have no endpoints mapped under them: "
+                + ", ".join(f"{i['ref']} {i['name']}" for i in empty[:5])
+                + ".",
+                surface_refs=[i["ref"] for i in empty[:20]],
+            )
+        if surface:
+            linked = {l["execution_id"] for i in surface for l in i["links"] if l["execution_id"]}
+            untagged = [
+                e
+                for e in execs
+                if e.get("security_phase") in ("enumeration", "exploitation")
+                and e.get("execution_id") not in linked
+            ]
+            if untagged:
+                _suggest(
+                    suggestions,
+                    "info",
+                    "surface_untagged_work",
+                    f"{len(untagged)} enumeration/exploitation execution(s) aren't linked to any "
+                    "surface item — pass surface_refs when queuing so the coverage matrix "
+                    "reflects them.",
+                    execution_ids=[e["execution_id"] for e in untagged][:20],
                 )
 
     suggestions.sort(key=lambda s: _PRIORITY_RANK.get(s["priority"], 9))

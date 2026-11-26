@@ -81,7 +81,9 @@ TOOLS = {
             "prioritized list of concrete next actions: failed work to review, completed "
             "executions missing an interpretation, ready work waiting for a worker, "
             "observations not yet triaged into findings, findings missing required report "
-            "fields, phase-coverage gaps, and threat-model status. Read-only. Use it to "
+            "fields, phase-coverage gaps, threat-model status, and surface-coverage gaps "
+            "(mapped endpoints never tested, work not linked via surface_refs). Read-only. "
+            "Use it to "
             "orient at the start of a session or whenever you're deciding what to do next."
         ),
         "handler": handle_suggest_next_action,
